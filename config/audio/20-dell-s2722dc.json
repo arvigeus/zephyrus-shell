@@ -1,0 +1,9 @@
+[
+  {
+    "contains": {
+      "node.description": "DELL S2722DC"
+    },
+    "label": "Dell S2722DC \u00b7 monitor audio",
+    "role": "speaker"
+  }
+]

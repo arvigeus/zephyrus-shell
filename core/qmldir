@@ -1,0 +1,9 @@
+singleton Theme 1.0 Theme.qml
+singleton ShellState 1.0 ShellState.qml
+singleton Plugins 1.0 Plugins.qml
+singleton Attention 1.0 Attention.qml
+singleton Paths 1.0 Paths.qml
+
+singleton Profiles 1.0 Profiles.qml
+
+singleton HardwareSnapshot 1.0 HardwareSnapshot.qml

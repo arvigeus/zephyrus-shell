@@ -1,0 +1,41 @@
+[
+  {
+    "match": {
+      "node.name": "alsa_output.pci-0000_07_00.6.analog-stereo",
+      "port.name": "analog-output-speaker"
+    },
+    "label": "Laptop speakers",
+    "role": "speaker"
+  },
+  {
+    "match": {
+      "node.name": "alsa_output.pci-0000_07_00.6.analog-stereo",
+      "port.name": "analog-output-headphones"
+    },
+    "label": "Headphones \u00b7 laptop jack",
+    "role": "headphones"
+  },
+  {
+    "match": {
+      "node.name": "alsa_output.pci-0000_07_00.6.analog-stereo"
+    },
+    "label": "Laptop analog audio",
+    "role": "speaker"
+  },
+  {
+    "match": {
+      "node.name": "alsa_input.pci-0000_07_00.6.analog-stereo",
+      "port.name": "analog-input-internal-mic"
+    },
+    "label": "Laptop microphone",
+    "role": "microphone"
+  },
+  {
+    "match": {
+      "node.name": "alsa_input.pci-0000_07_00.6.analog-stereo",
+      "port.name": "analog-input-mic"
+    },
+    "label": "Microphone \u00b7 laptop jack",
+    "role": "microphone"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "active": "Balanced",
+  "battery": {"discharging": "", "low": "", "default": ""},
+  "lowBatteryPercent": 20,
+  "profiles": [
+    {"name": "Quiet", "settings": {"profile": "power-saver", "wifi": true, "bluetooth": true}},
+    {"name": "Balanced", "settings": {"profile": "balanced", "wifi": true, "bluetooth": true}},
+    {"name": "Performance", "settings": {"profile": "performance", "wifi": true, "bluetooth": true}}
+  ]
+}

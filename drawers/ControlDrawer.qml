@@ -14,6 +14,8 @@ DrawerFrame {
     backLabel: "Back to Settings"
     onBackRequested: page = ""
     subtitle: machineService.snapshot.model || "Your machine"
+    reserveTitleArtwork: page === ""
+    titleArtwork: page === "" && machineService.snapshot.asus ? Qt.resolvedUrl("../assets/asus-rog-logo.svg") : ""
     headerActionText: "Refresh hardware readings"
     headerActionEnabled: !machineService.busy
     onHeaderActionRequested: machineService.refresh()
@@ -41,7 +43,7 @@ DrawerFrame {
                     Layout.fillWidth: true
                     Item {
                         Layout.preferredWidth: 38; Layout.preferredHeight: 30
-                        Image { anchors.fill: parent; source: "../assets/asus-rog-logo.svg"; visible: !!machineService.snapshot.asus; sourceSize.width: 38; sourceSize.height: 30; fillMode: Image.PreserveAspectFit }
+                        Icon { anchors.centerIn: parent; name: "layers"; width: 24; height: 24 }
                     }
                     Choice { Layout.fillWidth: true; model: Profiles.names; displayText: Profiles.data.active || "Loading profiles…"; enabled: Profiles.loaded && !Profiles.busy && !machineService.busy; Accessible.name: "Settings profile"; onActivated: index => Profiles.select(model[index]) }
                 }

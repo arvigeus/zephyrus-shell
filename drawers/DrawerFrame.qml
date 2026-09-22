@@ -6,6 +6,8 @@ import "../widgets"
 Rectangle {
     id: root
     property string title
+    property url titleArtwork: ""
+    property bool reserveTitleArtwork: false
     property Component headerContent
     property string headerActionText: ""
     property bool headerActionEnabled: true
@@ -31,11 +33,20 @@ Rectangle {
                 Layout.fillWidth: true
                 sourceComponent: root.headerContent
             }
-            ColumnLayout {
+            RowLayout {
                 visible: !root.headerContent
-                Layout.fillWidth: true; spacing: 4
-                Label { text: root.title; font.pixelSize: 23; font.weight: Font.DemiBold; font.letterSpacing: 0.5 }
-                Label { text: root.subtitle; color: Theme.muted; font.pixelSize: 12; Layout.fillWidth: true }
+                Layout.fillWidth: true; spacing: 10
+                AppIcon {
+                    visible: root.reserveTitleArtwork || root.titleArtwork.toString() !== ""
+                    Layout.preferredWidth: 38; Layout.preferredHeight: 30
+                    Layout.alignment: Qt.AlignVCenter
+                    artwork: root.titleArtwork
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true; spacing: 4
+                    Label { text: root.title; font.pixelSize: 23; font.weight: Font.DemiBold; font.letterSpacing: 0.5 }
+                    Label { text: root.subtitle; color: Theme.muted; font.pixelSize: 12; Layout.fillWidth: true }
+                }
             }
             IconButton { visible: !!root.headerActionText; iconName: "refresh-cw"; text: root.headerActionText; enabled: root.headerActionEnabled; onClicked: root.headerActionRequested() }
             IconButton { iconName: "x"; text: "Close drawer"; onClicked: ShellState.dismissPanel() }

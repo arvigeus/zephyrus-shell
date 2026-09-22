@@ -28,7 +28,7 @@ def backlight():
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STATE = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "drawer-shell"
+STATE = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "zephyrus-shell"
 
 
 def display_config():

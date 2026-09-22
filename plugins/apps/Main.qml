@@ -14,7 +14,7 @@ ColumnLayout {
     property var favoriteIds: []
     Settings {
         id: preferences
-        location: "file://" + (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/drawer-shell/applications.ini"
+        location: "file://" + (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/zephyrus-shell/applications.ini"
     }
     function isFavorite(id) { return favoriteIds.includes(id); }
     function toggleFavorite(id) {

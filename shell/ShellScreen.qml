@@ -16,7 +16,7 @@ Scope {
         color: Theme.background
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Background
-        WlrLayershell.namespace: "drawer-shell-background"
+        WlrLayershell.namespace: "zephyrus-shell-background"
         mask: Region {}
         Backdrop { anchors.fill: parent }
     }
@@ -28,7 +28,7 @@ Scope {
         exclusiveZone: 66
         color: "transparent"
         WlrLayershell.layer: leftDrawer.visible || rightDrawer.visible ? WlrLayer.Top : WlrLayer.Overlay
-        WlrLayershell.namespace: "drawer-shell-bar"
+        WlrLayershell.namespace: "zephyrus-shell-bar"
         mask: Region {
             Region { item: left }
             Region { item: center }
@@ -63,7 +63,7 @@ Scope {
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         WlrLayershell.layer: WlrLayer.Top
-        WlrLayershell.namespace: "drawer-shell-module"
+        WlrLayershell.namespace: "zephyrus-shell-module"
         WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         Loader {
             anchors.fill: parent; active: parent.visible
@@ -91,7 +91,7 @@ Scope {
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.namespace: "drawer-shell-profile"
+        WlrLayershell.namespace: "zephyrus-shell-profile"
         WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         Loader { anchors.fill: parent; active: parent.visible; sourceComponent: UserProfilePanel {} }
     }
@@ -104,7 +104,7 @@ Scope {
         implicitHeight: Math.min(root.screen.width < 728 ? 700 : 460, root.screen.height - 90)
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
-        WlrLayershell.namespace: "drawer-shell-attention"
+        WlrLayershell.namespace: "zephyrus-shell-attention"
         WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         Loader {
             anchors.fill: parent; active: parent.visible
@@ -119,7 +119,7 @@ Scope {
         implicitWidth: 360; implicitHeight: 64
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
-        WlrLayershell.namespace: "drawer-shell-toast"
+        WlrLayershell.namespace: "zephyrus-shell-toast"
         Action {
             anchors.fill: parent
             text: Attention.toast

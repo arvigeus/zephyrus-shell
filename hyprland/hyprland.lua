@@ -1,4 +1,4 @@
--- Standalone config: Hyprland -c ~/Projects/drawer-shell/hyprland/hyprland.lua
+-- Standalone config: Hyprland -c ~/Projects/zephyrus-shell/hyprland/hyprland.lua
 local directory = debug.getinfo(1, "S").source:sub(2):match("(.*/)")
 package.path = directory .. "?.lua;" .. package.path
 require("appearance")

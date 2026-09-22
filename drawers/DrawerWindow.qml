@@ -14,7 +14,7 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.namespace: "drawer-shell-drawer"
+    WlrLayershell.namespace: "zephyrus-shell-drawer"
     WlrLayershell.keyboardFocus: opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     // A separate, non-overlapping hit area: inside clicks cannot dismiss the drawer.
     MouseArea {

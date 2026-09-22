@@ -2,8 +2,8 @@
 
 The profile selector applies a saved configuration. Subsequent edits update that
 profile automatically. Defaults live in `config/profiles.json`; after the first
-edit, the working copy lives in `$XDG_STATE_HOME/drawer-shell/profiles.json`
-(default `~/.local/state/drawer-shell/profiles.json`). Edit that copy to add or
+edit, the working copy lives in `$XDG_STATE_HOME/zephyrus-shell/profiles.json`
+(default `~/.local/state/zephyrus-shell/profiles.json`). Edit that copy to add or
 rename profiles, then restart the shell. Only keys included in a profile apply:
 `wifi` and `bluetooth` (booleans), `profile` (power-saver/balanced/performance),
 `brightness` (5–100), `chargeLimit` (50–100), and `gpu` (a supported Cardwire mode).

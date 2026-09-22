@@ -58,7 +58,7 @@ isolation. Only install code you trust.
 ## Reload from a terminal
 
 ```sh
-quickshell -p /absolute/path/to/drawer-shell ipc call shell reloadPlugins
+quickshell -p /absolute/path/to/zephyrus-shell ipc call shell reloadPlugins
 ```
 
 The directory intentionally has no persistent filesystem watcher. Changes appear

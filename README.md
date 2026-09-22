@@ -1,4 +1,4 @@
-# Drawer Shell
+# Zephyrus Shell
 
 A personal Quickshell desktop for Hyprland: three pills, two drawers, a quiet center.
 Built for Quickshell 0.3.1 and Hyprland 0.56.2's Lua configuration.
@@ -24,7 +24,7 @@ tray integration are exercised by the actual shell, not this component preview.
 To use the included floating-first Hyprland configuration from a TTY:
 
 ```sh
-Hyprland -c "$HOME/Projects/drawer-shell/hyprland/hyprland.lua"
+Hyprland -c "$HOME/Projects/zephyrus-shell/hyprland/hyprland.lua"
 ```
 
 The existing `~/.config/hypr/hyprland.lua` is not modified. The new configuration
@@ -40,8 +40,8 @@ path to this project's `hyprland/hyprland.lua` with Lua's `dofile`.
 - Applications opens a desktop overlay below the pills, with favorites, a searchable app grid and category filters.
   Favorites is the default tab when any saved favorites are installed; otherwise
   All applications opens. Star buttons add/remove apps. Search from Favorites
-  searches all apps. Selections persist in `$XDG_CONFIG_HOME/drawer-shell/applications.ini`
-  (default `~/.config/drawer-shell/applications.ini`). This is a separate list from
+  searches all apps. Selections persist in `$XDG_CONFIG_HOME/zephyrus-shell/applications.ini`
+  (default `~/.config/zephyrus-shell/applications.ini`). This is a separate list from
   KDE launcher favorites. Stars appear on hover or keyboard focus; saved favorites
   always display a filled star.
 - Every Desktop module shares the same overlay; Escape or clicking Desktop closes it.

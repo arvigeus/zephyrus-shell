@@ -12,7 +12,7 @@ ShellRoot {
     }
     Process {
         id: notification
-        command: ["notify-send", "Drawer Shell test", "Notification delivery verified"]
+        command: ["notify-send", "Zephyrus Shell test", "Notification delivery verified"]
     }
     Timer {
         property int step: 0

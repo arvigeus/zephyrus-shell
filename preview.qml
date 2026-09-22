@@ -10,7 +10,7 @@ ShellRoot {
     Component.onCompleted: { const ready = Profiles.loaded; const hardware = HardwareSnapshot.data; }
     FloatingWindow {
         id: window
-        title: "Drawer Shell · component preview"
+        title: "Zephyrus Shell · component preview"
         implicitWidth: 1280; implicitHeight: 800
         color: Theme.background
         Backdrop {

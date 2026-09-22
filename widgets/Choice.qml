@@ -22,6 +22,6 @@ ComboBox {
         y: root.height + 4; width: root.width; padding: 4
         implicitHeight: Math.min(contentItem.implicitHeight + 8, 240)
         background: Rectangle { radius: Theme.controlRadius; color: Theme.surface; border.color: Theme.border }
-        contentItem: ListView { clip: true; implicitHeight: contentHeight; model: root.popup.visible ? root.delegateModel : null; currentIndex: root.highlightedIndex; ScrollBar.vertical: ScrollBar {} }
+        contentItem: ListView { id: choices; WheelScroll { view: choices } clip: true; implicitHeight: contentHeight; model: root.popup.visible ? root.delegateModel : null; currentIndex: root.highlightedIndex; ScrollBar.vertical: ScrollBar {} }
     }
 }

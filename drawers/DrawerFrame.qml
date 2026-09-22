@@ -19,7 +19,7 @@ Rectangle {
     border.color: Theme.border
     focus: true
     Component.onCompleted: forceActiveFocus()
-    Keys.onEscapePressed: ShellState.close()
+    Keys.onEscapePressed: ShellState.dismissPanel()
     Rectangle { x: 20; y: 0; width: 44; height: 2; color: Theme.accent }
     ColumnLayout {
         anchors.fill: parent; anchors.margins: 20; spacing: 16
@@ -38,7 +38,7 @@ Rectangle {
                 Label { text: root.subtitle; color: Theme.muted; font.pixelSize: 12; Layout.fillWidth: true }
             }
             IconButton { visible: !!root.headerActionText; iconName: "refresh-cw"; text: root.headerActionText; enabled: root.headerActionEnabled; onClicked: root.headerActionRequested() }
-            IconButton { iconName: "x"; text: "Close drawer"; onClicked: ShellState.close() }
+            IconButton { iconName: "x"; text: "Close drawer"; onClicked: ShellState.dismissPanel() }
         }
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
         Item { id: body; Layout.fillWidth: true; Layout.fillHeight: true }

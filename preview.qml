@@ -19,10 +19,9 @@ ShellRoot {
             Action { z: 1; x: 14; y: 12; text: "Desktop"; iconName: "monitor"; onClicked: ShellState.toggle("left") }
             Action { z: 1; anchors.horizontalCenter: parent.horizontalCenter; y: 12; text: "Mon, Sep 21   ·   10:45"; onClicked: ShellState.toggle("center") }
             StatusPill { z: 1; anchors.right: parent.right; anchors.rightMargin: 14; y: 12; onClicked: ShellState.toggle("right") }
-            Loader {
+            ModuleLoader {
                 x: 0; y: 0; width: parent.width; height: parent.height
-                active: ShellState.panel === "module"
-                sourceComponent: ModuleOverlay { readyToLoad: !left.showing && !right.showing }
+                readyToLoad: !left.showing && !right.showing
             }
             MouseArea {
                 z: 2
@@ -31,7 +30,7 @@ ShellRoot {
                 width: canvas.width - (ShellState.panel === "left" ? left.width : right.width)
                 height: canvas.height
                 acceptedButtons: Qt.AllButtons
-                onClicked: ShellState.close()
+                onClicked: ShellState.dismissPanel()
             }
             Loader {
                 z: 3; anchors.centerIn: parent; width: Math.min(380, canvas.width - 32); height: 320

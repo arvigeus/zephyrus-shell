@@ -13,6 +13,8 @@ Item {
     height: 42
     clip: true
     Flickable {
+        id: runningApps
+        WheelScroll { view: runningApps; horizontal: true }
         anchors.fill: parent; contentWidth: row.implicitWidth; contentHeight: 42
         flickableDirection: Flickable.HorizontalFlick
         Row {

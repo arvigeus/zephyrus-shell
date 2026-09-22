@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "../core"
 import "../widgets"
-ScrollView {
+ScrollArea {
     id: root
     required property var machine
     property string page: "cpu"

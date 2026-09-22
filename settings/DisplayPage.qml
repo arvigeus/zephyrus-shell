@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "../widgets"
 import "../core"
-ScrollView {
+ScrollArea {
     id: root
     required property var machine
     contentWidth: availableWidth; clip: true

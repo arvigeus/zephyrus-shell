@@ -44,6 +44,10 @@ path to this project's `hyprland/hyprland.lua` with Lua's `dofile`.
   (default `~/.config/zephyrus-shell/applications.ini`). This is a separate list from
   KDE launcher favorites. Stars appear on hover or keyboard focus; saved favorites
   always display a filled star.
+- Movies and TV Series offer shared catalogue services, search/filters, rail/grid views,
+  title artwork, favorites, online provider selection, trailers, full cast/crew, and TV episodes. IMDbApi outages
+  fall back to configured TMDB/OMDb services (OMDb supports search, not discovery). See
+  [media configuration](docs/media.md) for API keys, provider templates, and limitations.
 - Every Desktop module shares the same overlay; Escape or clicking Desktop closes it.
 - Running-window activation and tray activation/context menus beside the left pill.
 - Clock, navigable calendar, notifications, actions, dismissal, toast, and do-not-disturb.
@@ -72,8 +76,8 @@ No external network or Bluetooth settings application is launched by the drawer.
 No screen locker is currently installed on this machine. This shell does **not**
 provide a lock screen; suspend is not a substitute for locking. Set up `hyprlock`
 and `hypridle` before relying on the session for unattended use. Weather, external
-calendars, tasks, persistent notification history, and media-library plugins are
-future modules, not placeholder controls. Current notifications are retained only
+calendars, tasks, persistent notification history, and local media-library scanning are
+future features, not placeholder controls. Current notifications are retained only
 for the shell's lifetime, capped at 100. Wi-Fi supports saved profiles, open networks,
 and WPA/WPA2/WPA3 personal passwords. New enterprise/certificate profiles and hidden
 network creation are not yet implemented. Bluetooth discovery is user-triggered
@@ -115,6 +119,7 @@ node --test tests/audio-names.test.cjs
 Hyprland --verify-config -c "$PWD/hyprland/hyprland.lua"
 bash scripts/check-preview.sh
 bash scripts/check-apps.sh
+bash scripts/check-media.sh
 # Briefly opens the actual panels on your current Wayland desktop:
 bash scripts/check-wayland.sh
 ```

@@ -10,7 +10,7 @@ DrawerFrame {
     onHeaderActionRequested: Plugins.reload()
     ColumnLayout {
         anchors.fill: parent; spacing: 12
-        ScrollView {
+        ScrollArea {
             id: spacesScroll
             Layout.fillWidth: true; Layout.fillHeight: true
             clip: true
@@ -22,7 +22,7 @@ DrawerFrame {
                     Action {
                         required property var modelData
                         Layout.fillWidth: true; implicitHeight: 52
-                        text: modelData.name
+                        text: modelData.name; textAlignment: Text.AlignLeft
                         iconName: modelData.icon
                         onClicked: ShellState.openPlugin(modelData.id)
                     }

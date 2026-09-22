@@ -29,7 +29,7 @@ DrawerFrame {
         Component { id: bluetoothPage; BluetoothPage {} }
         Component { id: displayPage; DisplayPage { machine: machineService } }
         Component { id: hardwarePage; HardwarePage { machine: machineService; page: root.page } }
-        ScrollView {
+        ScrollArea {
             id: controlScroll
             visible: root.page === ""
             Layout.fillWidth: true; Layout.fillHeight: true; clip: true

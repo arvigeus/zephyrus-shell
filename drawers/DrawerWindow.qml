@@ -22,7 +22,7 @@ PanelWindow {
         width: root.width - root.drawerWidth; height: root.height
         enabled: root.opened
         acceptedButtons: Qt.AllButtons
-        onClicked: ShellState.close()
+        onClicked: ShellState.dismissPanel()
     }
     DrawerSlide {
         id: slide

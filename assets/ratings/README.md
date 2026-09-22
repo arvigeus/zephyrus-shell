@@ -1,0 +1,1 @@
+Rating-service artwork ported from the user's NexFlix project (`app/src/main/res/drawable/rating_*.png`). These are service marks, not Zephyrus or NexFlix branding. Interface controls continue to use bundled Lucide icons.

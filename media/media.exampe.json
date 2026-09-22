@@ -1,0 +1,15 @@
+{
+  "tmdb_key": "",
+  "omdb_key": "",
+  "mdblist_key": "",
+  "watchmode_key": "",
+  "region": "US",
+  "providers": [
+    {
+      "name": "Example service (replace URLs)",
+      "movie_url": "https://example.org/movie/{imdbId}",
+      "series_url": "https://example.org/series/{imdbId}/{season}/{episode}"
+    }
+  ],
+  "player": ["mpv"]
+}

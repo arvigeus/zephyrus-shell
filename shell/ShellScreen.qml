@@ -58,16 +58,16 @@ Scope {
     }
     PanelWindow {
         screen: root.screen
-        visible: root.selected && ShellState.panel === "module"
+        visible: root.selected && !!ShellState.pluginId
         anchors { top: true; bottom: true; left: true; right: true }
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         WlrLayershell.layer: WlrLayer.Top
         WlrLayershell.namespace: "zephyrus-shell-module"
-        WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-        Loader {
-            anchors.fill: parent; active: parent.visible
-            sourceComponent: ModuleOverlay { readyToLoad: !leftDrawer.visible && !rightDrawer.visible }
+        WlrLayershell.keyboardFocus: visible && ShellState.panel === "module" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        ModuleLoader {
+            anchors.fill: parent; active: root.selected && !!ShellState.pluginId
+            readyToLoad: !leftDrawer.visible && !rightDrawer.visible
         }
     }
     DrawerWindow {

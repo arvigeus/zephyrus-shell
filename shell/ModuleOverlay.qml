@@ -14,12 +14,11 @@ Item {
         anchors.fill: parent
         color: root.backgroundImage.toString() ? Theme.background : Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.88)
     }
-    Image {
+    CrossfadeImage {
         anchors.fill: parent
         source: root.backgroundImage
-        fillMode: Image.PreserveAspectCrop
     }
-    Shortcut { sequence: "Escape"; onActivated: ShellState.close() }
+    Shortcut { sequence: "Escape"; enabled: ShellState.panel === "module"; onActivated: ShellState.close() }
     // Wait for the drawer's exit animation, then allow a frame for the loading UI.
     Timer {
         interval: 32

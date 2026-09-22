@@ -76,7 +76,7 @@ ColumnLayout {
         model: root.catalogReady ? root.matches : []
         keyNavigationEnabled: true
         onModelChanged: currentIndex = -1
-        WheelScroll { view: apps; pixelsPerNotch: 264; pixelMultiplier: 2 }
+        WheelScroll { view: apps; pixelsPerNotch: Math.max(320, apps.cellHeight * 2) }
         delegate: Action {
             id: appButton
             required property var modelData

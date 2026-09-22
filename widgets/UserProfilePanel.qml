@@ -7,7 +7,7 @@ import "." as Widgets
 Rectangle {
     color: Theme.background; radius: Theme.radius; border.color: Theme.border
     readonly property var profile: ShellState.userProfile
-    Shortcut { sequence: "Escape"; onActivated: ShellState.close() }
+    Shortcut { sequence: "Escape"; onActivated: ShellState.dismissPanel() }
     ColumnLayout {
         anchors.fill: parent; anchors.margins: 20; spacing: 12
         Widgets.Label { text: "User profile"; font.pixelSize: 18 }
@@ -21,6 +21,6 @@ Rectangle {
         Widgets.Label { text: "@" + (profile.username || ""); color: Theme.muted; Layout.fillWidth: true; elide: Text.ElideRight }
         Widgets.Label { text: profile.home || ""; color: Theme.muted; Layout.fillWidth: true; elide: Text.ElideMiddle }
         Item { Layout.fillHeight: true }
-        Widgets.Action { text: "Close"; Layout.fillWidth: true; onClicked: ShellState.close() }
+        Widgets.Action { text: "Close"; Layout.fillWidth: true; onClicked: ShellState.dismissPanel() }
     }
 }

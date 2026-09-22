@@ -7,6 +7,7 @@ Button {
     id: root
     property string iconName: ""
     property bool destructive: false
+    property int textAlignment: Text.AlignHCenter
     implicitHeight: 42
     implicitWidth: Math.max(42, contentItem.implicitWidth + 28)
     hoverEnabled: true
@@ -23,7 +24,7 @@ Button {
             text: root.text
             Layout.fillWidth: true
             color: !root.enabled ? Theme.muted : root.highlighted ? Theme.accent : root.destructive ? Theme.danger : Theme.text
-            horizontalAlignment: Text.AlignHCenter
+            horizontalAlignment: root.textAlignment
             verticalAlignment: Text.AlignVCenter
         }
     }

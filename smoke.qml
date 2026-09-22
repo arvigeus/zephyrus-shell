@@ -33,7 +33,7 @@ ShellRoot {
                 if (ShellState.panel !== "left" || ShellState.pluginId) throw new Error("Module back failed");
                 ShellState.openPlugin("apps");
                 ShellState.toggle("right");
-                if (ShellState.pluginId) throw new Error("Switching panels retained module");
+                if (ShellState.pluginId !== "apps") throw new Error("Settings discarded module");
                 break;
             case 3: notification.running = true; break;
             case 4:

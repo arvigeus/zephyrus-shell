@@ -15,3 +15,15 @@
 - Application favorite controls use an 18 px Lucide star: filled and always visible for favorites, outline on hover or keyboard focus otherwise. Preserve a 32 px click target.
 
 - Keep the hardware snapshot between Settings openings and refresh in place; reserve logo space to avoid layout shifts. Outside-click dismissal must use a hit area disjoint from the drawer, never a global event filter. The user profile dialog must outlive the drawer and open on its own surface after the drawer closes.
+
+## Media modules
+
+- Movies and TV Series are separate manifests and thin entry points sharing `media/MediaBrowser.qml` and the owned `MediaService.qml` worker. Keep provider logic in `media/backend.py`, never in the shell host.
+- Media secrets and provider templates live in `$XDG_CONFIG_HOME/zephyrus-shell/media.json`, not the repository or QML. The example file and `docs/media.md` describe configuration. Do not import NexFlix secrets automatically.
+- Preserve IMDb/TMDB identity aliases and personal records during metadata refresh. Ignore responses from older browse/title/episode generations. Keep loading states distinct from empty results and reserve artwork geometry.
+- Playback source resolution is separate from catalogue metadata, allowing future local sources. Movies have no episode controls. YouTube and local-library scanning are deferred.
+- Verify media changes with Python tests and `bash scripts/check-media.sh`; the latter uses isolated XDG data and real module entry points.
+
+- Use the documented snake_case media key names and named provider objects. IMDbApi outages must fall through to configured TMDB/OMDb capabilities; OMDb is not a discovery or backdrop provider. Preserve provider pagination tokens and use a short shared outage cooldown.
+
+- Media uses filled split buttons for Watch online and trailers, a concise overview and a separate full Cast tab. Do not restore the Notes & URL editor. Preserve artwork ownership against late details and use `widgets/CrossfadeImage.qml` for overlapping image transitions.

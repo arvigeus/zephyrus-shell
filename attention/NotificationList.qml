@@ -13,6 +13,8 @@ ColumnLayout {
     }
     Label { visible: Attention.count === 0; text: "You're all caught up."; color: Theme.muted; Layout.fillWidth: true }
     ListView {
+        id: notificationsView
+        WheelScroll { view: notificationsView }
         Layout.fillWidth: true; Layout.fillHeight: true
         clip: true; spacing: 8
         model: Attention.notifications.values.slice().reverse()

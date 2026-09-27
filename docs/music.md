@@ -1,5 +1,14 @@
 # Music
 
+The **Local** song view and song, album, and artist qBittorrent searches for
+public domain music or audio authorized for AI training are described in
+[Local library and qBittorrent](torrents.md). The Find icon sits with each
+song, album, or artist's other actions. Album and artist downloads let you
+select audio files before qBittorrent starts downloading, then require matching
+each selected file to a catalogue song before import. Artist searches include
+`discography`; audio tags appear as matching clues when available. Local songs use
+the same playback queue as discovered songs.
+
 Music uses the Apple Music public catalog for search, artist discographies, album
 tracks, genres, and popularity charts. Discover opens on Apple's most-played song
 chart, optionally scoped by genre, in the same song table used for search results.

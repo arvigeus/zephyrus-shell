@@ -3,6 +3,7 @@ singleton ShellState 1.0 ShellState.qml
 singleton Plugins 1.0 Plugins.qml
 singleton Attention 1.0 Attention.qml
 singleton Paths 1.0 Paths.qml
+singleton Browser 1.0 Browser.qml
 
 singleton Profiles 1.0 Profiles.qml
 

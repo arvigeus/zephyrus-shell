@@ -30,10 +30,11 @@ DrawerFrame {
                         Layout.fillWidth: true; spacing: 4
                         Action {
                             Layout.fillWidth: true; implicitHeight: 52
-                            text: modelData.name + (ShellState.runningPluginIds.includes(modelData.id) ? " · Running" : "")
+                            text: modelData.name
                             textAlignment: Text.AlignLeft
                             iconName: modelData.icon
-                            onClicked: ShellState.openPlugin(modelData.id, modelData.keepRunning)
+                            Accessible.description: ShellState.runningPluginIds.includes(modelData.id) ? "Running" : ""
+                            onClicked: ShellState.openPlugin(modelData.id)
                         }
                         IconButton {
                             visible: ShellState.runningPluginIds.includes(modelData.id)

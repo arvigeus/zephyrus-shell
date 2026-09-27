@@ -20,6 +20,7 @@ ShellRoot {
             property int step: 0
             property int attempts: 0
             property bool screenshotReady: false
+            property bool localDefaultChecked: false
             property var games
             function find(item, predicate) {
                 if (!item) return null;
@@ -50,6 +51,13 @@ ShellRoot {
                     require(games.objectName === "gamesBrowser", "Games entry point did not load");
                     step++;
                 } else if (step === 2) {
+                    if (!localDefaultChecked) {
+                        if (games.initializing || games.loading) return;
+                        require(games.localMode && games.titles.length === 1, "Games with a local file did not open Local");
+                        localDefaultChecked = true;
+                        games.discover();
+                        return;
+                    }
                     if (games.initializing || games.loading || !games.titles.length || games.detailLoading || games.compatibilityLoading) return;
                     require(games.titles.length === 1 && games.selected.title === "Smoke Game", "Cached catalogue did not load");
                     require(games.selected.summary === "A local Games module smoke fixture.", "Game detail did not load");

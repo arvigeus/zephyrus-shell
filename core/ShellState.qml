@@ -9,6 +9,7 @@ QtObject {
     // A retained module owns its player and worker while another space is shown.
     property var runningPluginIds: []
     property var runningPluginMonitors: ({})
+    property var retentionRequests: ({})
     property var userProfile: ({})
     function openProfile(profile) { userProfile = profile; panel = "profile"; }
     function toggle(name, screenName) {
@@ -17,24 +18,34 @@ QtObject {
         if (screenName !== undefined) monitor = screenName;
         panel = panel === name && sameMonitor ? (pluginId ? "module" : "") : name;
     }
-    function openPlugin(id, keepRunning) {
+    function openPlugin(id) {
         if (!id) return;
-        if (keepRunning || runningPluginIds.includes(id)) {
-            const owner = runningPluginMonitors[id] !== undefined ? runningPluginMonitors[id] : monitor;
-            if (!runningPluginIds.includes(id)) runningPluginIds = runningPluginIds.concat([id]);
-            runningPluginMonitors = Object.assign({}, runningPluginMonitors, {[id]: owner});
-            monitor = owner;
-        }
+        if (pluginId && pluginId !== id && !retentionRequests[pluginId]) stopPlugin(pluginId);
+        const owner = runningPluginMonitors[id] !== undefined ? runningPluginMonitors[id] : monitor;
+        if (!runningPluginIds.includes(id)) runningPluginIds = runningPluginIds.concat([id]);
+        runningPluginMonitors = Object.assign({}, runningPluginMonitors, {[id]: owner});
+        monitor = owner;
         pluginId = id;
         pluginMonitor = monitor;
         panel = "module";
     }
-    function showDesktop() { pluginId = ""; pluginMonitor = ""; panel = ""; }
+    function requestKeepRunning(id, enabled) {
+        if (!runningPluginIds.includes(id)) return;
+        retentionRequests = Object.assign({}, retentionRequests, {[id]: !!enabled});
+        if (!enabled && pluginId !== id) stopPlugin(id);
+    }
+    function showDesktop() {
+        if (pluginId && !retentionRequests[pluginId]) stopPlugin(pluginId);
+        pluginId = ""; pluginMonitor = ""; panel = "";
+    }
     function stopPlugin(id) {
         runningPluginIds = runningPluginIds.filter(value => value !== id);
         const owners = Object.assign({}, runningPluginMonitors);
         delete owners[id];
         runningPluginMonitors = owners;
+        const requests = Object.assign({}, retentionRequests);
+        delete requests[id];
+        retentionRequests = requests;
         if (pluginId === id) { pluginId = ""; pluginMonitor = ""; panel = ""; }
     }
     function backToSpaces() {

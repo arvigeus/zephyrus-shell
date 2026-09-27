@@ -7,7 +7,6 @@ Item {
     id: root
     property bool readyToLoad: true
     property string screenName: ""
-    property string displayedTransientId: ""
     property var currentModule: null
     property bool currentLoadFailed: false
     readonly property var entry: Plugins.find(ShellState.pluginId)
@@ -18,7 +17,7 @@ Item {
     readonly property int backgroundImageWidth: currentModule && currentModule.backgroundImageWidth !== undefined
         ? Math.max(1, Number(currentModule.backgroundImageWidth)) : 2560
     function syncRetainedRegistry() {
-        const wanted = Plugins.entries.filter(value => value.keepRunning).map(value => value.id);
+        const wanted = Plugins.entries.map(value => value.id);
         for (let index = retainedRegistry.count - 1; index >= 0; --index)
             if (!wanted.includes(retainedRegistry.get(index).pluginId)) retainedRegistry.remove(index);
         for (const id of wanted) {
@@ -27,7 +26,6 @@ Item {
                 if (retainedRegistry.get(index).pluginId === id) { found = true; break; }
             if (!found) retainedRegistry.append({pluginId: id});
         }
-        if (readyToLoad) activateTransient.restart();
         Qt.callLater(root.syncCurrentModule);
     }
     function syncCurrentModule() {
@@ -42,9 +40,6 @@ Item {
                     break;
                 }
             }
-        } else if (ShellState.pluginId === displayedTransientId) {
-            item = moduleLoader.item;
-            failed = moduleLoader.status === Loader.Error;
         }
         currentModule = item;
         currentLoadFailed = failed;
@@ -62,15 +57,12 @@ Item {
             if (ShellState.panel === "module") Qt.callLater(root.restoreModuleFocus);
         }
         function onPluginIdChanged() {
-            if (root.readyToLoad) activateTransient.restart();
             Qt.callLater(root.syncCurrentModule);
         }
         function onMonitorChanged() {
-            if (root.readyToLoad) activateTransient.restart();
             Qt.callLater(root.syncCurrentModule);
         }
         function onPluginMonitorChanged() {
-            if (root.readyToLoad) activateTransient.restart();
             Qt.callLater(root.syncCurrentModule);
         }
     }
@@ -90,22 +82,9 @@ Item {
         opacity: root.backgroundImageOpacity
     }
     Shortcut { sequence: "Escape"; enabled: ShellState.panel === "module"; onActivated: ShellState.close() }
-    // A transient module stays instantiated while the drawer is open. Selecting a
-    // space swaps it only after the drawer's exit animation has finished.
-    Timer {
-        id: activateTransient
-        interval: 32
-        onTriggered: {
-            root.displayedTransientId = ShellState.pluginMonitor === root.screenName
-                && !ShellState.runningPluginIds.includes(ShellState.pluginId) ? ShellState.pluginId : "";
-            root.syncCurrentModule();
-        }
-    }
-    onReadyToLoadChanged: if (readyToLoad) activateTransient.restart()
     Component.onCompleted: {
         forceActiveFocus();
         syncRetainedRegistry();
-        if (readyToLoad) activateTransient.restart();
     }
     Column {
         anchors.centerIn: parent
@@ -113,25 +92,6 @@ Item {
         visible: !!ShellState.pluginId && !root.currentModule && !root.currentLoadFailed
         BusyIndicator { anchors.horizontalCenter: parent.horizontalCenter; running: parent.visible }
         Label { text: "Loading " + (root.entry ? root.entry.name : "space") + "…"; color: Theme.muted }
-    }
-    Loader {
-        id: moduleLoader
-        objectName: "moduleContent"
-        active: !!root.displayedTransientId
-        asynchronous: true
-        visible: status === Loader.Ready && ShellState.pluginId === root.displayedTransientId
-        anchors.fill: parent
-        anchors.margins: Theme.moduleMargin
-        anchors.topMargin: Theme.moduleTopMargin
-        source: {
-            const transientEntry = Plugins.find(root.displayedTransientId);
-            return transientEntry ? transientEntry.entry : "";
-        }
-        onLoaded: {
-            item.host = host;
-            root.syncCurrentModule();
-        }
-        onStatusChanged: Qt.callLater(root.syncCurrentModule)
     }
     ListModel { id: retainedRegistry }
     Repeater {
@@ -146,6 +106,7 @@ Item {
             anchors.fill: parent
             Loader {
                 id: retainedLoader
+                objectName: ShellState.pluginId === retained.pluginId ? "moduleContent" : "inactiveModuleContent"
                 property bool loadedOnce: false
                 anchors.fill: parent
                 anchors.margins: Theme.moduleMargin
@@ -183,5 +144,6 @@ Item {
         readonly property int apiVersion: 1
         function close() { ShellState.close(); }
         function back() { ShellState.backToSpaces(); }
+        function requestKeepRunning(pluginId, enabled) { ShellState.requestKeepRunning(pluginId, enabled); }
     }
 }

@@ -1,5 +1,8 @@
 # Books
 
+The **Local** view and title-aware qBittorrent search for public domain books
+or books authorized for AI training are described in [Local library and qBittorrent](torrents.md).
+
 Books is a desktop discovery browser backed by Open Library. It opens on current
 trending works, with searchable catalogue pages, subject/language/first-publication
 filters, cover rail and grid layouts, selected-work details, navigable authors,

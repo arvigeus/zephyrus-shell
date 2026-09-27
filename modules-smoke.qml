@@ -18,7 +18,7 @@ ShellRoot {
             property double started: 0
             function content() {
                 if (!overlay.item) return null;
-                return overlay.item.children.find(c => c.objectName === "moduleContent") || null;
+                return find(overlay.item, "moduleContent");
             }
             function find(item, name) {
                 if (!item) return null;
@@ -53,6 +53,29 @@ ShellRoot {
                         if (pictures.selectedPreviewSource.toString() !== preview || !image || !image.fadeInOnTop) {
                             fail("Pictures did not start from the uncropped preview"); return;
                         }
+                    }
+                    if (modules[index] === "music") {
+                        const music = loader.item;
+                        const finder = find(music, "musicTorrentSearch");
+                        if (!finder) { fail("Music finder missing"); return; }
+                        music.findLocal({kind:"song",id:"song-1",title:"Prelude",artist:"Example",album:"Album",releaseDate:"2020-07-03"}, "song");
+                        if (finder.query !== "Example Prelude 2020") { fail("Song search context incorrect"); return; }
+                        music.findLocal({kind:"album",id:"album-1",title:"Album",artist:"Example",releaseDate:"2020-07-03"}, "album");
+                        if (finder.query !== "Example Album 2020") { fail("Album search context incorrect"); return; }
+                        music.findLocal({kind:"artist",id:"artist-1",name:"Example"}, "artist");
+                        if (finder.query !== "Example discography") { fail("Artist search context incorrect"); return; }
+                        music.torrentTarget = Object.assign({}, music.torrentTarget, {tracks:[
+                            {kind:"song",id:"song-1",title:"Prelude",artist:"Example",album:"Album",releaseDate:"2020-07-03"}
+                        ]});
+                        if (finder.catalogueTracks.length !== 1 || finder.query !== "Example discography") {
+                            fail("Catalogue tracks reset the artist query"); return;
+                        }
+                        finder.reviewJobId = "fixture";
+                        finder.reviewFiles = [{path:"01.flac",size:1000}];
+                        const reviewList = find(finder, "torrentReviewList");
+                        if (!reviewList || reviewList.count !== 1) { fail("Music review list missing"); return; }
+                        finder.reviewJobId = "";
+                        music.torrentOpen = false;
                     }
                     console.log("MODULE READY", modules[index], Date.now() - started, "ms");
                     phase = 2; ticks = 0;

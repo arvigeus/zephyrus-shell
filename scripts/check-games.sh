@@ -51,6 +51,11 @@ record = normalize_igdb_game({
                  {"type": 1, "url": "https://example.org/smoke-game"}],
 }, "games-smoke-local-id")
 game = backend._save_game(123, record)
+from media.local import LocalLibrary
+local_archive = root / "local-game.zip"
+local_archive.write_bytes(b"local game fixture")
+LocalLibrary(Path(os.environ["XDG_DATA_HOME"]) / "zephyrus-shell/media").add(
+    {"kind": "game", "id": game["id"], "title": game["title"]}, local_archive, move=True)
 art = Path(os.environ["XDG_CACHE_HOME"]) / "games-cover.svg"
 art.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="800" height="500" fill="#18343f"/><circle cx="590" cy="210" r="145" fill="#cfaf88"/><path d="M0 470L320 170l190 210 140-130 150 220z" fill="#1a242e"/></svg>')
 game["cover"] = {"url": art.as_uri()}

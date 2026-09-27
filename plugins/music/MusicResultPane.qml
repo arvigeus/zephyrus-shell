@@ -242,6 +242,15 @@ Item {
                                         onClicked: root.controller.showLyrics(resultRow.modelData)
                                     }
                                     W.IconButton {
+                                        Layout.preferredWidth: 28
+                                        Layout.preferredHeight: 28
+                                        iconName: "file-search-corner"
+                                        iconSize: 16
+                                        opacity: songActions.revealed || hovered || activeFocus ? 1 : 0
+                                        text: "Find " + (resultRow.modelData.title || "this song")
+                                        onClicked: root.controller.findLocal(resultRow.modelData, "song")
+                                    }
+                                    W.IconButton {
                                         Layout.preferredWidth: 32
                                         Layout.preferredHeight: 32
                                         iconName: root.controller.isFavorite(resultRow.modelData) ? "star-filled" : "star"
@@ -330,6 +339,15 @@ Item {
                                         onClicked: root.controller.showArtistInfo(resultRow.modelData)
                                     }
                                     W.IconButton {
+                                        Layout.preferredWidth: 28
+                                        Layout.preferredHeight: 28
+                                        iconName: "file-search-corner"
+                                        iconSize: 16
+                                        opacity: artistActions.revealed || hovered || activeFocus ? 1 : 0
+                                        text: "Find " + (resultRow.modelData.name || "this artist")
+                                        onClicked: root.controller.findLocal(resultRow.modelData, "artist")
+                                    }
+                                    W.IconButton {
                                         Layout.preferredWidth: 32
                                         Layout.preferredHeight: 32
                                         iconName: root.controller.isFavorite(resultRow.modelData) ? "star-filled" : "star"
@@ -349,15 +367,28 @@ Item {
                                 elide: Text.ElideRight
                             }
                         }
-                        W.IconButton {
+                        MusicRowActionGroup {
+                            id: albumActions
                             visible: root.kind === "albums"
-                            Layout.preferredWidth: 32
-                            Layout.preferredHeight: 32
-                            iconName: root.controller.isFavorite(resultRow.modelData) ? "star-filled" : "star"
-                            iconSize: 17
-                            opacity: root.controller.isFavorite(resultRow.modelData) || hovered || activeFocus || rowMouse.containsMouse ? 1 : 0
-                            text: (root.controller.isFavorite(resultRow.modelData) ? "Remove " : "Add ") + (resultRow.modelData.name || resultRow.modelData.title || "item") + " " + (root.controller.isFavorite(resultRow.modelData) ? "from" : "to") + " favorites"
-                            onClicked: root.controller.toggleFavorite(resultRow.modelData)
+                            entityHovered: rowMouse.containsMouse
+                            W.IconButton {
+                                Layout.preferredWidth: 28
+                                Layout.preferredHeight: 28
+                                iconName: "file-search-corner"
+                                iconSize: 16
+                                opacity: albumActions.revealed || hovered || activeFocus ? 1 : 0
+                                text: "Find " + (resultRow.modelData.title || "this album")
+                                onClicked: root.controller.findLocal(resultRow.modelData, "album")
+                            }
+                            W.IconButton {
+                                Layout.preferredWidth: 32
+                                Layout.preferredHeight: 32
+                                iconName: root.controller.isFavorite(resultRow.modelData) ? "star-filled" : "star"
+                                iconSize: 17
+                                opacity: root.controller.isFavorite(resultRow.modelData) || albumActions.revealed || hovered || activeFocus ? 1 : 0
+                                text: (root.controller.isFavorite(resultRow.modelData) ? "Remove " : "Add ") + (resultRow.modelData.name || resultRow.modelData.title || "item") + " " + (root.controller.isFavorite(resultRow.modelData) ? "from" : "to") + " favorites"
+                                onClicked: root.controller.toggleFavorite(resultRow.modelData)
+                            }
                         }
                     }
                 }

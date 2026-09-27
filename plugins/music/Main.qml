@@ -4,11 +4,20 @@ import QtQuick.Layouts
 import Quickshell.Io
 import "../../core"
 import "../../widgets" as W
+import "../../media" as M
 
 ColumnLayout {
     id: root
     property var host
+    function requestRetention(enabled) { if (host) host.requestKeepRunning("music", enabled); }
     property string section: "discover"
+    property var localSongs: []
+    property string localQuery: ""
+    property bool localLoading: false
+    property bool torrentOpen: false
+    property var torrentTarget: ({})
+    property bool torrentTracksLoading: false
+    property int torrentGeneration: 0
     property bool filtersView: false
     property string searchQuery: ""
     property string selectedGenreId: ""
@@ -73,7 +82,7 @@ ColumnLayout {
     property bool artistInfoAvailable: false
     property int lyricsGeneration: 0
     property int artistInfoGeneration: 0
-    readonly property bool allSearchActive: section === "discover" && !filtersView
+    readonly property bool allSearchActive: section === "local" || (section === "discover" && !filtersView)
     readonly property var genreOptions: [{id: "", name: "All genres"}].concat(genres)
     readonly property var visibleGenres: genreOptions.filter(item => item.name.toLowerCase().includes(genreQuery.trim().toLowerCase()))
     readonly property var paneSpecs: [{kind: "songs", title: "Songs"}, {kind: "artists", title: "Artists"}, {kind: "albums", title: "Albums"}]
@@ -86,7 +95,40 @@ ColumnLayout {
 
     function activate() {
         if (section === "discover") searchField.focusField();
+        else if (section === "local") songTable.focusList();
         else favoriteNavButton.forceActiveFocus();
+    }
+
+    function loadLocalSongs() {
+        localLoading = true;
+        searchError = "";
+        backendService.request("local-songs", {}, (result, failure) => {
+            localLoading = false;
+            if (failure) searchError = failure;
+            else localSongs = result;
+        });
+    }
+
+    function findLocal(item, scope) {
+        if (!item || !item.id) return;
+        const generation = ++torrentGeneration;
+        torrentTarget = Object.assign({}, item, {
+            kind: "music",
+            scope: scope,
+            title: scope === "artist" ? item.name : item.title,
+            artist: scope === "artist" ? item.name : item.artist,
+            album: scope === "album" ? item.title : item.album || "",
+            tracks: []
+        });
+        torrentTracksLoading = scope !== "song";
+        torrentOpen = true;
+        if (scope === "song") return;
+        backendService.request(scope, {[scope]:item}, (result, failure) => {
+            if (generation !== torrentGeneration) return;
+            torrentTracksLoading = false;
+            if (failure) { musicFinder.lookupError = failure; return; }
+            torrentTarget = Object.assign({}, torrentTarget, {tracks: result.songs || []});
+        });
     }
 
     function showLyrics(song) {
@@ -202,7 +244,8 @@ ColumnLayout {
             artists: song.artists || [song.artist || "Unknown Artist"],
             artistIds: song.artistIds || [],
             artistCovers: [song.artistCover || ""],
-            cover: song.albumCover || song.cover || ""
+            cover: song.albumCover || song.cover || "",
+            releaseDate: song.releaseDate || ""
         };
     }
 
@@ -232,6 +275,11 @@ ColumnLayout {
     }
 
     function itemsFor(kind) {
+        if (section === "local") {
+            if (kind !== "songs") return [];
+            const query = localQuery.trim().toLowerCase();
+            return query ? localSongs.filter(song => [song.title, song.artist, song.album].some(value => String(value || "").toLowerCase().includes(query))) : localSongs;
+        }
         if (section === "discover") {
             if (allSearchActive && kind === "songs") return categoryItems("songs");
             return Array.isArray(paneResults[kind]) ? paneResults[kind] : [];
@@ -251,6 +299,7 @@ ColumnLayout {
     }
 
     function songScopeKey() {
+        if (section === "local") return "local";
         if (section === "favorites") return "favorites:" + String(selectedArtist && selectedArtist.id || "") + ":" + String(selectedAlbum && selectedAlbum.id || "");
         if (allSearchActive) return "all:" + searchGeneration;
         if (selectedAlbum) return "album:" + String(selectedAlbum.id || "");
@@ -259,6 +308,7 @@ ColumnLayout {
     }
 
     function hasMoreFor(kind) {
+        if (section === "local") return false;
         if (kind === "albums" && selectedArtist && paneOverrides.albums)
             return !!artistAlbumPaging.hasMore;
         if (kind === "songs" && selectedArtist && paneOverrides.songs)
@@ -685,6 +735,7 @@ ColumnLayout {
 
     function selectSong(song, songs) {
         if (!song) return;
+        torrentOpen = false;
         const visibleSongs = Array.isArray(songs) ? songs : itemsFor("songs");
         const generation = ++entityGeneration;
         entityLoading = false;
@@ -701,7 +752,7 @@ ColumnLayout {
         const album = albumForSong(song);
         setPaneResults("albums", album ? [album] : []);
         paneOverrides = setObjectValue(setObjectValue(paneOverrides, "artists", true), "albums", true);
-        backendService.request("song-artists", {song: song}, (result, failure) => {
+        if (section !== "local") backendService.request("song-artists", {song: song}, (result, failure) => {
             if (generation !== root.entityGeneration || failure || !Array.isArray(result) || !result.length) return;
             if (recordKey(root.selectedSong) !== recordKey(song)) return;
             setPaneResults("artists", result);
@@ -752,6 +803,7 @@ ColumnLayout {
     }
 
     function emptyText(kind) {
+        if (section === "local") return localLoading ? "Loading local songs…" : searchError ? "Local library unavailable. Try opening Local again." : "No local songs match this search.";
         if (searchError && allSearchActive) return "Catalogue unavailable. Use Retry above to try again.";
         if (columnErrors[kind] && section === "discover") return "These results could not load.";
         if (entityError && (selectedArtist || selectedAlbum)) return "Details could not load.";
@@ -810,11 +862,26 @@ ColumnLayout {
         spacing: 8
 
         W.Action {
+            iconName: "folder-open"
+            text: "Local"
+            highlighted: root.section === "local"
+            onClicked: {
+                root.section = "local";
+                root.filtersView = false;
+                root.torrentOpen = false;
+                root.resetSelections();
+                root.loadLocalSongs();
+                root.activate();
+            }
+        }
+
+        W.Action {
             iconName: "globe"
             text: "Discover"
             highlighted: root.section === "discover"
             onClicked: {
                 root.section = "discover";
+                root.torrentOpen = false;
                 root.filtersView = false;
                 root.restorePaneResults();
                 root.requestSearch();
@@ -828,6 +895,7 @@ ColumnLayout {
             highlighted: root.section === "favorites"
             onClicked: {
                 root.section = "favorites";
+                root.torrentOpen = false;
                 root.filtersView = false;
                 root.resetSelections();
                 root.searchError = "";
@@ -837,19 +905,21 @@ ColumnLayout {
         Item { Layout.fillWidth: true; Layout.minimumWidth: 4 }
         MusicSearchInput {
             id: searchField
-            visible: root.section === "discover"
+            visible: root.section === "discover" || root.section === "local"
             Layout.fillWidth: visible
             Layout.minimumWidth: visible ? 170 : 0
             Layout.preferredWidth: visible ? 330 : 0
             Layout.maximumWidth: visible ? 500 : 0
             Layout.preferredHeight: 42
-            placeholderText: "Search artists, albums, or songs…"
-            text: root.searchQuery
+            placeholderText: root.section === "local" ? "Search local songs…" : "Search artists, albums, or songs…"
+            text: root.section === "local" ? root.localQuery : root.searchQuery
             onUserTextEdited: value => {
+                if (root.section === "local") { root.localQuery = value; return; }
                 root.searchQuery = value;
                 root.scheduleSearch();
             }
             onAccepted: {
+                if (root.section === "local") { songTable.focusList(); return; }
                 searchDelay.stop();
                 root.filtersView = false;
                 root.requestSearch();
@@ -920,14 +990,14 @@ ColumnLayout {
 
     MusicSongTable {
         id: songTable
-        visible: root.allSearchActive
+        visible: root.allSearchActive && !root.torrentOpen
         Layout.fillWidth: true
         Layout.fillHeight: true
         controller: root
     }
 
     RowLayout {
-        visible: root.paneSpecs.length > 0 && !root.allSearchActive
+        visible: root.paneSpecs.length > 0 && !root.allSearchActive && !root.torrentOpen
         Layout.fillWidth: true
         Layout.fillHeight: true
         spacing: 8
@@ -944,6 +1014,27 @@ ColumnLayout {
                 Layout.minimumWidth: 130
             }
         }
+    }
+    M.TorrentSearch {
+        id: musicFinder
+        objectName: "musicTorrentSearch"
+        visible: root.torrentOpen && !!root.torrentTarget.id
+        Layout.fillWidth: true; Layout.fillHeight: true
+        title: root.torrentTarget
+        tracksLoading: root.torrentTracksLoading
+        onTrackLookupRequested: query => {
+            if (!query) return;
+            const generation = root.torrentGeneration;
+            musicFinder.lookupError = "";
+            root.torrentTracksLoading = true;
+            backendService.request("search", {query:query,kind:"songs"}, (result, failure) => {
+                if (generation !== root.torrentGeneration) return;
+                root.torrentTracksLoading = false;
+                if (failure) { musicFinder.lookupError = failure; return; }
+                root.torrentTarget = Object.assign({}, root.torrentTarget, {tracks:result.songs || []});
+            });
+        }
+        onImported: root.loadLocalSongs()
     }
 
     Rectangle {
@@ -1219,7 +1310,7 @@ ColumnLayout {
                         visible: !!(root.artistInfo && root.artistInfo.url)
                         iconName: "music"
                         text: "Open in Apple Music"
-                        onClicked: Qt.openUrlExternally(root.artistInfo.url)
+                        onClicked: Browser.open(root.artistInfo.url, "music")
                     }
                 }
             }

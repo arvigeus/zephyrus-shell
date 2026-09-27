@@ -44,20 +44,22 @@ ShellRoot {
                 if (step === 0) {
                     if (!Plugins.find("music") || !Plugins.find("radio") || !Plugins.find("games")) return;
                     ShellState.monitor = "primary";
-                    ShellState.openPlugin("music", true); step++; ticks = 0;
+                    ShellState.openPlugin("music"); step++; ticks = 0;
                 } else if (step === 1) {
                     musicItem = content("music");
                     if (!musicItem) return;
+                    ShellState.requestKeepRunning("music", true);
                     ShellState.toggle("left");
                     if (ShellState.pluginId !== "music" || ShellState.panel !== "left") { fail("Drawer displaced Music"); return; }
                     ShellState.showDesktop(); step++; ticks = 0;
                 } else if (step === 2) {
                     if (!overlay.item || content("music") !== musicItem) { fail("Desktop stopped Music"); return; }
                     ShellState.monitor = "secondary";
-                    ShellState.openPlugin("radio", true); step++; ticks = 0;
+                    ShellState.openPlugin("radio"); step++; ticks = 0;
                 } else if (step === 3) {
                     radioItem = content("radio", secondary);
                     if (!radioItem) return;
+                    ShellState.requestKeepRunning("radio", true);
                     if (content("music") !== musicItem) { fail("Opening Radio stopped Music"); return; }
                     ShellState.toggle("left", "primary");
                     ShellState.dismissPanel();
@@ -84,7 +86,25 @@ ShellRoot {
                     ShellState.stopPlugin("radio"); step++; ticks = 0;
                 } else if (step === 7) {
                     if (overlay.item || secondary.item) return;
-                    console.log("RETAINED PASS: drawer, Desktop, multi-monitor switching, reload, and explicit stop");
+                    ShellState.monitor = "primary";
+                    ShellState.openPlugin("music"); step++; ticks = 0;
+                } else if (step === 8) {
+                    if (!content("music")) return;
+                    ShellState.showDesktop(); step++; ticks = 0;
+                } else if (step === 9) {
+                    if (overlay.item) return;
+                    ShellState.openPlugin("games"); step++; ticks = 0;
+                } else if (step === 10) {
+                    const game = content("games");
+                    if (!game) return;
+                    game.host.requestKeepRunning("games", true);
+                    ShellState.showDesktop(); step++; ticks = 0;
+                } else if (step === 11) {
+                    if (!content("games")) { fail("A general module could not request retention"); return; }
+                    ShellState.stopPlugin("games"); step++; ticks = 0;
+                } else if (step === 12) {
+                    if (overlay.item) return;
+                    console.log("RETAINED PASS: drawer, Desktop, idle release, general retention, multi-monitor switching, reload, and explicit stop");
                     Qt.quit();
                 }
             }

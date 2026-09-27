@@ -17,6 +17,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from media.local import LocalLibrary
+
 CONFIG = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'zephyrus-shell/media.json'
 DATA = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'zephyrus-shell/media'
 CACHE = Path(os.environ.get('XDG_CACHE_HOME', Path.home() / '.cache')) / 'zephyrus-shell/media'
@@ -129,6 +132,7 @@ class Backend:
         for p in (data,cache): p.mkdir(parents=True,exist_ok=True,mode=0o700)
         with self.db() as db:
             db.executescript('CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value TEXT, updated REAL); CREATE TABLE IF NOT EXISTS personal (id TEXT PRIMARY KEY, value TEXT); CREATE TABLE IF NOT EXISTS aliases (alias TEXT PRIMARY KEY, id TEXT);')
+        self.local = LocalLibrary(data)
     @contextmanager
     def db(self):
         db=sqlite3.connect(self.data/'library.sqlite',timeout=20)
@@ -148,13 +152,13 @@ class Backend:
         for provider in providers:
             if (not isinstance(provider,dict) or not isinstance(provider.get('name'),str)
                     or not provider['name'].strip()
-                    or not any(isinstance(provider.get(key),str) and provider[key].strip() for key in ('movie_url','series_url','url'))
-                    or any(key in provider and not isinstance(provider[key],str) for key in ('movie_url','series_url','url'))):
-                raise MediaError('Each playback provider needs a name and movie_url and/or series_url strings (legacy url is also accepted).')
+                    or not any(isinstance(provider.get(key),str) and provider[key].strip() for key in ('movie_url','series_url'))
+                    or any(key in provider and not isinstance(provider[key],str) for key in ('movie_url','series_url'))):
+                raise MediaError('Each playback provider needs a name and movie_url and/or series_url strings.')
         return config
     def playback_providers(self,kind):
         key='series_url' if kind=='tv' else 'movie_url'
-        return [(p['name'],p.get(key,p.get('url',''))) for p in self.config().get('providers',[]) if p.get(key,p.get('url','')).strip()]
+        return [(p['name'],p.get(key,'')) for p in self.config().get('providers',[]) if p.get(key,'').strip()]
     def imdb(self,path,params=None):
         health=self.get('provider:imdb') or {}
         if health.get('retryAfter',0)>time.time():
@@ -479,6 +483,28 @@ class Backend:
         return dict(type='web',url=url)
     def handle(self,r):
         op=r['op']
+        if op=='local_titles':
+            items=[]
+            for local in self.local.list(r.get('kind','movie')):
+                saved=self.get('title:'+self.canonical(local['id'])) or {}
+                items.append(local | saved | {'local':True,'localPath':local['localPath'],
+                                                'torrent':local['torrent']})
+            return dict(items=items,next='')
+        if op=='local_posters':
+            missing=[title for title in self.handle({'op':'local_titles','kind':r.get('kind','movie')})['items']
+                     if not title.get('poster')]
+            def enrich(title):
+                try:
+                    result=self.details({'title':title})
+                    if not result.get('poster'):
+                        result=self.artwork({'title':result})['title']
+                    return {'id':title['id'],'poster':result.get('poster') or ''}
+                except MediaError:
+                    return {'id':title['id'],'poster':''}
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                return [item for item in pool.map(enrich, missing) if item['poster']]
+        if op=='local_files':
+            return self.local.files(r['title'])
         if op=='snapshot':
             if r.get('favorites'): return self.browse(r)
             key='browse:'+json.dumps([r.get('kind','movie'),r.get('query','').strip(),r.get('filters',{}),''],sort_keys=True)
@@ -494,7 +520,19 @@ class Backend:
                 db.execute('INSERT OR REPLACE INTO personal VALUES (?,?)',(id,json.dumps(p)))
             return p
         if op=='play':
-            t=r['title']; custom=None if r.get('online') else self.personal(t['id']).get('url'); providers=self.playback_providers(t['kind'])
+            t=r['title']
+            if not r.get('online'):
+                files=self.local.files(t)
+                chosen=next((f for f in files if t['kind']=='movie' or
+                             (r.get('season') is not None and r.get('episode') is not None and
+                              int(f['season'])==int(r['season']) and int(f['episode'])==int(r['episode']))),None)
+                if chosen:
+                    player=self.config().get('player',['mpv'])
+                    if not isinstance(player,list) or not player or not all(isinstance(x,str) for x in player):
+                        raise MediaError('player must be a nonempty JSON array of command arguments.')
+                    if not shutil.which(player[0]):raise MediaError('Configured media player is not installed: '+player[0])
+                    return dict(type='direct',command=player+['--',chosen['path']])
+            custom=None if r.get('online') else self.personal(t['id']).get('url'); providers=self.playback_providers(t['kind'])
             index=r.get('provider',0)
             if not custom and providers and (not isinstance(index,int) or index<0 or index>=len(providers)):
                 raise MediaError('Playback provider is unavailable. Reopen the module to reload providers.')

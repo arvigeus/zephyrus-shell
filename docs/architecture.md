@@ -59,9 +59,9 @@ players and workers alive behind the Desktop.
 Drawer windows stay declared but their Loader is inactive while hidden. The Spaces
 drawer lists Desktop first, then plugin metadata. Opening it leaves the current
 module visible. Selecting Desktop hides the overlay and reveals the Hyprland
-session. The shared module overlay owns both the transient loader and stable
-loader slots for manifests with `keepRunning: true`. Music and Radio use those
-slots, so switching modules can leave playback running. Escape or the drawer’s
+session. The shared module overlay owns an asynchronous loader slot for each
+module. Music and Radio request retention while playback is active, so switching
+modules can leave playback running. Escape or the drawer’s
 Close control destroys the selected module. Core services are shared across
 monitors. A retained module stays owned by the monitor where it opened; opening
 a drawer on another monitor does not recreate its player. Optional plugin

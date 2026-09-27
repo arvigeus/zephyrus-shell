@@ -6,6 +6,7 @@ import Quickshell
 import "../core"
 import "../widgets" as W
 import "../widgets/Catalogue.js" as Catalogue
+import "../media" as M
 
 Item {
     id: root
@@ -24,6 +25,8 @@ Item {
     property bool loading: true
     property bool detailLoading: false
     property bool favorites: false
+    property bool localMode: false
+    property var localFiles: []
     property bool searchOpen: false
     property bool filtersOpen: false
     property bool gridMode: false
@@ -53,6 +56,7 @@ Item {
         location: "file://" + (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/zephyrus-shell/books-ui.ini"
     }
     BooksService { id: service; onFailed: message => { root.error = message; root.loading = false; } }
+    M.TorrentService { id: localService }
 
     W.DetailScrim {
         gridMode: root.gridMode
@@ -89,6 +93,19 @@ Item {
         else if (!books.length) clearSelection();
     }
     function browse(append, force) {
+        if (localMode) {
+            const generation = ++browseGeneration;
+            loading = true; error = ""; nextPage = "";
+            localService.request("local_list", {kind:"book"}, (result, failure) => {
+                if (generation !== browseGeneration) return;
+                loading = false;
+                if (failure) { error = failure; return; }
+                const query = search.text.trim().toLowerCase();
+                updateCatalogue(result.filter(book => !query || book.title.toLowerCase().includes(query)), false);
+                chooseFirstIfNeeded();
+            });
+            return;
+        }
         if (append && (loading || !nextPage)) return;
         const offset = append ? Number(nextPage) : 0;
         const generation = ++browseGeneration;
@@ -120,11 +137,15 @@ Item {
         ++authorGeneration; ++editionsGeneration;
         detailDelay.stop();
         selected = book; personal = ({favorite: !!book.favorite});
+        localFiles = [];
         detailLoading = true; detailError = ""; tab = "overview";
         author = ({}); authorDetails = ({}); authorWorks = []; authorCatalogue.clear(); authorNext = ""; authorError = ""; authorLoading = false;
         editions = []; editionsNext = ""; editionsError = ""; editionsLoading = false;
         service.request("personal", {book: book}, (result, failure) => {
             if (generation === selectionGeneration && !failure && result) personal = result;
+        });
+        localService.request("local_files", {title:Object.assign({}, book, {kind:"book"})}, (result, failure) => {
+            if (generation === selectionGeneration && !failure) localFiles = result;
         });
         detailDelay.restart();
     }
@@ -232,7 +253,10 @@ Item {
 
     Component.onCompleted: {
         gridMode = preferences.value("catalogue/grid", false);
-        browse(false, false);
+        localService.request("local_list", {kind:"book"}, (result, failure) => {
+            localMode = !failure && !!result && result.length > 0;
+            browse(false, false);
+        });
     }
     onGridModeChanged: { activate(); pagination.restart(); }
     Timer { id: pagination; interval: 120; onTriggered: root.maybeLoadMore() }
@@ -243,12 +267,13 @@ Item {
         spacing: 12
         RowLayout {
             Layout.fillWidth: true; Layout.minimumHeight: 46; Layout.preferredHeight: 46; Layout.maximumHeight: 46; spacing: 8
-            W.Action { iconName: "globe"; text: "Discover"; highlighted: !root.favorites; onClicked: { root.favorites = false; root.browse(false, false); } }
-            W.Action { iconName: "star"; text: "Favorites"; highlighted: root.favorites; onClicked: { root.favorites = true; root.browse(false, false); } }
+            W.Action { iconName: "folder-open"; text: "Local"; highlighted: root.localMode; onClicked: { root.localMode = true; root.favorites = false; root.browse(false, false); } }
+            W.Action { iconName: "globe"; text: "Discover"; highlighted: !root.localMode && !root.favorites; onClicked: { root.localMode = false; root.favorites = false; root.browse(false, false); } }
+            W.Action { iconName: "star"; text: "Favorites"; highlighted: !root.localMode && root.favorites; onClicked: { root.localMode = false; root.favorites = true; root.browse(false, false); } }
             Item { Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 0 }
             Flickable {
                 id: inlineFilters; objectName: "inlineFilters"
-                visible: root.filtersOpen && !root.favorites
+                visible: root.filtersOpen && !root.favorites && !root.localMode
                 Layout.fillWidth: true; Layout.preferredWidth: filterFields.implicitWidth
                 Layout.minimumWidth: 110; Layout.maximumWidth: filterFields.implicitWidth
                 Layout.preferredHeight: 46
@@ -286,7 +311,7 @@ Item {
             }
             Item { Layout.minimumWidth: 28; Layout.maximumWidth: 28; Layout.preferredHeight: 28; BusyIndicator { anchors.fill: parent; running: root.loading; visible: running } }
             W.IconButton { objectName: "searchButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; highlighted: root.searchOpen; iconName: "search"; text: root.searchOpen ? "Close book search" : "Search books"; onClicked: { root.searchOpen = !root.searchOpen; if (root.searchOpen) search.forceActiveFocus(); else search.text = ""; } }
-            W.IconButton { objectName: "filtersButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; iconName: "sliders-horizontal"; text: "Book filters"; enabled: !root.favorites; highlighted: root.filtersOpen; onClicked: { root.filtersOpen = !root.filtersOpen; if (root.filtersOpen) sortFilter.currentIndex = root.effectiveSortIndex(); } }
+            W.IconButton { objectName: "filtersButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; iconName: "sliders-horizontal"; text: "Book filters"; enabled: !root.favorites && !root.localMode; highlighted: root.filtersOpen; onClicked: { root.filtersOpen = !root.filtersOpen; if (root.filtersOpen) sortFilter.currentIndex = root.effectiveSortIndex(); } }
             W.IconButton { objectName: "layoutButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; iconName: root.gridMode ? "panels-top-left" : "layout-grid"; text: root.gridMode ? "Show cover rail" : "Show cover grid"; onClicked: { root.gridMode = !root.gridMode; preferences.setValue("catalogue/grid", root.gridMode); } }
         }
         RowLayout {
@@ -381,12 +406,13 @@ Item {
                         }
                         Flow {
                             Layout.fillWidth: true; spacing: 6
+                            W.IconButton { visible: root.localFiles.length > 0; iconName: "folder-open"; text: "Open local book"; onClicked: Quickshell.execDetached(["xdg-open", root.localFiles[0].path]) }
                             W.IconButton {
                                 objectName: "openLibraryButton"
                                 iconName: "book-open"
                                 text: root.readingAction || "Open in Open Library"
                                 Accessible.name: text
-                                onClicked: Qt.openUrlExternally(root.readingUrl())
+                                onClicked: Browser.open(root.readingUrl(), "books")
                             }
                             W.IconButton { objectName: "favoriteButton"; iconName: root.personal.favorite ? "star-filled" : "star"; text: root.personal.favorite ? "Remove from Favorites" : "Add to Favorites"; onClicked: root.saveFavorite(!root.personal.favorite) }
                             W.IconButton { iconName: "refresh-cw"; text: "Refresh book details"; onClicked: root.refreshBook() }
@@ -396,6 +422,7 @@ Item {
                             Layout.fillWidth: true; spacing: 2
                             W.Action { text: "Overview"; highlighted: root.tab === "overview"; onClicked: root.tab = "overview" }
                             W.Action { objectName: "editionsTab"; text: "Editions"; highlighted: root.tab === "editions"; onClicked: { root.tab = "editions"; if (!root.editions.length) root.loadEditions(false); } }
+                            W.Action { text: "Find"; highlighted: root.tab === "torrent"; onClicked: root.tab = "torrent" }
                         }
                     }
                 }
@@ -438,6 +465,15 @@ Item {
                             text: "Languages: " + (root.selected.languages || []).map(root.languageLabel).join(", ")
                         }
                         W.Label { Layout.fillWidth: true; text: "Open Library does not list a synopsis or complete metadata for every work."; color: Theme.muted; wrapMode: Text.Wrap; visible: !root.detailLoading && !root.selected.description && !root.selected.first_sentence && !(root.selected.subjects || []).length }
+                    }
+                }
+                M.TorrentSearch {
+                    visible: root.tab === "torrent"
+                    Layout.fillWidth: true; Layout.fillHeight: true
+                    title: Object.assign({}, root.selected, {kind:"book",year:root.selected.firstPublishYear || "",author:(root.selected.authors || [])[0] ? root.selected.authors[0].name : ""})
+                    onImported: {
+                        localService.request("local_files", {title:Object.assign({}, root.selected, {kind:"book"})}, (result, failure) => { if (!failure) root.localFiles = result; });
+                        if (root.localMode) root.browse(false, false);
                     }
                 }
                 ColumnLayout {
@@ -557,7 +593,7 @@ Item {
             W.Label {
                 anchors.centerIn: parent; width: Math.min(420, parent.width - 56); horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
                 visible: !root.books.length
-                text: root.loading ? "Loading books…" : root.error ? "" : root.favorites ? "No saved favorites yet." : "No books match this search."
+                text: root.loading ? "Loading books…" : root.error ? "" : root.localMode ? "No local books yet." : root.favorites ? "No saved favorites yet." : "No books match this search."
                 color: Theme.muted
             }
         }

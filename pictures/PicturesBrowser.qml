@@ -660,7 +660,7 @@ Item {
                             iconName: "globe"
                             text: "Open on " + (root.selected.siteName || root.providerName(root.selected.provider || root.providerId))
                             enabled: !!root.selected.url
-                            onClicked: Qt.openUrlExternally(root.selected.url)
+                            onClicked: Browser.open(root.selected.url, "pictures")
                         }
                     }
                     BusyIndicator { visible: root.settingWallpaper; running: visible; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }

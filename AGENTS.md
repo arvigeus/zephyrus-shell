@@ -3,7 +3,7 @@
 - Use bundled Lucide SVGs through `widgets/Icon.qml` or `Action.iconName` for interface icons. Do not introduce Unicode symbols, emoji, or another icon family as interface icons. Application and brand artwork may use their own icons through `AppIcon`.
 - Plugin manifest `icon` values are bundled Lucide icon names (without `.svg`).
 - The Spaces drawer lists Desktop first, then modules. Selecting a module closes the drawer and opens its content in the shared desktop overlay below the 66 px pill bar. Keep module loading and host navigation in `shell/ModuleOverlay.qml` so all modules share this behavior.
-- Plugins own their runtime resources. Manifests with `keepRunning: true` stay alive while hidden; Escape or explicit Close destroys them.
+- Plugins own their runtime resources. Any module may request retention with `host.requestKeepRunning(id, true)` while it has background work; otherwise selecting Desktop or another module destroys it. Escape or explicit Close always destroys it.
 
 - Module backgrounds extend behind the pills; content starts below them. Do not add a shared heading or navigation buttons. Escape closes the module; selecting Desktop hides retained modules and closes others. Default backgrounds are translucent; optional root `property url backgroundImage` uses an opaque image background.
 - Missing application icons remain blank. Application grid labels share a fixed top alignment below their icon slots.

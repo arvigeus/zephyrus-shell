@@ -6,6 +6,7 @@ import Quickshell
 import "../core"
 import "../widgets" as W
 import "../widgets/Catalogue.js" as Catalogue
+import "../media" as M
 
 Item {
     id: root
@@ -34,6 +35,9 @@ Item {
     property bool setupRequired: false
     property bool updatingCatalogue: false
     property bool favorites: false
+    property bool localMode: false
+    property var localFiles: []
+    property bool torrentOpen: false
     property bool searchOpen: false
     property bool filtersOpen: false
     property bool filtersLoading: false
@@ -49,6 +53,7 @@ Item {
 
     ListModel { id: catalogue }
     GameService { id: service; onFailed: message => root.error = message }
+    M.TorrentService { id: localService }
     Settings {
         id: preferences
         location: "file://" + (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/zephyrus-shell/games-ui.ini"
@@ -95,6 +100,20 @@ Item {
     }
 
     function browse(append, forceRefresh) {
+        if (localMode) {
+            const generation = ++browseGeneration;
+            loading = true; error = ""; nextOffset = 0; setupRequired = false;
+            localService.request("local_list", {kind:"game"}, (result, failure) => {
+                if (generation !== browseGeneration) return;
+                loading = false;
+                if (failure) { error = failure; return; }
+                const query = search.text.trim().toLowerCase();
+                updateCatalogue(result.filter(game => !query || game.title.toLowerCase().includes(query)), false);
+                if (titles.length) { if (!titles.some(game => sameGame(game, selected))) selectGame(titles[0]); }
+                else clearSelection();
+            });
+            return;
+        }
         if (append && (loading || !hasNext)) return;
         const requestedOffset = append ? nextOffset : 0;
         const generation = ++browseGeneration;
@@ -137,6 +156,7 @@ Item {
         if (!game || !game.id || sameGame(game, selected)) return;
         const generation = ++selectionGeneration;
         selected = game;
+        localFiles = []; torrentOpen = false;
         backgroundImage = backdropFor(game);
         availability = ({stores:[],diagnostics:({})});
         compatibility = ({available:false,tier:"unknown",label:"Unavailable"});
@@ -145,11 +165,15 @@ Item {
         detailError = "";
         notice = "";
         editingStore = "";
+        localService.request("local_files", {title:Object.assign({}, game, {kind:"game"})}, (result, failure) => {
+            if (generation === selectionGeneration && !failure) localFiles = result;
+        });
         detailDelay.restart();
     }
 
     function hydrateSelection(refresh) {
         if (!selected.id) return;
+        if (localMode && selected.local) { detailLoading = false; compatibilityLoading = false; return; }
         const generation = selectionGeneration;
         const gameId = selected.id;
         detailLoading = true;
@@ -191,7 +215,7 @@ Item {
             libraries = result.libraries || ({});
             catalogState = result.catalog || catalogState;
             if (selected.id) refreshAvailability();
-            browse(false);
+            if (!initializing) browse(false);
         });
     }
 
@@ -282,6 +306,7 @@ Item {
     }
 
     function discover() {
+        localMode = false;
         favorites = false;
         filtersOpen = false;
         searchDelay.stop();
@@ -305,15 +330,18 @@ Item {
     Component.onCompleted: {
         gridMode = preferences.value("catalogue/grid", false);
         service.request("init", {}, (result, failure) => {
-            initializing = false;
-            if (failure) { error = failure; return; }
+            if (failure) error = failure;
             if (result) {
                 catalogState = result.catalog || ({configured:false});
                 libraries = result.libraries || ({});
                 setupRequired = !catalogState.configured;
-                browse(false);
                 refreshLibraries();
             }
+            localService.request("local_list", {kind:"game"}, (local, localFailure) => {
+                localMode = !localFailure && !!local && local.length > 0;
+                initializing = false;
+                if (!failure || localMode) browse(false);
+            });
         });
     }
 
@@ -377,12 +405,13 @@ Item {
             Layout.maximumHeight: 46
             spacing: 8
 
-            W.Action { objectName: "discoverTab"; iconName: "globe"; text: "Discover"; highlighted: !root.favorites; onClicked: root.discover() }
-            W.Action { objectName: "favoritesTab"; iconName: "star"; text: "Favorites"; highlighted: root.favorites; onClicked: { root.favorites = true; root.filtersOpen = false; root.browse(false); } }
+            W.Action { iconName: "folder-open"; text: "Local"; highlighted: root.localMode; onClicked: { root.localMode = true; root.favorites = false; root.filtersOpen = false; root.browse(false); } }
+            W.Action { objectName: "discoverTab"; iconName: "globe"; text: "Discover"; highlighted: !root.localMode && !root.favorites; onClicked: root.discover() }
+            W.Action { objectName: "favoritesTab"; iconName: "star"; text: "Favorites"; highlighted: !root.localMode && root.favorites; onClicked: { root.localMode = false; root.favorites = true; root.filtersOpen = false; root.browse(false); } }
             Flickable {
                 id: inlineFilters
                 objectName: "gamesInlineFilters"
-                visible: root.filtersOpen && !root.favorites
+                visible: root.filtersOpen && !root.favorites && !root.localMode
                 Layout.fillWidth: true
                 Layout.preferredWidth: Math.min(filterFields.implicitWidth, root.width * 0.58)
                 Layout.minimumWidth: 0
@@ -620,7 +649,7 @@ Item {
                                 visible: !!root.selected.officialWebsite
                                 iconName: "globe"
                                 text: "Open official website"
-                                onClicked: Qt.openUrlExternally(root.selected.officialWebsite)
+                                onClicked: Browser.open(root.selected.officialWebsite, "games")
                             }
                             Button {
                                 objectName: "protonDbButton"
@@ -645,7 +674,7 @@ Item {
                                     border.color: parent.activeFocus ? Theme.text : "transparent"
                                     border.width: parent.activeFocus ? 2 : 0
                                 }
-                                onClicked: if (root.compatibility.url) Qt.openUrlExternally(root.compatibility.url)
+                                onClicked: if (root.compatibility.url) Browser.open(root.compatibility.url, "games")
                             }
                             BusyIndicator {
                                 visible: root.compatibilityLoading
@@ -658,6 +687,21 @@ Item {
                                 text: "Refresh game details"
                                 enabled: !root.detailLoading
                                 onClicked: root.hydrateSelection(true)
+                            }
+                            W.IconButton {
+                                visible: root.localFiles.length > 0
+                                iconName: "folder-open"
+                                text: "Open local game files"
+                                onClicked: {
+                                    const path = root.localFiles[0].path;
+                                    Quickshell.execDetached(["xdg-open", path.slice(0, path.lastIndexOf("/"))]);
+                                }
+                            }
+                            W.IconButton {
+                                iconName: "search"
+                                text: "Find"
+                                highlighted: root.torrentOpen
+                                onClicked: root.torrentOpen = !root.torrentOpen
                             }
                         }
                     }
@@ -748,7 +792,7 @@ Item {
                                                 root.editingStore = storeButton.modelData.store;
                                                 Qt.callLater(() => storeId.forceActiveFocus());
                                             } else if (storeButton.mainAction.type === "buy" && storeButton.mainAction.url)
-                                                Qt.openUrlExternally(storeButton.mainAction.url);
+                                                Browser.open(storeButton.mainAction.url, "games");
                                             else if (storeButton.mainAction.id) root.executeAction(storeButton.mainAction.id);
                                         }
                                     }
@@ -777,7 +821,7 @@ Item {
                                             MenuItem {
                                                 text: "Open store page"
                                                 visible: !!storeButton.modelData.storeUrl
-                                                onTriggered: Qt.openUrlExternally(storeButton.modelData.storeUrl)
+                                                onTriggered: Browser.open(storeButton.modelData.storeUrl, "games")
                                             }
                                             MenuItem {
                                                 text: "Edit store link"
@@ -851,6 +895,7 @@ Item {
                 }
 
                 W.ScrollArea {
+                    visible: !root.torrentOpen
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
@@ -927,12 +972,21 @@ Item {
                         }
                     }
                 }
+                M.TorrentSearch {
+                    visible: root.torrentOpen
+                    Layout.fillWidth: true; Layout.fillHeight: true
+                    title: Object.assign({}, root.selected, {kind:"game",year:(root.selected.releaseDate || "").slice(0,4)})
+                    onImported: {
+                        localService.request("local_files", {title:Object.assign({}, root.selected, {kind:"game"})}, (result, failure) => { if (!failure) root.localFiles = result; });
+                        if (root.localMode) root.browse(false);
+                    }
+                }
             }
 
             ColumnLayout {
                 anchors.centerIn: parent
                 width: Math.min(560, parent.width - 64)
-                visible: !root.initializing && !root.loading && !root.titles.length && root.setupRequired && !root.error
+                visible: !root.localMode && !root.initializing && !root.loading && !root.titles.length && root.setupRequired && !root.error
                 spacing: 12
                 W.Label { text: "Set up the Games catalogue"; font.pixelSize: 24; font.bold: true; Layout.fillWidth: true; wrapMode: Text.Wrap }
                 W.Label {
@@ -943,16 +997,15 @@ Item {
                     wrapMode: Text.Wrap
                     color: Theme.muted
                 }
-                W.Action { iconName: "file-text"; text: "Open Games setup notes"; onClicked: Qt.openUrlExternally(Qt.resolvedUrl("../docs/games.md")) }
             }
 
             ColumnLayout {
                 anchors.centerIn: parent
                 width: Math.min(480, parent.width - 64)
-                visible: !root.initializing && !root.loading && !root.titles.length && root.catalogState.configured && !root.error && !root.setupRequired
+                visible: !root.initializing && !root.loading && !root.titles.length && (root.localMode || root.catalogState.configured) && !root.error && !root.setupRequired
                 spacing: 8
-                W.Label { Layout.fillWidth: true; text: root.favorites ? "No favorite games yet." : search.text ? "No games found." : "No catalogue results are available."; font.pixelSize: 20; horizontalAlignment: Text.AlignHCenter }
-                W.Label { Layout.fillWidth: true; text: root.favorites ? "Add a game to Favorites from its details." : "Try another title or refresh the catalogue."; color: Theme.muted; horizontalAlignment: Text.AlignHCenter }
+                W.Label { Layout.fillWidth: true; text: root.localMode ? "No local game files yet." : root.favorites ? "No favorite games yet." : search.text ? "No games found." : "No catalogue results are available."; font.pixelSize: 20; horizontalAlignment: Text.AlignHCenter }
+                W.Label { Layout.fillWidth: true; text: root.localMode ? "Find a local copy from a game in Discover." : root.favorites ? "Add a game to Favorites from its details." : "Try another title or refresh the catalogue."; color: Theme.muted; horizontalAlignment: Text.AlignHCenter }
             }
 
             ColumnLayout {

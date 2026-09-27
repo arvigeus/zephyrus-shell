@@ -22,6 +22,9 @@ ShellRoot {
             property int retainedRequests: 0
             property real retainedScroll: 0
             property int personPhase: 0
+            property bool localDefaultChecked: false
+            property bool subtitleCaptured: false
+            property bool subtitleResultsCaptured: false
             property var toolbarGeometry
             function find(item,name) { if (item.objectName === name) return item; for (const child of item.children || []) { const found=find(child,name); if (found) return found; } return null; }
             function require(value, message) { if (!value) { console.error("MEDIA FAIL",message); Qt.quit(); throw new Error(message); } }
@@ -29,7 +32,7 @@ ShellRoot {
                 if (++attempts > 50) { require(false,"Timed out at step " + step); return; }
                 if (step === 0) { if (!Plugins.find("movies")) return; ShellState.openPlugin("movies"); step++; }
                 else if (step === 1) {
-                    const loader=overlay.item.children.find(c=>c.objectName === "moduleContent");
+                    const loader=overlay.item ? find(overlay.item,"moduleContent") : null;
                     if (!loader || !loader.item || loader.item.loading) return;
                     media=loader.item;
                     require(media.titles.length===20,"Catalogue did not load: " + media.error);
@@ -75,6 +78,9 @@ ShellRoot {
                     const images=fadeProbe.children.filter(c => c.objectName === "imageA" || c.objectName === "imageB");
                     require(images.every(i => i.opacity > 0 && i.opacity < 1),"Old and new images did not crossfade together");
                     overlay.item.grabToImage(result=>result.saveToFile("tests/artifacts/media-grid.png"));
+                    media.tab="torrent";
+                    const torrentSearch=find(media,"torrentSearch");
+                    require(!!torrentSearch && torrentSearch.query === "The Last Horizon 2025", "Torrent search did not use title context");
                     step++;
                 } else if (step === 4) {
                     const grid=find(media,"catalogueGrid");
@@ -94,11 +100,20 @@ ShellRoot {
                     require(!overlay.item,"Overlay not destroyed");
                     ShellState.openPlugin("series"); step++;
                 } else if (step === 5) {
-                    const loader=overlay.item.children.find(c=>c.objectName === "moduleContent");
+                    const loader=overlay.item ? find(overlay.item,"moduleContent") : null;
                     if (!loader || !loader.item || loader.item.loading) return;
                     media=loader.item;
                     require(media.kind==="tv","Series module not separated");
                     require(media.gridMode,"TV series did not default to grid");
+                    if (!localDefaultChecked) {
+                        if (media.loading) return;
+                        require(media.localMode && media.titles.length === 1,"Series with a local video did not open Local");
+                        localDefaultChecked = true;
+                        media.localMode = false;
+                        media.browse(false);
+                        return;
+                    }
+                    if (media.loading || media.titles.length < 20) return;
                     if (!media.seasons.length) return;
                     media.play(null);
                     require(media.tab === "episodes","Series provider did not open episode chooser"); pauseFrames=0; step++;
@@ -111,7 +126,7 @@ ShellRoot {
                         return;
                     }
                     const online=find(media,"onlineButton");
-                    require(online.popup.count === 2,"Split button options missing");
+                    require(online.popup.count === 2 + (media.localFiles.length ? 1 : 0),"Split button options missing");
                     media.filtersOpen=true;
                     const country=find(media,"countryPicker");
                     country.popup.open();
@@ -148,8 +163,51 @@ ShellRoot {
                     require(geometry.every((value,index) => Math.abs(value-toolbarGeometry[index]) < 0.1),"Opening toolbar controls shifted buttons or content");
                     if (personPhase === 3) { searchButton.clicked(); personPhase++; return; }
                     if (personPhase === 4) { filtersButton.clicked(); personPhase++; return; }
+                    media.selectTitle(media.titles[1]); step++;
+                } else if (step === 9) {
+                    if (!media.localFiles.length) return;
+                    media.tab="subtitles";
+                    const subtitles=find(media,"subtitleBrowser");
+                    if (!subtitles || subtitles.loading || !subtitles.inventory.files.length) return;
+                    require(subtitles.inventory.files[0].language === "en", "Local subtitle was not listed");
+                    require(subtitles.inventory.release.name === "A Quiet Morning S01 WEB-DL", "Release NFO was not read");
+                    if (!subtitles.adjustPath) {
+                        subtitles.inventory=Object.assign({},subtitles.inventory,{fps:23.976});
+                        find(subtitles,"diskAdjust").clicked();
+                        return;
+                    }
+                    const controls=find(subtitles,"timingControls");
+                    const track=controls.parent.parent;
+                    require(controls.visible && controls.mapToItem(track,0,controls.height).y <= track.height,"Timing controls did not expand inside the selected subtitle");
+                    const save=find(subtitles,"saveTiming");
+                    require(!save.enabled,"Unchanged timing created a redundant copy");
+                    find(subtitles,"timingOffset").text="1";
+                    require(save.enabled,"Changing the offset did not enable saving");
+                    overlay.item.grabToImage(result => { result.saveToFile("tests/artifacts/media-subtitles.png"); subtitleCaptured = true; });
+                    step++;
+                } else if (step === 10) {
+                    if (!subtitleCaptured) return;
+                    const subtitles=find(media,"subtitleBrowser");
+                    subtitles.adjustPath="";
+                    subtitles.inventory=Object.assign({},subtitles.inventory,{fps:23.976});
+                    subtitles.results=Array.from({length:60},(_,index)=>({fileId:index+1,language:"en",release:"Fixture subtitle " + (index+1),fps:index%2 ? 23.976 : 25,downloads:100-index}));
+                    require(subtitles.canAdjust(subtitles.results[0]) && !subtitles.canAdjust(subtitles.results[1]),"Frame-rate adjustment appeared for the wrong result");
+                    subtitles.toggleAdjustment(1);
+                    require(subtitles.adjustedFileIds.includes(1),"Result adjustment did not toggle");
+                    step++;
+                } else if (step === 11) {
+                    const subtitles=find(media,"subtitleBrowser");
+                    const scroll=find(subtitles,"subtitleScroll").contentItem;
+                    require(subtitles.shownResults.length === 24,"Subtitle results were not initially limited: " + subtitles.shownResults.length + " / " + scroll.contentHeight + " / " + scroll.height);
+                    scroll.contentY=scroll.contentHeight-scroll.height;
+                    subtitles.maybeLoadMore();
+                    require(subtitles.shownResults.length > 24,"Scrolling did not reveal more subtitle results");
+                    overlay.item.grabToImage(result => { result.saveToFile("tests/artifacts/media-subtitle-results.png"); subtitleResultsCaptured = true; });
+                    step++;
+                } else if (step === 12) {
+                    if (!subtitleResultsCaptured) return;
                     ShellState.close();
-                    console.log("MEDIA PASS: discovery, catalogue, details, favorites, grid, series episodes, destruction");
+                    console.log("MEDIA PASS: discovery, catalogue, details, favorites, grid, series episodes, subtitles, destruction");
                     Qt.quit();
                 }
             }

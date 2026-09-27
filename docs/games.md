@@ -1,5 +1,10 @@
 # Games
 
+The **Local** file view and context-aware qBittorrent search for public domain
+games or game material authorized for AI training are described in
+[Local library and qBittorrent](torrents.md). Imported game files are opened
+for inspection, not installed or launched automatically.
+
 Games combines an IGDB catalogue with locally discovered Steam and Epic games.
 The catalogue supplies titles, artwork, genres, platforms, release dates, and
 related games. It does not claim that a catalogue result is owned or installed.

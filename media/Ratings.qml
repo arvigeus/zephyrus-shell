@@ -27,7 +27,7 @@ Flow {
             text: ratingButton.modelData.source + ": " + modelData.value
             implicitWidth: contentItem.implicitWidth + 8; implicitHeight: 32
             padding: 4
-            onClicked: Qt.openUrlExternally(root.page(modelData))
+            onClicked: Browser.open(root.page(modelData), root.title.kind === "tv" ? "series" : "movies")
             contentItem: RowLayout {
             spacing: 6
             W.AppIcon { artwork: Qt.resolvedUrl("../assets/ratings/rating_" + root.icon(ratingButton.modelData) + ".png"); Layout.preferredWidth: 32; Layout.preferredHeight: 24; Accessible.name: ratingButton.modelData.source }

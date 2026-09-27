@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -68,6 +69,20 @@ class MediaTests(unittest.TestCase):
         self.assertTrue(self.backend.personal('tt123')['favorite'])
         self.assertEqual(len(self.backend.browse({'kind':'movie','favorites':True})['items']),1)
         self.assertEqual(self.backend.browse({'kind':'tv','favorites':True})['items'],[])
+
+    def test_local_poster_enrichment_keeps_local_file(self):
+        with patch.dict(os.environ, {'XDG_VIDEOS_DIR':str(self.backend.data / 'Videos')}):
+            source = self.backend.data / 'source.mkv'
+            source.write_bytes(b'video')
+            path = self.backend.local.add(self.movie, source)
+            self.assertFalse(self.backend.handle({'op':'local_titles','kind':'movie'})['items'][0].get('poster'))
+            with patch.object(self.backend, 'details', return_value=self.movie | {'poster':'https://example.org/poster'}):
+                posters = self.backend.handle({'op':'local_posters','kind':'movie'})
+            self.assertEqual(posters, [{'id':'tt123','poster':'https://example.org/poster'}])
+            self.backend.save_title(self.movie | {'poster':posters[0]['poster']})
+            local = self.backend.handle({'op':'local_titles','kind':'movie'})['items'][0]
+            self.assertEqual(local['poster'], posters[0]['poster'])
+            self.assertEqual(local['localPath'], path)
     def test_optional_enrichment_failure_preserves_details(self):
         self.backend.save_title(self.movie|{'plot':'Hydrated plot','cast':[{'name':'Actor'}]})
         with patch.object(m,'http',side_effect=m.MediaError('offline')):
@@ -89,7 +104,7 @@ class MediaTests(unittest.TestCase):
         result=self.backend.handle(dict(op='play',title=self.movie))
         self.assertEqual(result['url'],'https://example.org/watch?id=42')
     def test_config_secrets_do_not_cross_ui_boundary(self):
-        self.configure({'tmdb_key':'secret','providers':[{'name':'Example','url':'https://example.org/{imdbId}?secret=private'}]})
+        self.configure({'tmdb_key':'secret','providers':[{'name':'Example','movie_url':'https://example.org/{imdbId}?secret=private'}]})
         output=json.dumps(self.backend.handle({'op':'init'}))
         self.assertNotIn('secret',output)
         self.assertNotIn('private',output)
@@ -110,7 +125,8 @@ class MediaTests(unittest.TestCase):
         with self.assertRaisesRegex(m.MediaError,'name and movie_url'):
             self.backend.config()
         self.configure({'providers':[{'name':'Example','url':'https://example.org/{imdbId}'}]})
-        self.assertEqual(self.backend.handle({'op':'init'})['providers'],['Example'])
+        with self.assertRaisesRegex(m.MediaError,'name and movie_url'):
+            self.backend.config()
     def test_separate_movie_and_series_provider_urls(self):
         self.configure({'providers':[
             {'name':'Movies only','movie_url':'https://example.org/film/{imdbId}'},

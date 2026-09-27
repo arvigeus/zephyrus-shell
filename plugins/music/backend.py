@@ -23,6 +23,7 @@ from functools import lru_cache
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.cache import JsonCache
+from media.local import LocalLibrary
 
 
 APPLE_API = "https://api.music.apple.com/v1/catalog"
@@ -358,6 +359,7 @@ def normalize_track(item, source="apple"):
         "duration": clean_duration(item.get("duration") or item.get("durationInMillis")),
         "isrc": str(item.get("isrc") or ""),
         "genreNames": list(item.get("genreNames") or item.get("genres") or []),
+        "releaseDate": str(item.get("releaseDate") or ""),
         "playable": item.get("playable") is not False,
     }
 
@@ -454,6 +456,7 @@ def normalize_apple(item, kind):
                 "genreNames": attributes.get("genreNames") or [],
                 "albumId": album_id,
                 "artistIds": artist_ids,
+                "releaseDate": attributes.get("releaseDate"),
             },
             source="apple",
         )
@@ -1164,6 +1167,10 @@ def provider_results(provider, wanted, query):
 
 
 def resolve_track(track):
+    local_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "zephyrus-shell/media"
+    local_files = LocalLibrary(local_data).files({**track, "kind": "music"})
+    if local_files:
+        return {"url": local_files[0]["path"], "headers": {}}
     providers = music_config()["providers"]
     if not providers:
         raise MusicError("No playback providers are configured in music.json.")
@@ -1432,6 +1439,9 @@ def favorites_save(args):
 
 def dispatch(args):
     operation = args.get("op")
+    if operation == "local-songs":
+        local_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "zephyrus-shell/media"
+        return [{**item, "kind": "song", "source": "local"} for item in LocalLibrary(local_data).list("music")]
     if operation == "search":
         return search(args)
     if operation == "search-page":

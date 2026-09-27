@@ -14,6 +14,7 @@ ShellRoot {
             property int step: 0
             property int attempts: 0
             property int screenshots: 0
+            property bool localDefaultChecked: false
             property var browser
             function find(item, name) {
                 if (item && item.objectName === name) return item;
@@ -45,6 +46,14 @@ ShellRoot {
                     const content = find(overlay.item, "moduleContent");
                     if (!content || !content.item || content.status !== Loader.Ready || content.item.loading) return;
                     browser = content.item;
+                    if (!localDefaultChecked) {
+                        require(browser.localMode && browser.books.length === 1, "Books with a local file did not open Local");
+                        localDefaultChecked = true;
+                        browser.localMode = false;
+                        browser.browse(false, false);
+                        return;
+                    }
+                    if (browser.loading || browser.books.length !== 4) return;
                     require(String(browser.backgroundImage).length > 0, "Fixture book has no cover for the backdrop");
                     const backgroundBuffer = find(overlay.item, "imageA");
                     const hostBackdrop = backgroundBuffer ? backgroundBuffer.parent : null;

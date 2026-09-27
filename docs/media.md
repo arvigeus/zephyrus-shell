@@ -1,5 +1,8 @@
 # Movies and TV Series
 
+Local library and qBittorrent search for public domain media or material
+authorized for AI training are documented in [Local library and qBittorrent](torrents.md).
+
 Open **Spaces → Movies** or **Spaces → TV Series**. They are separate plugins
 sharing the browser and provider service in `media/`. The shell's normal overlay
 owns their lifecycle: Escape or selecting Desktop closes the module and stops its worker.
@@ -39,11 +42,12 @@ NexFlix automatically. Start from the committed, secret-free template:
 ```sh
 mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/zephyrus-shell"
 # Copy only if you do not already have media.json:
-cp -n media/media.exampe.json "${XDG_CONFIG_HOME:-$HOME/.config}/zephyrus-shell/media.json"
+cp -n media/media.example.json "${XDG_CONFIG_HOME:-$HOME/.config}/zephyrus-shell/media.json"
 chmod 600 "${XDG_CONFIG_HOME:-$HOME/.config}/zephyrus-shell/media.json"
 ```
 
-Example structure (replace the example provider with your service's URL):
+An example is in [`media/media.example.json`](../media/media.example.json).
+Replace the example provider with your service's URL:
 
 ```json
 {
@@ -59,7 +63,13 @@ Example structure (replace the example provider with your service's URL):
       "series_url": "https://example.org/series/{imdbId}/{season}/{episode}"
     }
   ],
-  "player": ["mpv"]
+  "player": ["mpv"],
+  "opensubtitles": {
+    "api_key": "",
+    "username": "",
+    "password": "",
+    "languages": ["en"]
+  }
 }
 ```
 
@@ -77,18 +87,22 @@ Example structure (replace the example provider with your service's URL):
 - `watchmode_key`: optional Watch links. `region` selects preferred sources.
 - `providers`: named objects with separate `movie_url` and `series_url` templates.
   A provider may supply either or both; each module lists only compatible providers.
-  The older single `url` remains accepted as a fallback. Supported substitutions: `{imdbId}`,
+  Supported substitutions: `{imdbId}`,
   `{tmdbId}`, `{kind:movieValue|seriesValue}`, `{season}`, and `{episode}`.
   Season/episode placeholders require selecting an episode; Watch online opens the
   episode chooser when the series template requires these values. A provider URL without
   placeholders retains NexFlix's `/title/{imdbId}/` convention.
 - `player`: an argument array for a desktop player, default `mpv`. Direct media
   URLs ending in `.mp4`, `.mkv`, `.webm`, `.m3u8`, `.mpd`, `.avi`, or `.mov` use
-  this player; provider webpages use the default browser. No shell evaluates the
+  this player; provider webpages use the [configured browser command](browser.md). No shell evaluates the
   URL or arguments. Install the configured player before using direct playback.
+- `opensubtitles`: optional OpenSubtitles.com API key and account for
+  [Local subtitle management](subtitles.md). `languages` sets the starting
+  search choices; the selection can be changed for each search.
 
-**Watch online** uses the chosen configured provider. Its main button launches that
-provider; its dropdown selects and launches another. **Trailer** is a single button
+The Watch split button selects Local first when a file exists, followed by the
+configured online providers. Its main button launches the selected source;
+its dropdown selects and launches another. **Trailer** is a single button
 when one trailer exists, or **Trailers** with a dropdown for several. Both use the
 shell accent background. Promotional clips and featurettes are excluded.
 The Notes & URL editor has been removed. Older saved notes/URLs are retained in
@@ -120,11 +134,11 @@ sources retain their source labels and values; they are not converted to a commo
 scale. Optional enrichment failures leave the available title usable.
 
 This port uses the desktop browser/player rather than Android's WebView/Media3.
-Embedded playback, Cast, YouTube feeds/extraction/summaries, and local-library
-scanning are not implemented. Direct streams are handed to a desktop player.
-Playback resolution returns a typed web/direct target separately from metadata;
-a future local source can resolve a file/player target without changing catalogue
-providers or the Movies/TV split.
+Embedded playback, Cast, and YouTube feeds/extraction/summaries are not
+implemented. Direct streams and local files are handed to a desktop player.
+Local files are registered by catalogue identity during import or a Local scan.
+The scan uses `guessit` to propose a match and requires exact title and year
+for automatic catalogue matching. Uncertain matches wait for manual selection.
 
 IMDbApi was unavailable during verification. Live TMDB fallback was verified for
 both catalogues, title details, and TV seasons using the existing configuration.
@@ -137,7 +151,8 @@ search, title, and season parameters.
 
 `$XDG_DATA_HOME/zephyrus-shell/media/library.sqlite` (default
 `~/.local/share/zephyrus-shell/media/library.sqlite`) stores cached JSON records,
-IMDb/TMDB aliases, favorites, notes, and custom URLs. SQLite transactions permit
+IMDb/TMDB aliases, favorites, notes, custom URLs, registered local files, and
+tracked qBittorrent imports. SQLite transactions permit
 multiple windows/workers without clobbering personal data. Aliases migrate personal
 records to the canonical IMDb ID. Back up this database for personal data.
 

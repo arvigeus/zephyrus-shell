@@ -4,6 +4,7 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 books_test_root=$(mktemp -d)
 trap 'rm -rf -- "$books_test_root"' EXIT
 export XDG_CONFIG_HOME="$books_test_root/config" XDG_DATA_HOME="$books_test_root/data" XDG_CACHE_HOME="$books_test_root/cache"
+export XDG_DOCUMENTS_DIR="$books_test_root/documents"
 export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
 mkdir -p "$XDG_CONFIG_HOME/zephyrus-shell" tests/artifacts
 python3 - <<'PY'
@@ -68,6 +69,12 @@ backend.put_cache("editions:OL100W:0", {
     }],
     "next": "", "total": 1,
 })
+from media.local import LocalLibrary
+from media.backend import DATA
+local_book = art_root / "local-book.epub"
+local_book.write_bytes(b"local book fixture")
+LocalLibrary(DATA).add({"kind": "book", "id": "OL100W", "title": "The Example Book",
+                       "author": "Ada Lovelace"}, local_book, move=True)
 PY
 timeout 25s dbus-run-session quickshell -p "$PWD/books-smoke.qml" --no-color > "$books_test_root/log" 2>&1 || { cat "$books_test_root/log"; exit 1; }
 cat "$books_test_root/log"

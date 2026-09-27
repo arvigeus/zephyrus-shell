@@ -68,6 +68,12 @@ FocusScope {
                 source: "TerminalView.qml"
                 onLoaded: Qt.callLater(root.activate)
             }
+            Connections {
+                target: terminalLoader.item
+                function onCommandSubmitted() {
+                    if (root.host) root.host.requestKeepRunning("terminal", true);
+                }
+            }
             ColumnLayout {
                 anchors.centerIn: parent
                 visible: terminalLoader.status === Loader.Error

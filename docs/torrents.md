@@ -48,7 +48,7 @@ For qBittorrent 5.2.0 or newer, API key authentication can be used instead:
 
 ## Search and import
 
-Select a title and open **Findy**. Movies search with title and year.
+Select a title and open **Find**. Movies search with title and year.
 Series searches use the title without a year. Series-wide searches add `complete`, season searches add `Sxx`,
 and episode searches add `SxxEyy`. These are editable text hints, not proof that
 a release contains the desired episodes. Music searches a selected

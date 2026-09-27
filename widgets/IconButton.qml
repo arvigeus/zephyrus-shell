@@ -1,5 +1,5 @@
 import QtQuick
-import "../core"
+import "../core/theme"
 Action {
     id: root
     property string iconName: "settings"

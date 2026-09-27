@@ -17,14 +17,30 @@ DrawerFrame {
             contentWidth: availableWidth
             ColumnLayout {
                 width: spacesScroll.availableWidth; spacing: 8
+                Action {
+                    Layout.fillWidth: true; implicitHeight: 52
+                    text: "Desktop"; textAlignment: Text.AlignLeft
+                    iconName: "monitor"
+                    onClicked: ShellState.showDesktop()
+                }
                 Repeater {
                     model: Plugins.entries
-                    Action {
+                    RowLayout {
                         required property var modelData
-                        Layout.fillWidth: true; implicitHeight: 52
-                        text: modelData.name; textAlignment: Text.AlignLeft
-                        iconName: modelData.icon
-                        onClicked: ShellState.openPlugin(modelData.id)
+                        Layout.fillWidth: true; spacing: 4
+                        Action {
+                            Layout.fillWidth: true; implicitHeight: 52
+                            text: modelData.name + (ShellState.runningPluginIds.includes(modelData.id) ? " · Running" : "")
+                            textAlignment: Text.AlignLeft
+                            iconName: modelData.icon
+                            onClicked: ShellState.openPlugin(modelData.id, modelData.keepRunning)
+                        }
+                        IconButton {
+                            visible: ShellState.runningPluginIds.includes(modelData.id)
+                            Layout.preferredWidth: 36; Layout.preferredHeight: 36
+                            iconName: "x"; text: "Close " + modelData.name
+                            onClicked: ShellState.stopPlugin(modelData.id)
+                        }
                     }
                 }
                 Label { visible: Plugins.entries.length === 0; text: "No spaces installed yet."; color: Theme.muted }

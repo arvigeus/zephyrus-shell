@@ -12,18 +12,36 @@ RowLayout {
     property int currentIndex: 0
     property alias popup: menu
     signal triggered(int index)
-    spacing: 1
+    spacing: 0
+    HoverHandler { id: groupHover }
     W.Action {
+        id: primary
         text: root.text; iconName: root.iconName
         onClicked: root.triggered(root.currentIndex)
-        background: Rectangle { radius: Theme.controlRadius; topRightRadius: arrow.visible ? 0 : Theme.controlRadius; bottomRightRadius: arrow.visible ? 0 : Theme.controlRadius; color: parent.down ? Qt.darker(Theme.accent,1.2) : parent.hovered ? Qt.lighter(Theme.accent,1.1) : Theme.accent; border.color: parent.activeFocus ? Theme.text : "transparent"; border.width: 2 }
+        background: Rectangle {
+            radius: Theme.controlRadius
+            topRightRadius: arrow.visible ? 0 : Theme.controlRadius
+            bottomRightRadius: arrow.visible ? 0 : Theme.controlRadius
+            color: primary.down || arrow.down ? Qt.darker(Theme.accent, 1.2)
+                  : groupHover.hovered ? Qt.lighter(Theme.accent, 1.1) : Theme.accent
+            border.color: primary.activeFocus ? Theme.text : "transparent"
+            border.width: 2
+        }
     }
     W.IconButton {
         id: arrow
         visible: root.options.length > 1
         iconName: "chevron-down"; text: "Choose " + root.text.toLowerCase()
         onClicked: menu.open()
-        background: Rectangle { radius: Theme.controlRadius; topLeftRadius: 0; bottomLeftRadius: 0; color: parent.hovered ? Qt.lighter(Theme.accent,1.1) : Theme.accent; border.color: parent.activeFocus ? Theme.text : "transparent"; border.width: 2 }
+        background: Rectangle {
+            radius: Theme.controlRadius
+            topLeftRadius: 0
+            bottomLeftRadius: 0
+            color: primary.down || arrow.down ? Qt.darker(Theme.accent, 1.2)
+                  : groupHover.hovered ? Qt.lighter(Theme.accent, 1.1) : Theme.accent
+            border.color: arrow.activeFocus ? Theme.text : "transparent"
+            border.width: 2
+        }
         Menu {
             id: menu; popupType: Popup.Item; y: arrow.height; width: Math.min(440,root.Window.width - 48)
             background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.controlRadius }

@@ -339,6 +339,7 @@ class Backend:
                 backdrops=images.get('backdrops',[])
                 backdrops.sort(key=lambda x:(not x.get('iso_639_1'),x.get('vote_average',0),x.get('width',0)),reverse=True)
                 if backdrops: result['backdrop']=image_url(backdrops[0]['file_path'])
+                result['screenshots']=[dict(url=image_url(i['file_path']),thumbnail=image_url(i['file_path'],'w300')) for i in backdrops[:12] if i.get('file_path')]
                 result['trailers']=tmdb_trailers(d)
                 result['cast']=tmdb_credits(d)
             optional(tmdb)
@@ -510,20 +511,10 @@ class Backend:
         return getattr(self,op)(r)
 
 def main():
-    backend=Backend(); lock=threading.Lock(); latest={}
-    superseded_ops={"browse","details","artwork","personal","episodes","person","watch","spoilers"}
-    def run(r):
-        try:
-            if r.get('op') in superseded_ops and latest.get(r['op']) != r.get('id'):
-                raise MediaError('Request superseded.')
-            result=dict(id=r.get('id'),op=r.get('op'),result=backend.handle(r))
-        except MediaError as e: result=dict(id=r.get('id'),op=r.get('op'),error=str(e))
-        except Exception: result=dict(id=r.get('id'),op=r.get('op'),error='The media request could not be completed. Check the configuration or retry.')
-        with lock: print(json.dumps(result),flush=True)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        for line in sys.stdin:
-            try:r=json.loads(line)
-            except ValueError:continue
-            latest[r.get('op')]=r.get('id')
-            pool.submit(run,r)
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from services.worker import serve
+    backend = Backend()
+    serve(backend.handle, errors=(MediaError,), latest=("browse", "details", "artwork", "personal", "episodes", "person", "watch", "spoilers"), controls=("save",))
+
+
 if __name__=='__main__':main()

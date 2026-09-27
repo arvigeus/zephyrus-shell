@@ -16,7 +16,7 @@ ShellRoot {
         Backdrop {
             id: canvas
             anchors.fill: parent
-            Action { z: 1; x: 14; y: 12; text: "Desktop"; iconName: "monitor"; onClicked: ShellState.toggle("left") }
+            Action { z: 1; x: 14; y: 12; text: "Spaces"; iconName: "grid-vertical"; onClicked: ShellState.toggle("left") }
             Action { z: 1; anchors.horizontalCenter: parent.horizontalCenter; y: 12; text: "Mon, Sep 21   ·   10:45"; onClicked: ShellState.toggle("center") }
             StatusPill { z: 1; anchors.right: parent.right; anchors.rightMargin: 14; y: 12; onClicked: ShellState.toggle("right") }
             ModuleLoader {

@@ -1,5 +1,25 @@
 # Where changes belong
 
+## Module roles
+
+| Space | Job |
+| --- | --- |
+| Desktop | Reveal the Hyprland session and its normal windows. |
+| Applications | Find and launch installed desktop applications; keep personal favorites. |
+| Projects | Find local XDG Projects, create or clone a project, and open it in Zed. |
+| Files and Terminal | Work with local files and commands without adding resident services. |
+| Movies and TV Series | Discover titles and resolve configured watch sources; share one media browser and backend. |
+| Music and Radio | Browse a catalogue or station directory and own playback that can continue behind Desktop. |
+| Books | Browse Open Library works, authors, and editions; save favorites offline. |
+| Games | Discover IGDB titles, relate them to local Steam/Epic libraries, and launch or buy through those stores. |
+| Pictures | Browse wallpaper providers and set a chosen image on the desktop. |
+
+Catalogue modules share theme tokens, search controls, loading/empty states,
+artwork transitions, and worker ownership patterns. Each provider adapter stays
+in its module backend, so the shell only handles navigation and lifetime.
+
+## Code ownership
+
 | Area | Owner |
 | --- | --- |
 | Entry point and IPC | `shell.qml` |
@@ -33,12 +53,19 @@ Each drawer uses a transparent full-screen surface with a separate outside-click
 area that never overlaps the drawer rectangle. Outside clicks are consumed to
 dismiss, without activating the application behind it. Module backgrounds fill the desktop behind the bar; content starts below it.
 The bar uses the overlay layer above the module’s top layer, leaving pills visible and
-clickable. Only one panel or module is selected at a time.
+clickable. One module is visible at a time; retained modules can keep their owned
+players and workers alive behind the Desktop.
 
-Drawer windows stay declared but their Loader is inactive while hidden. The Desktop
-drawer lists metadata only; the shared module overlay owns the Loader that
-instantiates one plugin and destroys it when closed. Core services
-are shared across monitors. Optional plugin services must not be core singletons.
+Drawer windows stay declared but their Loader is inactive while hidden. The Spaces
+drawer lists Desktop first, then plugin metadata. Opening it leaves the current
+module visible. Selecting Desktop hides the overlay and reveals the Hyprland
+session. The shared module overlay owns both the transient loader and stable
+loader slots for manifests with `keepRunning: true`. Music and Radio use those
+slots, so switching modules can leave playback running. Escape or the drawer’s
+Close control destroys the selected module. Core services are shared across
+monitors. A retained module stays owned by the monitor where it opened; opening
+a drawer on another monitor does not recreate its player. Optional plugin
+services must not be core singletons.
 
 Machine actions use argument arrays, never interpolated shell commands. Controls
 invoke an explicit allowlist. A Python snapshot process runs when controls open;

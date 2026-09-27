@@ -5,10 +5,21 @@ Built for Quickshell 0.3.1 and Hyprland 0.56.2's Lua configuration.
 
 ## Try it
 
+Prepare the system once before the first run:
+
+```sh
+scripts/setup-system.sh
+```
+
+For laptop brightness and external monitor brightness controls, add
+`--with-optional-controls`. The script installs packages with pacman and does not
+change system services unless you pass `--enable-services`; see
+[system setup](docs/setup.md) for details.
+
 From this directory, inside a Hyprland session:
 
 ```sh
-quickshell -p .
+quickshell -n -p .
 ```
 
 From KDE or another desktop, use the ordinary-window preview:
@@ -44,11 +55,23 @@ path to this project's `hyprland/hyprland.lua` with Lua's `dofile`.
   (default `~/.config/zephyrus-shell/applications.ini`). This is a separate list from
   KDE launcher favorites. Stars appear on hover or keyboard focus; saved favorites
   always display a filled star.
+- Projects lists folders in the XDG Projects directory, shows local logos and technology badges,
+  and opens them in Zed. New Project offers interactive starters, Git Clone supports clone modes,
+  and project menus provide Mise and maintenance actions. See [Projects](docs/projects.md).
 - Movies and TV Series offer shared catalogue services, search/filters, rail/grid views,
   title artwork, favorites, online provider selection, trailers, full cast/crew, and TV episodes. IMDbApi outages
   fall back to configured TMDB/OMDb services (OMDb supports search, not discovery). See
   [media configuration](docs/media.md) for API keys, provider templates, and limitations.
-- Every Desktop module shares the same overlay; Escape or clicking Desktop closes it.
+- Books opens on current Open Library trends with searchable Work-level results,
+  subject/language/year filters, rail/grid covers, author links, lazy editions, and
+  offline Favorites. No API key is required; see [Books](docs/books.md) for API and cache details.
+- Games adds a Discover/Favorites catalog with search, filters, and rail/grid views,
+  locally detected Steam installs and launch, optional Epic ownership/install/launch
+  through Legendary, UMU support for Epic games, and detail-page ProtonDB guidance.
+  Configure the catalog and optional Steam ownership in [Games setup](docs/games.md).
+- Terminal opens the user's shell in an embedded Qt Quick terminal surface. Closing the
+  module ends that shell session. It uses the packaged QMLTermWidget component.
+- Spaces opens the module drawer over the current view. Desktop reveals the Hyprland session; Music and Radio can keep playing there until closed.
 - Running-window activation and tray activation/context menus beside the left pill.
 - Clock, navigable calendar, notifications, actions, dismissal, toast, and do-not-disturb.
 - Separate named audio output and microphone selection, level and mute controls.
@@ -67,11 +90,12 @@ readings refresh on opening, actions, battery changes or manual refresh.
 
 ## Dependencies and boundaries
 
-Required: `quickshell`, `hyprland`, Qt Quick Controls, Python 3, PipeWire/WirePlumber,
-NetworkManager, UPower, and a polkit agent. Your existing Kitty and Dolphin bindings
-are retained. Audio route metadata uses `pactl` (Arch: `libpulse`). Bluetooth
-pairing uses `python-dbus` and `python-gobject`, already available on this machine.
-No external network or Bluetooth settings application is launched by the drawer.
+The one-time setup script installs the required Arch Linux packages, including
+Quickshell, Hyprland, Qt Quick Controls, QMLTermWidget, Noto Sans Mono, Python 3,
+PipeWire/WirePlumber, the PulseAudio compatibility service, NetworkManager, UPower,
+a polkit agent, and Bluetooth/audio bindings. Your existing Kitty and Dolphin bindings
+are retained. No external network or Bluetooth settings application is launched by
+the drawer. See [system setup](docs/setup.md) for optional packages and service setup.
 
 No screen locker is currently installed on this machine. This shell does **not**
 provide a lock screen; suspend is not a substitute for locking. Set up `hyprlock`
@@ -101,8 +125,8 @@ explicit answer; the helper never becomes the system's default Bluetooth agent.
 
 ## Extend and customize
 
-Read [docs/plugins.md](docs/plugins.md) to add a space. The shell does not contain
-an Apps/Movies/Music/etc. enumeration. Only Desktop is built in.
+Read [docs/plugins.md](docs/plugins.md) to add a space. The shell discovers
+modules from manifests. Desktop is built in.
 
 Read [docs/architecture.md](docs/architecture.md) for the file map. Colors, spacing,
 and typography live in `core/Theme.qml`; individual machine sections live in
@@ -115,11 +139,17 @@ See [audio naming](docs/audio-names.md) for per-monitor/per-device JSON rules, a
 
 ```sh
 python3 -m unittest discover -s tests -v
+QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software /usr/lib/qt6/bin/qmltestrunner -input tests/qml -import .
 node --test tests/audio-names.test.cjs
 Hyprland --verify-config -c "$PWD/hyprland/hyprland.lua"
 bash scripts/check-preview.sh
 bash scripts/check-apps.sh
 bash scripts/check-media.sh
+bash scripts/check-books.sh
+bash scripts/check-games.sh
+bash scripts/check-modules.sh
+bash scripts/check-retained.sh
+python3 scripts/check-performance.py
 # Briefly opens the actual panels on your current Wayland desktop:
 bash scripts/check-wayland.sh
 ```

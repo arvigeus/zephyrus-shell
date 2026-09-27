@@ -6,6 +6,7 @@ import Quickshell
 import "Countries.js" as Countries
 import "../core"
 import "../widgets" as W
+import "../widgets/Catalogue.js" as Catalogue
 
 Item {
     id: root
@@ -19,28 +20,10 @@ Item {
     // Keep delegates and loaded textures alive: mutate rows instead of resetting a JS-array model.
     function updateCatalogue(items, append) {
         updatingCatalogue = true;
-        const existing = new Set(append ? titles.map(t => t.id) : []);
-        const additions = items.filter(t => { if (existing.has(t.id)) return false; existing.add(t.id); return true; });
-        const next = append ? titles.concat(additions) : additions;
-        if (append) {
-            for (const title of additions) catalogue.append({key:title.id, payload:JSON.stringify(title)});
-        } else {
-            const wanted = new Set(next.map(t => t.id));
-            for (let i=catalogue.count-1; i>=0; --i) if (!wanted.has(catalogue.get(i).key)) catalogue.remove(i);
-            for (let i=0; i<next.length; ++i) {
-                const title=next[i], payload=JSON.stringify(title);
-                if (i >= catalogue.count || catalogue.get(i).key !== title.id) {
-                    let from=i+1;
-                    while (from<catalogue.count && catalogue.get(from).key !== title.id) ++from;
-                    if (from<catalogue.count) catalogue.move(from,i,1);
-                    else catalogue.insert(i,{key:title.id,payload:payload});
-                }
-                if (catalogue.get(i).payload !== payload) catalogue.setProperty(i,"payload",payload);
-            }
-        }
-        titles = next;
+        titles = Catalogue.update(catalogue, titles, items, append);
         updatingCatalogue = false;
     }
+
     property var selected: ({})
     property var personal: ({favorite:false, note:"", url:""})
     property var providers: []
@@ -87,17 +70,12 @@ Item {
         location: "file://" + (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/zephyrus-shell/media-ui.ini"
     }
     MediaService { id: service; onFailed: message => root.error = message }
-    Rectangle {
-        x: -28; y: -80; width: root.width + 56; height: root.height + 108
-        gradient: Gradient {
-            orientation: Gradient.Horizontal
-            GradientStop { position: 0; color: "#ec101115" }
-            GradientStop { position: 0.6; color: root.gridMode ? "#dc101115" : "#99101115" }
-            GradientStop { position: 1; color: root.gridMode ? "#ec101115" : "#33101115" }
-        }
+    W.DetailScrim {
+        gridMode: root.gridMode
         opacity: root.backgroundImage.toString() ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 320 } }
     }
+    W.ImageGallery { id: gallery; parent: root }
+
     function sameTitle(a, b) {
         return !!(a.id && b.id && (a.id === b.id ||
             (a.imdbId && a.imdbId === b.imdbId) ||
@@ -192,7 +170,7 @@ Item {
         if (!backgroundImage.toString() && patch.backdrop) backgroundImage = patch.backdrop;
         else if (backgroundImage.toString()) patch.backdrop = backgroundImage.toString();
         // Artwork responses own enriched fields; a slower details response must not revert them.
-        if (artworkReady) ["backdrop","logo","ratings","cast","trailers"].forEach(key => delete patch[key]);
+        if (artworkReady) ["backdrop","logo","ratings","cast","trailers","screenshots"].forEach(key => delete patch[key]);
         selected = Object.assign({}, selected, patch);
     }
     function save(values) {
@@ -261,7 +239,7 @@ Item {
         anchors.fill: parent; spacing: 12
         RowLayout {
             Layout.fillWidth: true; Layout.minimumHeight: 46; Layout.preferredHeight: 46; Layout.maximumHeight: 46; spacing: 8
-            W.Action { text: "Discover"; highlighted: !root.favorites; onClicked: { root.favorites = false; root.browse(false); } }
+            W.Action { iconName: "globe"; text: "Discover"; highlighted: !root.favorites; onClicked: { root.favorites = false; root.browse(false); } }
             W.Action { iconName: "star"; text: "Favorites"; highlighted: root.favorites; onClicked: { root.favorites = true; root.browse(false); } }
             Item { Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 0 }
             Flickable {
@@ -277,7 +255,7 @@ Item {
                 Row {
                     id: filterFields; spacing: 8
                     W.Choice { id: genre; width: 145; model: ["All genres","Action","Adventure","Animation","Biography","Comedy","Crime","Documentary","Drama","Family","Fantasy","History","Horror","Music","Mystery","Romance","Sci-Fi","Sport","Thriller","War","Western"]; Accessible.name: "Genre" }
-                    W.Choice { id: sort; width: 150; model: ["Provider order","Popularity","Highest rating","Most votes","Newest release","Oldest release"]; Accessible.name: "Sort" }
+                    W.Choice { id: sort; width: 150; model: ["Default order","Popularity","Highest rating","Most votes","Newest release","Oldest release"]; Accessible.name: "Sort" }
                     W.Choice { id: country; objectName: "countryPicker"; width: 160; model: Countries.options; textRole: "name"; Accessible.name: "Country" }
                     W.SearchField { id: minYear; width: 90; placeholderText: "From year"; validator: IntValidator { bottom: 1870; top: 2200 } }
                     W.SearchField { id: maxYear; width: 90; placeholderText: "To year"; validator: IntValidator { bottom: 1870; top: 2200 } }
@@ -288,7 +266,7 @@ Item {
                 }
             }
             W.SearchField {
-                id: search; rightPadding: 42; visible: root.searchOpen; Layout.preferredWidth: Math.min(root.filtersOpen ? 280 : 460,root.width * 0.3)
+                id: search; rightPadding: 42; visible: root.searchOpen; Layout.preferredWidth: Math.min(Theme.catalogueSearchWidth, root.width * 0.30)
                 placeholderText: root.kind === "tv" ? "Search TV series…" : "Search movies…"
                 onTextChanged: searchDelay.restart()
                 W.IconButton { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; width: 36; height: 36; visible: search.text.length > 0; iconName: "x"; text: "Clear search"; onClicked: { search.clear(); search.forceActiveFocus(); } }
@@ -325,6 +303,7 @@ Item {
                 }
                 onCurrentItemChanged: if (!root.updatingCatalogue && activeFocus && currentItem && !root.sameTitle(currentItem.title, root.selected)) root.selectTitle(currentItem.title)
                 Keys.onReturnPressed: if (currentItem) root.selectTitle(currentItem.title)
+                Keys.onEnterPressed: if (currentItem) root.selectTitle(currentItem.title)
                 W.WheelScroll { objectName: "gridWheel"; view: grid; pixelsPerNotch: Math.max(360, grid.cellHeight * 1.25) }
                 onContentYChanged: pagination.restart()
                 ScrollBar.vertical: ScrollBar {}
@@ -383,6 +362,13 @@ Item {
                                 }
                             }
                         }
+                        W.ImageStrip {
+                            visible: root.tab === "overview" && images.length > 0
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: visible ? 116 : 0
+                            images: root.selected.screenshots || []
+                            onActivated: index => gallery.show(images, index, root.selected.title)
+                        }
                         Repeater { model: root.tab === "watch" ? root.links : []; W.Action { required property var modelData; text: modelData.name; onClicked: Qt.openUrlExternally(modelData.url) } }
                         W.Label { visible: root.tab === "watch" && !root.extraLoading && !root.links.length; text: "No watch links loaded."; color: Theme.muted }
                         W.Label { visible: root.tab === "spoilers"; Layout.fillWidth: true; text: root.spoiler; wrapMode: Text.Wrap }
@@ -415,6 +401,10 @@ Item {
                 }
                 GridView {
                     id: filmography; objectName: "filmography"
+                    activeFocusOnTab: true
+                    keyNavigationEnabled: true
+                    Keys.onReturnPressed: if (currentItem) root.selectTitle(currentItem.title)
+                    Keys.onEnterPressed: if (currentItem) root.selectTitle(currentItem.title)
                     visible: root.tab === "person"
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                     cellWidth: width / Math.max(1,Math.floor(width/140)); cellHeight: cellWidth*1.5+48
@@ -477,6 +467,7 @@ Item {
                 }
                 onCurrentItemChanged: if (!root.updatingCatalogue && activeFocus && currentItem && !root.sameTitle(currentItem.title, root.selected)) root.selectTitle(currentItem.title)
                 Keys.onReturnPressed: if (currentItem) root.selectTitle(currentItem.title)
+                Keys.onEnterPressed: if (currentItem) root.selectTitle(currentItem.title)
                 onContentXChanged: pagination.restart()
                 W.WheelScroll { view: rail; horizontal: true; pixelsPerNotch: 360 }
                 ScrollBar.horizontal: ScrollBar {}

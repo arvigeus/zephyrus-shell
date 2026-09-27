@@ -27,7 +27,9 @@ ShellRoot {
                 break;
             case 2:
                 ShellState.toggle("left");
-                if (ShellState.panel || ShellState.pluginId) throw new Error("Desktop did not close module");
+                if (ShellState.panel !== "left" || ShellState.pluginId !== "apps") throw new Error("Spaces did not preserve module");
+                ShellState.showDesktop();
+                if (ShellState.panel || ShellState.pluginId) throw new Error("Desktop did not reveal session");
                 ShellState.openPlugin("apps");
                 ShellState.backToSpaces();
                 if (ShellState.panel !== "left" || ShellState.pluginId) throw new Error("Module back failed");

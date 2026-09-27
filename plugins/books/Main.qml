@@ -1,0 +1,3 @@
+import "../../books"
+
+BooksBrowser {}

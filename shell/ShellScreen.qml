@@ -9,6 +9,9 @@ import "../attention"
 Scope {
     id: root
     required property var screen
+    Component.onCompleted: {
+        if (!ShellState.monitor && screen === Quickshell.screens[0]) ShellState.monitor = screen.name;
+    }
     readonly property bool selected: ShellState.monitor === screen.name || (!Quickshell.screens.some(s => s.name === ShellState.monitor) && screen === Quickshell.screens[0])
     PanelWindow {
         screen: root.screen
@@ -24,8 +27,8 @@ Scope {
         id: bar
         screen: root.screen
         anchors { top: true; left: true; right: true }
-        implicitHeight: 66
-        exclusiveZone: 66
+        implicitHeight: Theme.pillHeight
+        exclusiveZone: Theme.pillHeight
         color: "transparent"
         WlrLayershell.layer: leftDrawer.visible || rightDrawer.visible ? WlrLayer.Top : WlrLayer.Overlay
         WlrLayershell.namespace: "zephyrus-shell-bar"
@@ -37,7 +40,7 @@ Scope {
         Row {
             id: left
             x: 14; y: 12; spacing: 8
-            Action { text: "Desktop"; iconName: "monitor"; highlighted: root.selected && (ShellState.panel === "left" || ShellState.panel === "module"); onClicked: ShellState.toggle("left", root.screen.name) }
+            Action { text: "Spaces"; iconName: "grid-vertical"; highlighted: root.selected && ShellState.panel === "left"; onClicked: ShellState.toggle("left", root.screen.name) }
             RunningApps { maximumWidth: Math.max(0, bar.width / 2 - 260); window: bar }
         }
         Action {
@@ -58,7 +61,7 @@ Scope {
     }
     PanelWindow {
         screen: root.screen
-        visible: root.selected && !!ShellState.pluginId
+        visible: root.screen.name === ShellState.pluginMonitor && !!ShellState.pluginId
         anchors { top: true; bottom: true; left: true; right: true }
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
@@ -66,7 +69,10 @@ Scope {
         WlrLayershell.namespace: "zephyrus-shell-module"
         WlrLayershell.keyboardFocus: visible && ShellState.panel === "module" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         ModuleLoader {
-            anchors.fill: parent; active: root.selected && !!ShellState.pluginId
+            anchors.fill: parent
+            screenName: root.screen.name
+            active: (root.screen.name === ShellState.pluginMonitor && !!ShellState.pluginId)
+                || ShellState.runningPluginIds.some(id => ShellState.runningPluginMonitors[id] === root.screen.name)
             readyToLoad: !leftDrawer.visible && !rightDrawer.visible
         }
     }

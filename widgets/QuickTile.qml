@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
-import "../core"
+import "../core/theme"
 
 Rectangle {
     id: root

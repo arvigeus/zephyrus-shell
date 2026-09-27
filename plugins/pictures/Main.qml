@@ -1,0 +1,3 @@
+import "../../pictures"
+
+PicturesBrowser {}

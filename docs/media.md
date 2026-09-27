@@ -1,8 +1,8 @@
 # Movies and TV Series
 
-Open **Desktop → Movies** or **Desktop → TV Series**. They are separate plugins
+Open **Spaces → Movies** or **Spaces → TV Series**. They are separate plugins
 sharing the browser and provider service in `media/`. The shell's normal overlay
-owns their lifecycle: Escape or Desktop closes the module and stops its worker.
+owns their lifecycle: Escape or selecting Desktop closes the module and stops its worker.
 
 The default view has a detail area above a horizontal poster rail. The grid button
 switches to posters on the left and details on the right. That preference is shared

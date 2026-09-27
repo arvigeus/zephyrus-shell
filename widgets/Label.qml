@@ -1,5 +1,5 @@
 import QtQuick
-import "../core"
+import "../core/theme"
 
 Text {
     color: Theme.text

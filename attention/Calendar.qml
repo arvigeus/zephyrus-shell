@@ -13,7 +13,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         Label { text: Qt.formatDate(root.month, "MMMM yyyy"); font.pixelSize: 20; Layout.fillWidth: true }
-        Action { iconName: "arrow-left"; Accessible.name: "Previous month"; onClicked: root.move(-1) }
+        Action { iconName: "chevron-left"; Accessible.name: "Previous month"; onClicked: root.move(-1) }
         Action { iconName: "chevron-right"; Accessible.name: "Next month"; onClicked: root.move(1) }
     }
     GridLayout {

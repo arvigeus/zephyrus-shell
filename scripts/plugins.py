@@ -35,7 +35,11 @@ def discover(root):
             # Older manifests used glyphs; keep them readable with a Lucide fallback.
             if not re.fullmatch(r"[a-z0-9-]+", icon) or not (Path(__file__).resolve().parent.parent / "assets" / "lucide" / (icon + ".svg")).is_file():
                 icon = "monitor"
-            entries.append(dict(id=plugin_id, name=data["name"], icon=icon, order=order, entry=entry.as_uri()))
+            keep_running = data.get("keepRunning", False)
+            if not isinstance(keep_running, bool):
+                raise ValueError("keepRunning must be a boolean")
+            entries.append(dict(id=plugin_id, name=data["name"], icon=icon, order=order,
+                                entry=entry.as_uri(), keepRunning=keep_running))
             seen.add(plugin_id)
         except (ValueError, TypeError, OSError, AttributeError) as error:
             errors.append(f"{manifest.parent.name}: {error}")

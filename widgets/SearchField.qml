@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import "../core"
+import "../core/theme"
 
 TextField {
     implicitHeight: 46

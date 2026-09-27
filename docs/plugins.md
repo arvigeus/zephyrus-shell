@@ -11,6 +11,7 @@ Copy `templates/plugin/` into `plugins/your-name/`. Change the manifest's `id` a
   "icon": "monitor",
   "order": 40,
   "entry": "Main.qml",
+  "keepRunning": false,
   "enabled": true
 }
 ```
@@ -18,6 +19,9 @@ Copy `templates/plugin/` into `plugins/your-name/`. Change the manifest's `id` a
 IDs use lowercase letters, digits and hyphens, beginning with a letter. `order` is
 an integer. `entry` must resolve inside the plugin directory to an existing QML
 file. Set `enabled` to false or remove the directory and reload to remove a space.
+`keepRunning` is an optional boolean. When true, selecting Desktop or another
+module hides this one while its owned worker and UI remain alive. The Spaces
+drawer marks it Running and offers Close. Escape and `host.close()` stop it.
 Invalid manifests produce visible errors without stopping other entries.
 
 ## The entire host contract
@@ -37,8 +41,10 @@ is a complete working example.
 ## Lifetime and resource ownership
 
 Startup and Reload read JSON only. Opening the library list does not load plugin
-QML. Selecting one creates its root Item. Switching spaces or closing the overlay
-destroys that Item and its children. Quickshell/Qt may retain compiled QML code in
+QML. Selecting one creates its root Item after the drawer closes. Switching
+spaces destroys a transient module. A module with `keepRunning: true` remains
+alive until Escape, `host.close()`, or the drawer’s Close control stops it.
+Quickshell/Qt may retain compiled QML code in
 their cache; the promise is no live plugin UI, timers, or owned workers while closed,
 not literally zero bytes of metadata or cached code.
 
@@ -66,10 +72,11 @@ when reloaded, and normal Quickshell source hot reload handles QML edits.
 
 ## Presentation and icons
 
-The Desktop drawer lists modules only. Selecting one closes the drawer and opens
+The Spaces drawer lists Desktop and the installed modules. Selecting one closes the drawer and opens
 a full desktop overlay behind the pills, with content starting below the 66 px
 pill bar. The pills remain visible and clickable. The host has no heading or
-navigation buttons: Escape or clicking Desktop closes any module.
+navigation buttons: Escape closes the visible module; Desktop hides it if its
+manifest enables `keepRunning`.
 
 The default background is translucent. A module may declare
 `property url backgroundImage: Qt.resolvedUrl("background.jpg")` on its root.
@@ -84,5 +91,6 @@ Lucide SVG assets when a new icon is needed; do not use emoji or text glyphs as
 interface icons. Application and brand artwork can retain their native icons.
 
 Module creation waits for the drawer exit animation and uses an asynchronous
-Loader with a shared loading indicator. Escape/Desktop can cancel loading.
+Loader with a shared loading indicator. Escape cancels loading; Desktop hides
+retained modules while their initialization finishes.
 Module content is destroyed on close, including when creation is in progress.

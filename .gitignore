@@ -1,3 +1,5 @@
 __pycache__/
 tests/artifacts/*.png
 tests/artifacts/*.log
+plugins/terminal/QMLTermWidget/
+plugins/terminal/.QMLTermWidget.new/

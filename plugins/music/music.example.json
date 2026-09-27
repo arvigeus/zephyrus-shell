@@ -1,0 +1,11 @@
+{
+  "storefront": "us",
+  "catalog_token": "",
+  "providers": [],
+  "lyrics_providers": [
+    {
+      "name": "LRCLIB",
+      "base_url": "https://lrclib.net/api"
+    }
+  ]
+}

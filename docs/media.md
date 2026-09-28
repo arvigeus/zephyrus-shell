@@ -16,6 +16,13 @@ year range, minimum rating/votes, and sort order. Apply commits filters;
 Reset clears them. Search is debounced; pages append automatically near the end.
 Favorites are separate from discovery and can be searched by title.
 
+The ordinary genre choices follow TMDB's separate [movie](https://developer.themoviedb.org/reference/genre-movie-list)
+and [TV](https://developer.themoviedb.org/reference/genre-tv-list) genre lists.
+TV uses TMDB's combined labels such as **Action & Adventure** and
+**Sci-Fi & Fantasy**. Biography and Sport are not TMDB genres, so they are not
+offered as genre filters. **Anime** is the separate MAL catalogue choice in
+both modules.
+
 Reopening a saved catalogue displays its snapshot while refreshing in the background.
 Selection displays the catalogue record immediately, then hydrates metadata and
 artwork independently. Late responses cannot replace a newer selection. Image,
@@ -54,6 +61,7 @@ Replace the example provider with your service's URL:
   "omdb_key": "",
   "mdblist_key": "",
   "watchmode_key": "",
+  "mal_client_id": "",
   "region": "US",
   "providers": [
     {
@@ -62,6 +70,7 @@ Replace the example provider with your service's URL:
       "series_url": "https://example.org/series/{imdbId}/{season}/{episode}"
     }
   ],
+  "anime_sources": [],
   "player": ["mpv"],
   "opensubtitles": {
     "api_key": "",
@@ -81,6 +90,13 @@ Replace the example provider with your service's URL:
   Pagination stays with the provider that supplied the page.
 - `mdblist_key`: optional additional ratings and preferred backdrops.
 - `watchmode_key`: optional Watch links. `region` selects preferred sources.
+- `mal_client_id`: optional official MyAnimeList API client ID. Register a client
+  at [MAL API configuration](https://myanimelist.net/apiconfig/create). Public
+  catalogue requests use the client ID without a user OAuth login. When set,
+  official MAL data supplies ordinary Anime search, rankings, scores, and title
+  details. AniList supplies catalogue-wide genre/year/score filters and results
+  if an official MAL request fails. Without a client ID, AniList supplies Anime
+  browsing and details, but MAL scores are unavailable.
 - `providers`: named objects with separate `movie_url` and `series_url` templates.
   A provider may supply either or both; each module lists only compatible providers.
   Supported substitutions: `{imdbId}`,
@@ -88,6 +104,15 @@ Replace the example provider with your service's URL:
   Season/episode placeholders require selecting an episode; Watch online opens the
   episode chooser when the series template requires these values. A provider URL without
   placeholders retains NexFlix's `/title/{imdbId}/` convention.
+- `anime_sources`: optional named source adapters for Anime playback. Keep source
+  endpoints, matching patterns, and decoder keys in your private `media.json`.
+  The supported strategies are `mal_embed` (an `embed_url` with `{malId}`,
+  `{episode}`, and `{mode}`) and `search_embed` (a title search followed by
+  episode and server lookups). Both use `blob_pattern` and `xor_key` to resolve a
+  direct stream. A title search adapter also needs `search_url`,
+  `result_pattern`, `episodes_url`, `episode_pattern`, `servers_url`, and
+  `server_pattern`. Set `episodes_field` and `servers_field` when those requests
+  return HTML inside a JSON field. Source names appear only as playback choices.
 - `player`: an argument array for a desktop player, default `mpv`. Direct media
   URLs ending in `.mp4`, `.mkv`, `.webm`, `.m3u8`, `.mpd`, `.avi`, or `.mov` use
   this player; provider webpages use the [configured browser command](browser.md). No shell evaluates the
@@ -105,6 +130,38 @@ The Notes & URL editor has been removed. Older saved notes/URLs are retained in
 storage but do not override Watch online. Playback providers are configured in
 `media.json`. Reopen the module after changing provider names; keys are read for
 each request. Refresh a title to bypass its metadata/artwork cache.
+
+Selecting **Anime** in Discover switches Movies or TV Series to an anime
+catalogue. Search, sort, year, minimum score, and the second genre selector
+apply to anime; country and minimum votes are hidden. Other genres and All
+continue to use the ordinary movie/TV catalogue. Anime records use MAL IDs,
+and a displayed MAL score opens the title on MyAnimeList. The configured
+official MAL API supplies standard search, rankings, scores, and title details,
+including premiere season, adaptation source, age rating, and background notes.
+AniList handles combined
+search, genre, year, and minimum score filters, and provides the keyless
+catalogue. Its score drives AniList-powered score filters and ordering; MAL
+rankings use MAL scores. AniList scores are never displayed as MAL scores.
+Results without a MAL ID are omitted. When a title is selected, one cached
+AniList request fills missing artwork and trailers and supplies voice cast and
+staff. The **Cast** tab links those people to their AniList pages. MAL scores
+and fields take precedence.
+The **Collections** tab loads related and recommended Anime titles on demand as
+poster cards. Selecting one opens its catalogue details in the matching Movies
+or TV Series module. Ordinary movies show their TMDB franchise collection when
+available, plus TMDB recommendations. Ordinary TV Series show TMDB
+recommendations. Overview does not request collection data.
+
+Opening an Anime **Episodes** tab looks up an exact MAL-to-Kitsu mapping through
+AniMap, then loads available episode titles, summaries, dates, and thumbnails.
+This is cached for seven days for completed titles, one day for airing titles;
+missing or ambiguous mappings fall back to numbered episodes. Discovery never
+requests episode metadata for every card. Anime playback uses `anime_sources`
+and requires `mpv`; **Watch online** starts episode 1, while **Episodes** lets
+you choose another. Choose Sub or Dub beside Watch online. Availability and
+audio choices depend on each configured source. **Find** searches by title and
+can also search from an episode. **Spoilers** looks up a matching Wikipedia plot
+by anime title when no IMDb ID is available.
 
 NexFlix `.env` mappings are `TMDB_KEY → tmdb_key`, `MDBLIST_KEY → mdblist_key`, and
 `WATCHMODE_KEY → watchmode_key`; `OMDB_KEY → omdb_key` is also supported as a

@@ -11,6 +11,7 @@ QtObject {
     property var runningPluginMonitors: ({})
     property var retentionRequests: ({})
     property var userProfile: ({})
+    property var pendingMediaTitle: null
     function openProfile(profile) { userProfile = profile; panel = "profile"; }
     function toggle(name, screenName) {
         if (!["left", "right", "center"].includes(name)) return;
@@ -35,6 +36,7 @@ QtObject {
         if (!enabled && pluginId !== id) stopPlugin(id);
     }
     function showDesktop() {
+        pendingMediaTitle = null;
         if (pluginId && !retentionRequests[pluginId]) stopPlugin(pluginId);
         pluginId = ""; pluginMonitor = ""; panel = "";
     }
@@ -49,6 +51,7 @@ QtObject {
         if (pluginId === id) { pluginId = ""; pluginMonitor = ""; panel = ""; }
     }
     function backToSpaces() {
+        pendingMediaTitle = null;
         if (pluginId) stopPlugin(pluginId);
         pluginId = ""; pluginMonitor = ""; panel = "left";
     }
@@ -57,6 +60,7 @@ QtObject {
         panel = pluginId ? "module" : "";
     }
     function close() {
+        pendingMediaTitle = null;
         if (pluginId) stopPlugin(pluginId);
         panel = ""; pluginId = ""; pluginMonitor = "";
     }

@@ -13,6 +13,7 @@ Flow {
         const source = r.source.toLowerCase();
         const score = parseFloat(r.value);
         if (source === "imdb" || source === "internet movie database") return "imdb";
+        if (source === "myanimelist") return "mal";
         if (source === "tmdb") return "tmdb";
         if (source === "metacritic") return "metacritic";
         if (["rotten tomatoes","tomatoes","rt"].includes(source)) return score >= 75 ? "rt_certified" : score >= 60 ? "rt_fresh" : "rt_rotten";
@@ -30,7 +31,7 @@ Flow {
             onClicked: Browser.open(root.page(modelData), root.title.kind === "tv" ? "series" : "movies")
             contentItem: RowLayout {
             spacing: 6
-            W.AppIcon { artwork: Qt.resolvedUrl("../assets/ratings/rating_" + root.icon(ratingButton.modelData) + ".png"); Layout.preferredWidth: 32; Layout.preferredHeight: 24; Accessible.name: ratingButton.modelData.source }
+            W.AppIcon { artwork: Qt.resolvedUrl("../assets/ratings/rating_" + root.icon(ratingButton.modelData) + (root.icon(ratingButton.modelData) === "mal" ? ".svg" : ".png")); Layout.preferredWidth: 32; Layout.preferredHeight: 24; Accessible.name: ratingButton.modelData.source }
             W.Label { visible: !root.icon(ratingButton.modelData); text: ratingButton.modelData.source; color: Theme.muted }
             W.Label { text: String(ratingButton.modelData.value); font.bold: true }
             }

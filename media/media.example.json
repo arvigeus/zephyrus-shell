@@ -3,6 +3,7 @@
   "omdb_key": "",
   "mdblist_key": "",
   "watchmode_key": "",
+  "mal_client_id": "",
   "region": "US",
   "providers": [
     {
@@ -11,6 +12,7 @@
       "series_url": "https://example.org/series/{imdbId}/{season}/{episode}"
     }
   ],
+  "anime_sources": [],
   "player": ["mpv"],
   "opensubtitles": {
     "api_key": "",

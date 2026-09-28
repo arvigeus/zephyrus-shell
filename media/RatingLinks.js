@@ -25,6 +25,7 @@ function page(r, title) {
         return linkedId ? "https://www.imdb.com/title/" + linkedId[0] + "/" : "https://www.imdb.com/find/?q=" + query;
     }
     if (service === "tmdb") return title.tmdbId ? "https://www.themoviedb.org/" + (title.kind === "tv" ? "tv/" : "movie/") + title.tmdbId : "https://www.themoviedb.org/search?query=" + query;
+    if (service === "myanimelist") return webUrl(r.url || title.malUrl,"https://myanimelist.net", "") || (title.malId ? "https://myanimelist.net/anime/" + title.malId : "https://myanimelist.net/anime.php?q=" + query);
     if (service === "rt" || service === "rt_audience") {
         const url=r.url || title.rottenTomatoesUrl;
         const path=String(url || "").replace(/^\/+/, "");
@@ -38,6 +39,6 @@ function page(r, title) {
     return "";
 }
 function ordered(ratings) {
-    const order={tmdb:0, imdb:1, rt:2, rt_audience:3, metacritic:4};
+    const order={myanimelist:0, tmdb:0, imdb:1, rt:2, rt_audience:3, metacritic:4};
     return ratings.slice().sort((a,b) => (order[source(a)] ?? 9)-(order[source(b)] ?? 9));
 }

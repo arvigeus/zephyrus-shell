@@ -3,6 +3,7 @@ import Quickshell
 import "core"
 import "shell"
 import "widgets"
+import "media/RatingLinks.js" as RatingLinks
 ShellRoot {
     FloatingWindow {
         id: window
@@ -25,6 +26,15 @@ ShellRoot {
             property bool localDefaultChecked: false
             property bool subtitleCaptured: false
             property bool subtitleResultsCaptured: false
+            property int animeSearchGeneration: 0
+            property bool animeOverviewCaptureStarted: false
+            property bool animeOverviewCaptured: false
+            property bool animeCollectionsCaptureStarted: false
+            property bool animeCollectionsCaptured: false
+            property bool movieCollectionsCaptureStarted: false
+            property bool movieCollectionsCaptured: false
+            property bool animeCastCaptureStarted: false
+            property bool animeCastCaptured: false
             property var toolbarGeometry
             function find(item,name) { if (item.objectName === name) return item; for (const child of item.children || []) { const found=find(child,name); if (found) return found; } return null; }
             function require(value, message) { if (!value) { console.error("MEDIA FAIL",message); Qt.quit(); throw new Error(message); } }
@@ -37,8 +47,22 @@ ShellRoot {
                     media=loader.item;
                     require(media.titles.length===20,"Catalogue did not load: " + media.error);
                     require(media.kind==="movie","Wrong module kind");
+                    if (!media.tmdbGenres.length) return;
+                    require(media.tmdbGenres.includes("TV Movie") && media.tmdbGenres.includes("Science Fiction") && !media.tmdbGenres.includes("Biography") && !media.tmdbGenres.includes("Sport"),"Movie genre choices do not match TMDB");
                     require(media.sameTitle({id:"tmdb:movie:42",tmdbId:42,kind:"movie"},{id:"tt42",tmdbId:42,imdbId:"tt42",kind:"movie"}),"Identity enrichment lost title ownership");
                     if (media.titleLoading || pauseFrames++ < 3) return;
+                    if (!movieCollectionsCaptured) {
+                        find(media,"collectionsTab").clicked();
+                        if (!media.collectionsLoaded) return;
+                        const card=find(media,"relatedCollectionCard");
+                        require(card && card.title.id === "tt1000", "TMDB collection cards did not load");
+                        if (!movieCollectionsCaptureStarted) {
+                            movieCollectionsCaptureStarted=true;
+                            overlay.item.grabToImage(result=>{ result.saveToFile("tests/artifacts/media-collections-movie.png"); movieCollectionsCaptured=true; });
+                        }
+                        return;
+                    }
+                    media.tab="overview";
                     require(media.nextPage === "fixture:2", "Pagination unavailable");
                     media.artworkLoading=true;
                     require(!media.detailLoading && media.titleLoading && find(media,"titleLoadingIndicator").running,"Indicator stopped before artwork finished");
@@ -104,6 +128,8 @@ ShellRoot {
                     if (!loader || !loader.item || loader.item.loading) return;
                     media=loader.item;
                     require(media.kind==="tv","Series module not separated");
+                    if (!media.tmdbGenres.length) return;
+                    require(media.tmdbGenres.includes("Action & Adventure") && media.tmdbGenres.includes("Sci-Fi & Fantasy") && media.tmdbGenres.includes("War & Politics") && !media.tmdbGenres.includes("History"),"TV genre choices do not match TMDB");
                     require(media.gridMode,"TV series did not default to grid");
                     if (!localDefaultChecked) {
                         if (media.loading) return;
@@ -121,6 +147,9 @@ ShellRoot {
                     if (media.episodeLoading) return;
                     require(media.episodes.length===1,"Episode did not load");
                     require(!!find(media,"episodeRow"),"Clickable episode row missing");
+                    const seriesTab=find(media,"episodesTab"), seriesRow=find(media,"episodeRow");
+                    require(seriesRow.mapToItem(media,0,0).y-seriesTab.mapToItem(media,0,seriesTab.height).y < 120,
+                            "Series episode controls left a large gap");
                     if (pauseFrames++ === 0) {
                         overlay.item.grabToImage(result=>result.saveToFile("tests/artifacts/media-episodes.png"));
                         return;
@@ -206,8 +235,120 @@ ShellRoot {
                     step++;
                 } else if (step === 12) {
                     if (!subtitleResultsCaptured) return;
+                    media.tab="overview";
+                    const genrePicker=find(media,"genrePicker");
+                    genrePicker.currentIndex=genrePicker.model.indexOf("Anime");
+                    find(media,"applyFilters").clicked();
+                    step++;
+                } else if (step === 13) {
+                    if (media.loading || media.detailLoading || !media.selected.id) return;
+                    require(media.animeMode && media.selected.id === "mal:1", "Anime filter did not switch the catalogue");
+                    require(media.selected.ratings[0].source === "MyAnimeList", "Anime rating did not use MAL");
+                    require(RatingLinks.page(media.selected.ratings[0],media.selected) === "https://myanimelist.net/anime/1", "Anime rating did not link to MAL");
+                    require(media.providers.length === 1 && media.providers[0] === "Fixture source", "Anime sources were not isolated");
+                    require(media.selected.cast.length === 1, "Anime detail enrichment was not displayed");
+                    require(!media.collectionsLoaded && !media.collectionSections.length && !!find(media,"collectionsTab"),
+                            "Anime Collections loaded before its tab was opened");
+                    require(find(media,"spoilersTab").visible && find(media,"findTab").visible,
+                            "Anime Spoilers or Find tab is missing");
+                    if (!animeOverviewCaptured) {
+                        if (!animeOverviewCaptureStarted) {
+                            animeOverviewCaptureStarted=true;
+                            overlay.item.grabToImage(result=>{ result.saveToFile("tests/artifacts/media-anime.png"); animeOverviewCaptured=true; });
+                        }
+                        return;
+                    }
+                    media.tab="episodes";
+                    media.loadEpisodes(false);
+                    step++;
+                } else if (step === 14) {
+                    if (media.episodeLoading || !media.episodes.length) return;
+                    require(media.episodes[0].title === "First episode" && media.episodes[0].date === "2025-04-01", "Anime episode details did not load");
+                    if (!animeCastCaptureStarted) {
+                        const animeRow=find(media,"episodeRow");
+                        if (!animeRow) return;
+                        require(animeRow.findAvailable, "Anime episode Find control is missing");
+                        const animeTab=find(media,"episodesTab");
+                        const gap=animeRow.mapToItem(media,0,0).y-animeTab.mapToItem(media,0,animeTab.height).y;
+                        require(gap >= 0 && gap < 120,"Anime episodes left a gap of " + gap + " px");
+                        media.tab="cast";
+                        animeCastCaptureStarted=true;
+                        overlay.item.grabToImage(result=>{ result.saveToFile("tests/artifacts/media-anime-cast.png"); animeCastCaptured=true; });
+                        return;
+                    }
+                    if (!animeCastCaptured) return;
+                    const online=find(media,"onlineButton");
+                    require(online.enabled && media.tab === "cast", "Anime watch action unavailable");
+                    online.triggered(0);
+                    require(media.playLoading && media.tab === "cast", "Anime watch did not start playback resolution");
+                    animeSearchGeneration=media.browseGeneration;
+                    find(media,"mediaSearch").text="example";
+                    step++;
+                } else if (step === 15) {
+                    if (media.loading || media.browseGeneration <= animeSearchGeneration) return;
+                    require(media.selected.id === "mal:1" && media.titles.length === 1, "Anime search left MAL catalogue");
+                    find(media,"mediaSearch").text="";
+                    find(media,"resetFilters").clicked();
+                    step++;
+                } else if (step === 16) {
+                    if (media.loading || media.titles.length < 20) return;
+                    require(!media.animeMode && media.titles[0].id.startsWith("tt"), "Leaving Anime did not restore TV catalogue");
+                    const genrePicker=find(media,"genrePicker");
+                    genrePicker.currentIndex=genrePicker.model.indexOf("Anime");
+                    find(media,"applyFilters").clicked();
+                    step++;
+                } else if (step === 17) {
+                    if (media.loading || media.detailLoading || media.selected.id !== "mal:1") return;
+                    find(media,"collectionsTab").clicked();
+                    if (media.collectionsLoading || !media.collectionsLoaded) return;
+                    const recommendation=find(media,"recommendedCollectionCard");
+                    if (!recommendation) return;
+                    require(recommendation.title.poster === media.titles[0].poster,
+                            "Anime recommendation did not use a poster card");
+                    if (!animeCollectionsCaptured) {
+                        if (!animeCollectionsCaptureStarted) {
+                            animeCollectionsCaptureStarted=true;
+                            overlay.item.grabToImage(result=>{ result.saveToFile("tests/artifacts/media-collections-anime.png"); animeCollectionsCaptured=true; });
+                        }
+                        return;
+                    }
+                    recommendation.clicked();
+                    step++;
+                } else if (step === 18) {
+                    if (media.relatedLoading || media.detailLoading || media.selected.id !== "mal:3") return;
+                    require(ShellState.pluginId === "series" && media.kind === "tv", "Recommended series left the series module");
+                    media.selectTitle(media.titles[0]);
+                    step++;
+                } else if (step === 19) {
+                    if (media.detailLoading || media.selected.id !== "mal:1") return;
+                    find(media,"collectionsTab").clicked();
+                    if (media.collectionsLoading || !media.collectionsLoaded) return;
+                    const related=find(media,"relatedCollectionCard");
+                    if (!related) return;
+                    related.clicked();
+                    step++;
+                } else if (step === 20) {
+                    if (ShellState.pluginId !== "movies") return;
+                    const loader=overlay.item ? find(overlay.item,"moduleContent") : null;
+                    if (!loader || !loader.item || loader.item.selected.id !== "mal:2" || loader.item.detailLoading) return;
+                    media=loader.item;
+                    require(media.kind === "movie" && media.animeMode && media.selected.id === "mal:2",
+                            "Related anime film did not open in Movies");
+                    find(media,"collectionsTab").clicked();
+                    if (media.collectionsLoading || !media.collectionsLoaded) return;
+                    const recommendation=find(media,"recommendedCollectionCard");
+                    if (!recommendation) return;
+                    recommendation.clicked();
+                    step++;
+                } else if (step === 21) {
+                    if (ShellState.pluginId !== "series") return;
+                    const loader=overlay.item ? find(overlay.item,"moduleContent") : null;
+                    if (!loader || !loader.item || loader.item.selected.id !== "mal:3" || loader.item.detailLoading) return;
+                    media=loader.item;
+                    require(media.kind === "tv" && media.animeMode && media.selected.id === "mal:3",
+                            "Recommended series did not open in TV Series");
                     ShellState.close();
-                    console.log("MEDIA PASS: discovery, catalogue, details, favorites, grid, series episodes, subtitles, destruction");
+                    console.log("MEDIA PASS: discovery, anime navigation and search, catalogue, details, favorites, grid, series episodes, subtitles, destruction");
                     Qt.quit();
                 }
             }

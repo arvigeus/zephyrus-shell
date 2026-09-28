@@ -29,6 +29,9 @@ Item {
         Qt.callLater(root.syncCurrentModule);
     }
     function syncCurrentModule() {
+        if (ShellState.pendingMediaTitle && ShellState.pluginId &&
+                ShellState.pluginId !== (ShellState.pendingMediaTitle.kind === "movie" ? "movies" : "series"))
+            ShellState.pendingMediaTitle = null;
         let item = null;
         let failed = !root.entry && !!ShellState.pluginId;
         if (ShellState.pluginId && ShellState.runningPluginIds.includes(ShellState.pluginId)) {
@@ -43,7 +46,17 @@ Item {
         }
         currentModule = item;
         currentLoadFailed = failed;
+        if (item && ShellState.pendingMediaTitle) Qt.callLater(root.deliverMediaTitle);
         if (ShellState.panel === "module" && item) Qt.callLater(root.restoreModuleFocus);
+    }
+    function deliverMediaTitle() {
+        const title = ShellState.pendingMediaTitle;
+        if (!title || !currentModule || ShellState.panel !== "module" ||
+                ShellState.pluginId !== (title.kind === "movie" ? "movies" : "series") ||
+                currentModule.kind !== title.kind ||
+                typeof currentModule.openTitle !== "function") return;
+        ShellState.pendingMediaTitle = null;
+        currentModule.openTitle(title);
     }
     function restoreModuleFocus() {
         if (ShellState.panel !== "module" || !currentModule) return;
@@ -145,5 +158,13 @@ Item {
         function close() { ShellState.close(); }
         function back() { ShellState.backToSpaces(); }
         function requestKeepRunning(pluginId, enabled) { ShellState.requestKeepRunning(pluginId, enabled); }
+        function openMediaTitle(title) {
+            if (!title || !title.id || !["movie","tv"].includes(title.kind)) return false;
+            const pluginId = title.kind === "movie" ? "movies" : "series";
+            if (!Plugins.find(pluginId)) return false;
+            ShellState.pendingMediaTitle = title;
+            ShellState.openPlugin(pluginId);
+            return true;
+        }
     }
 }

@@ -26,6 +26,10 @@ Use the file to set a different Web UI address too. Keep it private with
 The qBittorrent process must see the **same absolute staging
 path** as the shell. A remote Web UI works only when its download filesystem
 is mounted at that same path on both machines.
+If a local Web UI cannot be reached and qBittorrent is not running, **Find**
+offers **Start qBittorrent** for a native or Flatpak installation. It waits for
+the Web UI to become available. Remote Web UI connections and an already running
+qBittorrent still need their address and Web UI settings checked manually.
 
 Example:
 

@@ -15,6 +15,12 @@ ColumnLayout {
     property bool searching: false
     property bool pollLoading: false
     property bool connected: false
+    property bool connectionLoading: false
+    property bool canStartQbittorrent: false
+    property bool startLoading: false
+    property bool launchPending: false
+    property bool launchTimedOut: false
+    property double launchDeadline: 0
     property int searchId: -1
     property string contextId: ""
     property int generation: 0
@@ -70,11 +76,33 @@ ColumnLayout {
         if (visible) connect();
     }
     function connect() {
-        service.request("init", {}, (result, failure) => {
-            connected = !failure;
-            if (failure) error = failure;
-            else if (!result.plugins.length) error = "Enable a search plugin in qBittorrent first.";
-            refreshJobs();
+        if (connectionLoading) return;
+        connectionLoading = true;
+        service.request("probe", {}, (result, failure) => {
+            connectionLoading = false;
+            if (!visible) return;
+            connected = !failure && !!result && result.connected;
+            canStartQbittorrent = !failure && !!result && result.canStart && !startLoading && !launchPending;
+            if (connected) {
+                launchPending = false;
+                launchTimedOut = false;
+                error = result.plugins.length ? "" : "Enable a search plugin in qBittorrent first.";
+            } else if (!launchPending && !startLoading) {
+                error = launchTimedOut ? "qBittorrent did not become available. Check that it started and its Web UI is enabled."
+                    : failure || (result && result.error) || "Cannot connect to qBittorrent.";
+            }
+            if (!launchPending) refreshJobs();
+        });
+    }
+    function startQbittorrent() {
+        if (!canStartQbittorrent || startLoading || launchPending) return;
+        startLoading = true; canStartQbittorrent = false; launchTimedOut = false; error = "";
+        service.request("start_qbittorrent", {}, (result, failure) => {
+            startLoading = false;
+            if (failure) { error = failure; canStartQbittorrent = true; return; }
+            launchPending = true;
+            launchDeadline = Date.now() + 30000;
+            connect();
         });
     }
     function find() {
@@ -227,6 +255,17 @@ ColumnLayout {
     Timer { interval: 1800; repeat: true; running: root.visible && root.searching; onTriggered: root.pollSearch() }
     Timer { interval: 1500; repeat: true; running: root.visible && !!root.inspectRow.url && !root.inspectFiles.length; onTriggered: root.fetchFiles() }
     Timer { interval: 5000; repeat: true; running: root.visible && root.connected; onTriggered: root.refreshJobs() }
+    Timer {
+        interval: 1800; repeat: true; running: root.visible && root.launchPending
+        onTriggered: {
+            if (Date.now() >= root.launchDeadline) {
+                root.launchPending = false;
+                root.launchTimedOut = true;
+                root.error = "qBittorrent did not become available. Check that it started and its Web UI is enabled.";
+                root.connect();
+            } else root.connect();
+        }
+    }
 
     RowLayout {
         Layout.fillWidth: true; spacing: 8
@@ -235,6 +274,11 @@ ColumnLayout {
         BusyIndicator { running: root.searching; visible: running; Layout.preferredWidth: 26; Layout.preferredHeight: 26 }
     }
     W.Label { visible: !!root.error; Layout.fillWidth: true; text: root.error; color: Theme.danger; wrapMode: Text.Wrap }
+    RowLayout {
+        visible: root.canStartQbittorrent || root.startLoading || root.launchPending
+        W.Action { iconName: "power"; text: root.startLoading || root.launchPending ? "Starting qBittorrent…" : "Start qBittorrent"; enabled: root.canStartQbittorrent && !root.startLoading && !root.launchPending; onClicked: root.startQbittorrent() }
+        BusyIndicator { running: root.startLoading || root.launchPending; visible: running; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
+    }
     W.Label { visible: !!root.info; Layout.fillWidth: true; text: root.info; color: Theme.muted; wrapMode: Text.Wrap }
     ListView {
         id: resultList

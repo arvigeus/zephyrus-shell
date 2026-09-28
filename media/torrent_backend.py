@@ -5,12 +5,14 @@ from contextlib import contextmanager
 import concurrent.futures
 import fcntl
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
 import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -30,6 +32,10 @@ DATA = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'ze
 
 
 class TorrentError(Exception):
+    pass
+
+
+class QBitConnectionError(TorrentError):
     pass
 
 
@@ -89,8 +95,10 @@ class QBitClient:
                     ) from None
                 raise TorrentError(f'qBittorrent rejected the Web UI credentials for {endpoint}.') from None
             raise TorrentError(f'qBittorrent returned HTTP {error.code} for {endpoint}.') from None
-        except (OSError, UnicodeError):
-            raise TorrentError('Cannot reach the qBittorrent Web UI. Check torrents.json and that qBittorrent is running.') from None
+        except OSError:
+            raise QBitConnectionError('Cannot reach the qBittorrent Web UI. Check torrents.json and that qBittorrent is running.') from None
+        except UnicodeError:
+            raise TorrentError('qBittorrent returned an unreadable response.') from None
 
     def call(self, path, values=None):
         with self.lock:
@@ -215,6 +223,75 @@ class TorrentBackend:
             self.client = QBitClient(config)
             self.client_config = fingerprint
         return self.client
+
+    def local_web_ui(self):
+        host = urllib.parse.urlsplit(str(self.config().get('url') or 'http://127.0.0.1:8080')).hostname
+        if host == 'localhost':
+            return True
+        try:
+            return ipaddress.ip_address(host).is_loopback
+        except (ValueError, TypeError):
+            return False
+
+    @staticmethod
+    def qbit_running():
+        try:
+            processes = Path('/proc').iterdir()
+            for process in processes:
+                if not process.name.isdigit():
+                    continue
+                try:
+                    if (process.stat().st_uid == os.getuid()
+                            and (process / 'comm').read_text().strip().lower() in ('qbittorrent', 'qbittorrent-nox')):
+                        return True
+                except (OSError, UnicodeError):
+                    continue
+        except OSError:
+            pass
+        return False
+
+    @staticmethod
+    def qbit_launcher():
+        native = shutil.which('qbittorrent')
+        if native:
+            return [native]
+        flatpak = shutil.which('flatpak')
+        if flatpak:
+            try:
+                installed = subprocess.run([flatpak, 'info', '--show-ref', 'org.qbittorrent.qBittorrent'],
+                                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                           stderr=subprocess.DEVNULL, timeout=5, check=False)
+                if installed.returncode == 0:
+                    return [flatpak, 'run', 'org.qbittorrent.qBittorrent']
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        return None
+
+    def probe(self, request):
+        try:
+            return self.init(request) | {'connected': True, 'canStart': False}
+        except QBitConnectionError as error:
+            local = self.local_web_ui()
+            running = self.qbit_running() if local else False
+            launcher = self.qbit_launcher() if local and not running else None
+            return {'connected': False, 'plugins': [], 'canStart': bool(launcher),
+                    'error': str(error) if not local or running or launcher else
+                    'qBittorrent is not installed. Install it and enable its Web UI.'}
+
+    def start_qbittorrent(self, request):
+        if not self.local_web_ui():
+            raise TorrentError('Only a local qBittorrent installation can be started here.')
+        if self.qbit_running():
+            return {'started': False}
+        command = self.qbit_launcher()
+        if not command:
+            raise TorrentError('qBittorrent is not installed. Install it and enable its Web UI.')
+        try:
+            subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError:
+            raise TorrentError('Could not start qBittorrent. Launch it from your applications menu.') from None
+        return {'started': True}
 
     def move_torrent_files(self, torrent, assignments):
         """Let qBittorrent rename and relocate its own payload before indexing it."""
@@ -898,7 +975,7 @@ class TorrentBackend:
             return self.library.list(request['kind'])
         if operation == 'local_files':
             return self.library.files(request['title'])
-        if operation not in ('init', 'search', 'results', 'status', 'stop', 'queue', 'inspect', 'jobs', 'review',
+        if operation not in ('init', 'probe', 'start_qbittorrent', 'search', 'results', 'status', 'stop', 'queue', 'inspect', 'jobs', 'review',
                              'import_selected', 'scan', 'scan_lookup', 'scan_import', 'delete_local',
                              'delete_job'):
             raise TorrentError('Unknown torrent request.')
@@ -909,7 +986,7 @@ def main():
     from services.worker import serve
     backend = TorrentBackend()
     serve(backend.handle, errors=(TorrentError, ValueError),
-          controls=('queue', 'stop', 'jobs', 'import_selected', 'scan', 'scan_import', 'delete_local',
+          controls=('start_qbittorrent', 'queue', 'stop', 'jobs', 'import_selected', 'scan', 'scan_import', 'delete_local',
                     'delete_job'))
 
 

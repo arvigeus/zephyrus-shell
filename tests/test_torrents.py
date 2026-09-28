@@ -7,11 +7,13 @@ import subprocess
 import tempfile
 import threading
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 from media.local import LocalLibrary, destination
 from media.scanner import guess
-from media.torrent_backend import QBitClient, TorrentBackend, result_row, search_query
+from media.torrent_backend import (QBitClient, QBitConnectionError, TorrentBackend,
+                                   TorrentError, result_row, search_query)
 
 
 class FakeQBit:
@@ -89,6 +91,54 @@ class TorrentTests(unittest.TestCase):
                       'title': 'The General', 'year': 1926}
         self.fake = FakeQBit()
         self.backend = TorrentBackend(self.root / 'config/torrents.json', self.root / 'data/zephyrus-shell/media', self.fake)
+
+    def test_probe_only_offers_start_for_missing_local_process(self):
+        with patch.object(self.backend, 'init', side_effect=QBitConnectionError('Web UI unreachable')), \
+                patch.object(self.backend, 'qbit_running', return_value=False), \
+                patch.object(self.backend, 'qbit_launcher', return_value=['/usr/bin/qbittorrent']):
+            self.assertTrue(self.backend.handle({'op': 'probe'})['canStart'])
+            self.backend.config_path.parent.mkdir(parents=True)
+            self.backend.config_path.write_text(json.dumps({'url': 'http://example.org:8080'}))
+            self.assertFalse(self.backend.handle({'op': 'probe'})['canStart'])
+            self.backend.config_path.write_text(json.dumps({'url': 'http://127.0.0.1:8080'}))
+            with patch.object(self.backend, 'qbit_running', return_value=True):
+                self.assertFalse(self.backend.handle({'op': 'probe'})['canStart'])
+            with patch.object(self.backend, 'qbit_launcher', return_value=None):
+                self.assertFalse(self.backend.handle({'op': 'probe'})['canStart'])
+        with patch.object(self.backend, 'init', side_effect=TorrentError('Invalid credentials')):
+            with self.assertRaisesRegex(TorrentError, 'Invalid credentials'):
+                self.backend.handle({'op': 'probe'})
+
+    def test_start_qbittorrent_uses_installed_launcher_only_for_local_web_ui(self):
+        with patch.object(self.backend, 'qbit_running', return_value=False), \
+                patch.object(self.backend, 'qbit_launcher', return_value=['/usr/bin/qbittorrent']), \
+                patch('media.torrent_backend.subprocess.Popen') as launch:
+            self.assertTrue(self.backend.handle({'op': 'start_qbittorrent'})['started'])
+            launch.assert_called_once_with(['/usr/bin/qbittorrent'], stdin=subprocess.DEVNULL,
+                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                           start_new_session=True)
+            self.backend.config_path.parent.mkdir(parents=True)
+            self.backend.config_path.write_text(json.dumps({'url': 'http://example.org:8080'}))
+            with self.assertRaisesRegex(TorrentError, 'Only a local'):
+                self.backend.handle({'op': 'start_qbittorrent'})
+            launch.assert_called_once()
+            self.backend.config_path.write_text(json.dumps({'url': 'http://127.0.0.1:8080'}))
+            with patch.object(self.backend, 'qbit_running', return_value=True):
+                self.assertFalse(self.backend.handle({'op': 'start_qbittorrent'})['started'])
+            launch.assert_called_once()
+
+    def test_flatpak_launcher_is_supported(self):
+        with patch('media.torrent_backend.shutil.which', side_effect=lambda name: '/usr/bin/flatpak' if name == 'flatpak' else None), \
+                patch('media.torrent_backend.subprocess.run') as installed:
+            installed.return_value.returncode = 0
+            self.assertEqual(TorrentBackend.qbit_launcher(),
+                             ['/usr/bin/flatpak', 'run', 'org.qbittorrent.qBittorrent'])
+
+    def test_network_failure_is_distinct_from_web_ui_rejection(self):
+        client = QBitClient({'url': 'http://127.0.0.1:8080'})
+        with patch.object(client.opener, 'open', side_effect=urllib.error.URLError('offline')):
+            with self.assertRaises(QBitConnectionError):
+                client.call('search/plugins')
 
     def test_context_search_and_wrong_year(self):
         self.assertEqual(search_query(self.movie), 'The General 1926')

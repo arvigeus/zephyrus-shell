@@ -8,6 +8,7 @@ RowLayout {
     id: root
     property string text: ""
     property string iconName: "play"
+    property bool busy: false
     property var options: []
     property int currentIndex: 0
     property alias popup: menu
@@ -17,7 +18,13 @@ RowLayout {
     W.Action {
         id: primary
         text: root.text; iconName: root.iconName
+        Accessible.description: root.busy ? "Opening player" : ""
         onClicked: root.triggered(root.currentIndex)
+        BusyIndicator {
+            anchors.centerIn: parent
+            width: 24; height: 24
+            visible: root.busy; running: visible; z: 1
+        }
         background: Rectangle {
             radius: Theme.controlRadius
             topRightRadius: arrow.visible ? 0 : Theme.controlRadius
@@ -28,6 +35,7 @@ RowLayout {
             border.width: 2
         }
     }
+    Binding { target: primary.contentItem; property: "opacity"; value: root.busy ? 0 : 1 }
     W.IconButton {
         id: arrow
         visible: root.options.length > 1

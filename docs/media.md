@@ -126,6 +126,7 @@ configured online providers. Its main button launches the selected source;
 its dropdown selects and launches another. **Trailer** is a single button
 when one trailer exists, or **Trailers** with a dropdown for several. Both use the
 shell accent background. Promotional clips and featurettes are excluded.
+**Services** lists availability links from Watchmode for the selected title.
 The Notes & URL editor has been removed. Older saved notes/URLs are retained in
 storage but do not override Watch online. Playback providers are configured in
 `media.json`. Reopen the module after changing provider names; keys are read for
@@ -174,7 +175,7 @@ keys, and provider response bodies.
 Overview includes synopsis, rating-service artwork, genres/countries, directors,
 writers, and the leading six actors. **Cast** shows the full cast and crew, including
 roles and portraits when supplied. Trailer choices live beside Watch online. Selecting a cast member loads a biography and credits
-for the current module's media type. Watch links and Wikipedia spoiler plots load
+for the current module's media type. Availability links and Wikipedia spoiler plots load
 only on request. TV Series adds season selection, paginated episodes, and
 per-episode online playback templates; Movies has no episode controls. Favorites
 persist independently of metadata refresh. Spoiler text omits Wikipedia headings

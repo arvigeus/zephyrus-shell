@@ -505,6 +505,7 @@ Item {
                     Layout.fillWidth: true; spacing: 8
                     SplitButton {
                         objectName: "onlineButton"
+                        busy: root.playLoading
                         enabled: !root.playLoading && (root.localFiles.length > 0 || root.providers.length > 0)
                         text: root.localFiles.length && root.watchIndex === 0 ? "Watch locally" : "Watch online"
                         options: (root.localFiles.length ? ["Local"] : []).concat(root.providers)
@@ -515,8 +516,6 @@ Item {
                             else { root.providerIndex = index - (root.localFiles.length ? 1 : 0); root.play(null, true); }
                         }
                     }
-                    BusyIndicator { visible: root.playLoading; running: visible; width: 24; height: 24 }
-                    W.Label { visible: root.playLoading; text: "Opening player…"; color: Theme.muted; verticalAlignment: Text.AlignVCenter; height: 42 }
                     W.Choice { visible: root.animeMode; width: 85; model: ["Sub","Dub"]; onActivated: root.audioMode = currentIndex === 1 ? "dub" : "sub"; Accessible.name: "Anime audio" }
                     SplitButton { visible: root.trailers.length > 0; text: root.trailers.length === 1 ? "Trailer" : "Trailers"; options: root.trailers.map(t => t.title); currentIndex: root.trailerIndex; onTriggered: index => { root.trailerIndex=index; if (root.trailers[index]) Browser.open(root.trailers[index].url, root.kind === "tv" ? "series" : "movies"); } }
                     W.IconButton { iconName: root.personal.favorite ? "star-filled" : "star"; text: root.personal.favorite ? "Remove favorite" : "Add favorite"; onClicked: root.save({favorite:!root.personal.favorite}) }
@@ -530,7 +529,7 @@ Item {
                     W.Action { objectName: "collectionsTab"; text: "Collections"; highlighted: root.tab === "collections"; onClicked: root.openCollections(false) }
                     W.Action { text: "Cast"; visible: !root.animeMode || root.cast.length > 0; highlighted: root.tab === "cast"; onClicked: root.tab="cast" }
                     W.Action { objectName: "episodesTab"; text: "Episodes"; visible: root.kind === "tv"; highlighted: root.tab === "episodes"; onClicked: { root.tab="episodes"; if (!root.episodes.length) root.loadEpisodes(false); } }
-                    W.Action { text: "Watch"; visible: !root.animeMode; highlighted: root.tab === "watch"; onClicked: root.extra("watch") }
+                    W.Action { text: "Services"; visible: !root.animeMode; highlighted: root.tab === "watch"; onClicked: root.extra("watch") }
                     W.Action { objectName: "spoilersTab"; text: "Spoilers"; visible: root.kind === "movie" || root.animeMode; highlighted: root.tab === "spoilers"; onClicked: root.extra("spoilers") }
                     W.Action { text: "Subtitles"; visible: root.localFiles.length > 0; highlighted: root.tab === "subtitles"; onClicked: { root.subtitlePath = root.kind === "movie" ? root.localFiles[0].path : root.subtitlePath; root.tab = "subtitles"; } }
                     W.Action { objectName: "findTab"; text: "Find"; visible: root.localFiles.length === 0; highlighted: root.tab === "torrent"; onClicked: { root.torrentEpisode = ({}); root.tab = "torrent"; } }
@@ -570,7 +569,7 @@ Item {
                             onActivated: index => gallery.show(images, index, root.selected.title)
                         }
                         Repeater { model: root.tab === "watch" ? root.links : []; W.Action { required property var modelData; text: modelData.name; onClicked: Browser.open(modelData.url, root.kind === "tv" ? "series" : "movies") } }
-                        W.Label { visible: root.tab === "watch" && !root.extraLoading && !root.links.length; text: "No watch links loaded."; color: Theme.muted }
+                        W.Label { visible: root.tab === "watch" && !root.extraLoading && !root.links.length; text: "No viewing options found."; color: Theme.muted }
                         W.Label { visible: root.tab === "spoilers"; Layout.fillWidth: true; text: root.spoiler; wrapMode: Text.Wrap }
                     }
                 }

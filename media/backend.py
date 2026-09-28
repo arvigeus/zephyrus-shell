@@ -23,16 +23,13 @@ from media.local import LocalLibrary
 CONFIG = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'zephyrus-shell/media.json'
 DATA = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'zephyrus-shell/media'
 CACHE = Path(os.environ.get('XDG_CACHE_HOME', Path.home() / '.cache')) / 'zephyrus-shell/media'
-IMDB = 'https://api.imdbapi.dev'
 TMDB = 'https://api.themoviedb.org/3'
 OMDB = 'https://www.omdbapi.com/'
 GENRES = {'Action':28,'Adventure':12,'Animation':16,'Comedy':35,'Crime':80,'Documentary':99,'Drama':18,'Family':10751,'Fantasy':14,'History':36,'Horror':27,'Music':10402,'Mystery':9648,'Romance':10749,'Sci-Fi':878,'Thriller':53,'War':10752,'Western':37}
-SORTS = {'popular':('POPULARITY','DESC','popularity.desc'), 'rating':('USER_RATING','DESC','vote_average.desc'), 'votes':('USER_RATING_COUNT','DESC','vote_count.desc'), 'newest':('RELEASE_DATE','DESC','primary_release_date.desc'), 'oldest':('RELEASE_DATE','ASC','primary_release_date.asc')}
+SORTS = {'popular':'popularity.desc', 'rating':'vote_average.desc', 'votes':'vote_count.desc', 'newest':'primary_release_date.desc', 'oldest':'primary_release_date.asc'}
 
 class MediaError(Exception):
-    def __init__(self, message, retryable=True):
-        super().__init__(message)
-        self.retryable = retryable
+    pass
 
 def http(url, params=None):
     if params:
@@ -43,16 +40,12 @@ def http(url, params=None):
             return json.load(response)
     except urllib.error.HTTPError as e:
         e.close()
-        raise MediaError(f'{urllib.parse.urlparse(url).hostname} returned HTTP {e.code}. Try again later.', retryable=e.code == 429 or e.code >= 500) from None
+        raise MediaError(f'{urllib.parse.urlparse(url).hostname} returned HTTP {e.code}. Try again later.') from None
     except (OSError, ValueError):
         raise MediaError(f'Cannot reach {urllib.parse.urlparse(url).hostname}. Check your connection and configuration.') from None
 
 def image_url(path, size='original'):
     return 'https://image.tmdb.org/t/p/' + size + path if path else ''
-
-def imdb_title(d):
-    rating = d.get('rating') or {}
-    return dict(id=d['id'], imdbId=d['id'], kind='tv' if d.get('type') in ('tvSeries','tvMiniSeries','TV_SERIES','TV_MINI_SERIES') else 'movie', title=d.get('primaryTitle',''), year=d.get('startYear'), poster=(d.get('primaryImage') or {}).get('url',''), plot=d.get('plot',''), runtime=round((d.get('runtimeSeconds') or 0)/60), genres=d.get('genres',[]), countries=d.get('originCountries',d.get('countriesOfOrigin',[])), rating=rating.get('aggregateRating'), votes=int(rating.get('voteCount') or 0), ratings=[{'source':'IMDb','value':rating['aggregateRating']}] if rating.get('aggregateRating') else [], cast=[dict(id=p.get('id'),name=p.get('displayName',''),role=role) for field,role in [('directors','Director'),('writers','Writer'),('stars','Cast')] for p in d.get(field,[])])
 
 def tmdb_title(d, kind):
     imdb = d.get('imdb_id') or d.get('external_ids',{}).get('imdb_id')
@@ -107,10 +100,6 @@ def tmdb_trailers(data):
     videos.sort(key=lambda v:(not v.get('official',False),v.get('iso_639_1')!='en'))
     return list({v['key']:dict(title=v.get('name','Trailer'),url='https://www.youtube.com/watch?v='+v['key']) for v in videos}.values())
 
-def choose_backdrop(images):
-    candidates=[i for i in images if i.get('url') and i.get('width',0)>i.get('height',0)*1.35]
-    return max(candidates,key=lambda i:(any(w in i.get('type','').lower() for w in ('promo','backdrop','art')),min(i.get('width',0),3840)),default={}).get('url','')
-
 def template_url(template, title, season=None, episode=None):
     if not template.strip(): raise MediaError('Add a playback provider to media.json or save a custom URL for this title.')
     url=template.strip()
@@ -159,15 +148,6 @@ class Backend:
     def playback_providers(self,kind):
         key='series_url' if kind=='tv' else 'movie_url'
         return [(p['name'],p.get(key,'')) for p in self.config().get('providers',[]) if p.get(key,'').strip()]
-    def imdb(self,path,params=None):
-        health=self.get('provider:imdb') or {}
-        if health.get('retryAfter',0)>time.time():
-            raise MediaError('IMDbApi is temporarily unavailable; using configured alternatives.')
-        try:
-            return http(IMDB+path,params)
-        except MediaError as error:
-            if error.retryable: self.put('provider:imdb',dict(retryAfter=time.time()+300))
-            raise
     def omdb(self,**params):
         key=self.config().get('omdb_key')
         if not key: raise MediaError('OMDb key is not configured.')
@@ -229,12 +209,12 @@ class Backend:
         cached=self.get(key,900)
         if cached and not r.get('refresh'): return cached
         errors=[]
-        candidates=[('imdb',self.browse_imdb),('tmdb',self.browse_tmdb)]
+        candidates=[('tmdb',self.browse_tmdb)]
         if q: candidates.append(('omdb',self.browse_omdb))
         current=str(token).split(':')[0] if str(token).startswith(('tmdb:','omdb:')) else ''
         if current: candidates=[candidate for candidate in candidates if candidate[0]==current]
         for name,provider in candidates:
-            if name!='imdb' and not self.config().get(name+'_key'): continue
+            if not self.config().get(name+'_key'): continue
             try:
                 items,next_token=provider(kind,q,f,token)
                 break
@@ -243,7 +223,7 @@ class Backend:
             stale=self.get(key)
             if stale: return stale | {'warning':'Offline: showing the saved catalogue; configured providers are unavailable.'}
             if not q and self.config().get('omdb_key') and not self.config().get('tmdb_key'):
-                raise MediaError('IMDbApi is unavailable. OMDb supports title search, but discovery requires a TMDB key. Search for a title or add tmdb_key to media.json.')
+                raise MediaError('OMDb supports title search, but discovery requires a TMDB key. Search for a title or add tmdb_key to media.json.')
             raise MediaError('No catalogue provider is available. '+' '.join(errors))
         items=[t for t in items if t['kind']==kind]
         if not q and not f.get('maxYear'):
@@ -255,25 +235,16 @@ class Backend:
             sort=f.get('sort'); field={'rating':'rating','votes':'votes','newest':'year','oldest':'year'}.get(sort)
             if field: items.sort(key=lambda t:float(t.get(field) or 0),reverse=sort!='oldest')
         return self.put(key,dict(items=[self.save_title(t) for t in items],next=next_token))
-    def browse_imdb(self,kind,q,f,token):
-        if q:
-            d=self.imdb('/search/titles',dict(query=q,limit=50))
-        else:
-            params=dict(types='TV_SERIES' if kind=='tv' else 'MOVIE',pageToken=token,genres=f.get('genre'),countryCodes=f.get('country'),startYear=f.get('minYear'),endYear=f.get('maxYear'),minAggregateRating=f.get('rating'),minVoteCount=f.get('votes'))
-            if f.get('sort') in SORTS:
-                sort=SORTS[f['sort']];params.update(sortBy='SORT_BY_'+sort[0],sortOrder=sort[1])
-            d=self.imdb('/titles',params)
-        return [imdb_title(t) for t in d.get('titles',[])],d.get('nextPageToken','') if not q else ''
     def browse_tmdb(self,kind,q,f,token):
         page=int(str(token).split(':')[-1]) if str(token).startswith('tmdb:') else 1
         params=dict(page=page,include_adult='false')
         if q: params['query']=q
         else:
-            sort=SORTS.get(f.get('sort'),SORTS['popular'])[2]
+            sort=SORTS.get(f.get('sort'),SORTS['popular'])
             if kind=='tv': sort=sort.replace('primary_release_date','first_air_date')
             genre=GENRES.get(f.get('genre'))
             if kind=='tv': genre={'Action':10759,'Adventure':10759,'Sci-Fi':10765,'Fantasy':10765,'War':10768}.get(f.get('genre'),genre)
-            if f.get('genre') and genre is None: raise MediaError('This genre is unavailable from TMDB fallback. Choose a different genre.')
+            if f.get('genre') and genre is None: raise MediaError('This genre is unavailable from TMDB. Choose a different genre.')
             params.update(sort_by=sort,with_genres=genre,with_origin_country=f.get('country'),**{'vote_average.gte':f.get('rating'),'vote_count.gte':f.get('votes')})
             date='first_air_date' if kind=='tv' else 'primary_release_date'
             if f.get('minYear'): params[date+'.gte']=str(f['minYear'])+'-01-01'
@@ -291,44 +262,31 @@ class Backend:
     def details(self,r):
         t=r['title']; cached=self.get('detail:'+self.canonical(t['id']),86400)
         if cached and not r.get('refresh'): return cached
-        errors=[]
-        try:
-            if not t.get('imdbId'): raise MediaError('IMDb ID is unavailable.')
-            result=imdb_title(self.imdb('/titles/'+t['imdbId']))
-        except MediaError as error:
-            errors.append(str(error))
+        errors=[]; result=None
+        if self.config().get('tmdb_key'):
             try:
                 t=self.identity(t)
                 result=tmdb_title(self.tmdb(f'{t["kind"]}/{t["tmdbId"]}',append_to_response='external_ids,credits,videos'),t['kind'])
+                if t.get('imdbId') and not result.get('imdbId'):
+                    result['id']=result['imdbId']=t['imdbId']
             except MediaError as error:
                 errors.append(str(error))
-                if self.config().get('omdb_key') and t.get('imdbId'):
-                    d=self.omdb(i=t['imdbId'],plot='full')
-                    if not d: raise MediaError('No title details found in configured providers.')
-                    result=omdb_title(d)
-                else:
-                    raise MediaError('No details provider is available. '+' '.join(errors))
+        if result is None and self.config().get('omdb_key') and t.get('imdbId'):
+            try:
+                d=self.omdb(i=t['imdbId'],plot='full')
+                if d: result=omdb_title(d)
+            except MediaError as error:
+                errors.append(str(error))
+        if result is None:
+            raise MediaError('No title details found in configured providers. '+' '.join(errors))
         return self.put('detail:'+self.canonical(t['id']),self.save_title(t|result))
     def artwork(self,r):
         t=r['title']; cachekey='art:'+self.canonical(t['id']); cached=self.get(cachekey,86400)
-        if cached and cached.get('version')==2 and not cached.get('warnings') and not r.get('refresh'): return cached
+        if cached and cached.get('version')==3 and not cached.get('warnings') and not r.get('refresh'): return cached
         result={}; warnings=[]
         def optional(fn):
             try: fn()
             except MediaError as e: warnings.append(str(e))
-        def imdb():
-            if t.get('imdbId'):
-                result['backdrop']=choose_backdrop(self.imdb('/titles/'+t['imdbId']+'/images',dict(pageSize=50)).get('images',[]))
-        def credits():
-            if t.get('imdbId'):
-                rows=[]; page=''; seen=set()
-                while True:
-                    data=self.imdb('/titles/'+t['imdbId']+'/credits',dict(pageSize=50,pageToken=page))
-                    rows.extend(data.get('credits',[]))
-                    page=data.get('nextPageToken','')
-                    if not page or page in seen: break
-                    seen.add(page)
-                result['cast']=[dict(id=c.get('name',{}).get('id',''),name=c.get('name',{}).get('displayName',''),role=' / '.join([c.get('category','')]+c.get('characters',[])),job=c.get('category',''),department='Acting' if c.get('category','').lower() in ('actor','actress','cast') else 'Crew',image=(c.get('name',{}).get('primaryImage') or {}).get('url','')) for c in rows]
         if self.config().get('tmdb_key'):
             def tmdb():
                 nonlocal t
@@ -347,13 +305,7 @@ class Backend:
                 result['trailers']=tmdb_trailers(d)
                 result['cast']=tmdb_credits(d)
             optional(tmdb)
-        # TMDB already supplies linked credits and a backdrop in one response.
-        # Fetch IMDb's paginated credits/images only when those fields are missing.
-        if not result.get('backdrop'):
-            if t.get('backdrop'): result['backdrop']=t['backdrop']
-            else: optional(imdb)
-        if not result.get('cast'): optional(credits)
-        imdb_errors=len(warnings)
+        if not result.get('backdrop') and t.get('backdrop'): result['backdrop']=t['backdrop']
         if self.config().get('omdb_key'):
             def omdb():
                 imdb_id=result.get('imdbId') or t.get('imdbId')
@@ -374,41 +326,30 @@ class Backend:
                 result['metacriticUrl']=d.get('metacritic_url') or ''
                 result['ratings']=merge_ratings(t.get('ratings',[]),result.get('ratings',[]),[dict(source=x['source'],value=x['value'],url=x.get('url','')) for x in d.get('ratings',[]) if x.get('value') is not None])
             optional(mdblist)
-        if result.get('backdrop') and result.get('cast'):
-            warnings=warnings[imdb_errors:]
         updated=self.save_title({k:v for k,v in t.items() if k in ('id','kind','imdbId','tmdbId')}|result)
         for field in ('cast','trailers'):
             if field in result: updated[field]=result[field]
         self.put('title:'+updated['id'],updated)
-        return self.put(cachekey,dict(title=updated,warnings=warnings,version=2))
+        return self.put(cachekey,dict(title=updated,warnings=warnings,version=3))
     def episodes(self,r):
         t=r['title']; season=r.get('season'); page=r.get('page','')
         if t['kind']!='tv': raise MediaError('Movies do not have episodes.')
         key='episodes:'+json.dumps([t['id'],season,page]); cached=self.get(key,3600)
         if cached:return cached
         try:
-            if not t.get('imdbId'): raise MediaError('TMDB title')
+            t=self.identity(t)
             if season is None:
-                d=self.imdb('/titles/'+t['imdbId']+'/seasons')
-                return self.put(key,dict(seasons=[str(s['season']) for s in d.get('seasons',[])]))
-            d=self.imdb('/titles/'+t['imdbId']+'/episodes',dict(season=season,pageToken=page,pageSize=20))
-            items=[dict(season=str(e.get('season',season)),number=e.get('episodeNumber'),title=e.get('title',''),plot=e.get('plot',''),image=(e.get('primaryImage') or {}).get('url',''),rating=(e.get('rating') or {}).get('aggregateRating')) for e in d.get('episodes',[])]
-            result=dict(items=items,next=d.get('nextPageToken',''))
+                d=self.tmdb(f'tv/{t["tmdbId"]}')
+                return self.put(key,dict(seasons=[str(s['season_number']) for s in d.get('seasons',[])]))
+            d=self.tmdb(f'tv/{t["tmdbId"]}/season/{int(season)}')
+            result=dict(items=[dict(season=str(season),number=e['episode_number'],title=e.get('name',''),plot=e.get('overview',''),image=image_url(e.get('still_path'),'w300'),rating=e.get('vote_average')) for e in d.get('episodes',[])],next='')
         except MediaError:
-            try:
-                t=self.identity(t)
-                if season is None:
-                    d=self.tmdb(f'tv/{t["tmdbId"]}')
-                    return self.put(key,dict(seasons=[str(s['season_number']) for s in d.get('seasons',[])]))
-                d=self.tmdb(f'tv/{t["tmdbId"]}/season/{int(season)}')
-                result=dict(items=[dict(season=str(season),number=e['episode_number'],title=e.get('name',''),plot=e.get('overview',''),image=image_url(e.get('still_path'),'w300'),rating=e.get('vote_average')) for e in d.get('episodes',[])],next='')
-            except MediaError:
-                if not self.config().get('omdb_key') or not t.get('imdbId'): raise
-                d=self.omdb(i=t['imdbId'],**({'Season':season} if season is not None else {}))
-                if season is None:
-                    count=d.get('totalSeasons','0')
-                    return self.put(key,dict(seasons=[str(n) for n in range(1,int(count)+1)] if str(count).isdigit() else []))
-                result=dict(items=[dict(season=str(season),number=int(e['Episode']),title=e.get('Title',''),plot='',image='',date=e.get('Released',''),rating=e.get('imdbRating') if e.get('imdbRating')!='N/A' else None) for e in d.get('Episodes',[])],next='')
+            if not self.config().get('omdb_key') or not t.get('imdbId'): raise
+            d=self.omdb(i=t['imdbId'],**({'Season':season} if season is not None else {}))
+            if season is None:
+                count=d.get('totalSeasons','0')
+                return self.put(key,dict(seasons=[str(n) for n in range(1,int(count)+1)] if str(count).isdigit() else []))
+            result=dict(items=[dict(season=str(season),number=int(e['Episode']),title=e.get('Title',''),plot='',image='',date=e.get('Released',''),rating=e.get('imdbRating') if e.get('imdbRating')!='N/A' else None) for e in d.get('Episodes',[])],next='')
         return self.put(key,result)
     def watch(self,r):
         t=r['title']; key=self.config().get('watchmode_key')
@@ -441,25 +382,13 @@ class Backend:
         return self.put('spoiler:'+imdb,dict(text=text,url=rows[0]['article']['value']))
     def person(self,r):
         person=r['person']; id=person.get('id','')
-        key='person:v2:'+id; cached=self.get(key,86400)
+        key='person:v3:'+id; cached=self.get(key,86400)
         if cached:return cached
         result=None
         if id.startswith('nm'):
-            try:
-                d=self.imdb('/names/'+id)
-                credits=[]; page=''; seen=set()
-                while True:
-                    data=self.imdb('/names/'+id+'/filmography',dict(pageSize=50,pageToken=page))
-                    credits.extend(data.get('credits',[]))
-                    page=data.get('nextPageToken','')
-                    if not page or page in seen: break
-                    seen.add(page)
-                titles=[imdb_title(c['title'])|{'roles':[credit_role(c.get('category') or c.get('job'))]} for c in credits if c.get('title',{}).get('id')]
-                result=dict(name=d.get('displayName',person.get('name','')),biography=d.get('biography',''),image=(d.get('primaryImage') or {}).get('url',''),credits=titles)
-            except MediaError:
-                found=self.tmdb('find/'+id,external_source='imdb_id').get('person_results',[])
-                if not found: raise MediaError('No matching person found in TMDB.')
-                id='tmdb:'+str(found[0]['id'])
+            found=self.tmdb('find/'+id,external_source='imdb_id').get('person_results',[])
+            if not found: raise MediaError('No matching person found in TMDB.')
+            id='tmdb:'+str(found[0]['id'])
         if result is None and id.startswith('tmdb:'):
             d=self.tmdb('person/'+id.split(':')[-1],append_to_response='combined_credits')
             combined=d.get('combined_credits',{})

@@ -24,6 +24,6 @@
 - Playback source resolution is separate from catalogue metadata, allowing future local sources. Movies have no episode controls. YouTube and local-library scanning are deferred.
 - Verify media changes with Python tests and `bash scripts/check-media.sh`; the latter uses isolated XDG data and real module entry points.
 
-- Use the documented snake_case media key names and named provider objects. IMDbApi outages must fall through to configured TMDB/OMDb capabilities; OMDb is not a discovery or backdrop provider. Preserve provider pagination tokens and use a short shared outage cooldown.
+- Use the documented snake_case media key names and named provider objects. TMDB provides discovery; configured OMDb can supply title search, details, and episodes. OMDb is not a discovery or backdrop provider. Preserve provider pagination tokens.
 
 - Media uses filled split buttons for Watch online and trailers, a concise overview and a separate full Cast tab. Do not restore the Notes & URL editor. Preserve artwork ownership against late details and use `widgets/CrossfadeImage.qml` for overlapping image transitions.

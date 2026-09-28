@@ -8,7 +8,9 @@ import json
 import os
 import re
 import shutil
+import signal
 import socket
+import subprocess
 import sys
 import tempfile
 import time
@@ -23,7 +25,8 @@ from functools import lru_cache
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.cache import JsonCache
-from media.local import LocalLibrary
+from media.local import LocalLibrary, safe_name, xdg_dir
+from scripts.open_browser import browser_argv
 
 
 APPLE_API = "https://api.music.apple.com/v1/catalog"
@@ -43,6 +46,8 @@ _artist_biography_cache = {}
 _artist_biography_lock = Lock()
 _lyrics_cooldowns = {}
 _lyrics_cooldown_lock = Lock()
+_download_processes = set()
+_download_processes_lock = Lock()
 
 
 class MusicError(Exception):
@@ -69,6 +74,21 @@ def music_config():
     providers = parsed.get("providers") or []
     if not isinstance(providers, list):
         raise MusicError("Music providers must be a JSON array.")
+    providers = [item for item in providers[:12] if isinstance(item, dict)]
+    for provider in providers:
+        download = provider.get("download")
+        if download is None:
+            continue
+        if not isinstance(download, dict) or any(
+            key in download and not isinstance(download[key], str)
+            for key in ("track", "album")
+        ):
+            raise MusicError("A Music provider download must contain optional track and album URL templates or 'stream'.")
+        if any(
+            str(download.get(key) or "").strip() == "stream"
+            for key in ("track", "album")
+        ) and (not provider.get("search_url") or not provider.get("stream_url")):
+            raise MusicError("Stream downloads require the provider's search_url and stream_url.")
     lyrics_providers = parsed.get("lyrics_providers")
     if lyrics_providers is None:
         lyrics_providers = [{"name": "LRCLIB", "base_url": "https://lrclib.net/api"}]
@@ -77,7 +97,7 @@ def music_config():
     _music_config = {
         "storefront": storefront,
         "catalog_token": str(parsed.get("catalog_token") or "").strip(),
-        "providers": [item for item in providers[:12] if isinstance(item, dict)],
+        "providers": providers,
         "lyrics_providers": [item for item in lyrics_providers[:8] if isinstance(item, dict)],
     }
     return _music_config
@@ -758,22 +778,32 @@ def apple_artist_albums(artist_id, offset=0, limit=25):
     }
 
 
-def tracks_for_album(album):
+def tracks_for_album(album, all_pages=False):
     album_id = safe_catalog_id(album.get("id"))
-    data = apple_url("/albums/" + album_id + "/tracks", {"limit": 100})
     songs = []
-    for raw in data.get("data") or []:
-        song = normalize_apple(raw, "songs")
-        if not song:
-            continue
-        song["albumId"] = album_id
-        song["album"] = album.get("title") or song.get("album") or "Unknown Album"
-        song["albumCover"] = album.get("cover") or song.get("albumCover") or ""
-        if not song.get("cover"):
-            song["cover"] = song["albumCover"]
-        if not song.get("artistIds"):
-            song["artistIds"] = album.get("artistIds") or []
-        songs.append(song)
+    offset = 0
+    while True:
+        data = apple_url("/albums/" + album_id + "/tracks", {"limit": 100, "offset": offset})
+        raw_items = data.get("data") or []
+        for raw in raw_items:
+            song = normalize_apple(raw, "songs")
+            if not song:
+                continue
+            song["albumId"] = album_id
+            song["album"] = album.get("title") or song.get("album") or "Unknown Album"
+            song["albumCover"] = album.get("cover") or song.get("albumCover") or ""
+            if not song.get("cover"):
+                song["cover"] = song["albumCover"]
+            if not song.get("artistIds"):
+                song["artistIds"] = album.get("artistIds") or []
+            if not song.get("releaseDate"):
+                song["releaseDate"] = album.get("releaseDate") or ""
+            songs.append(song)
+        if all_pages and data.get("next") and len(songs) >= 1000:
+            raise MusicError("This album has more tracks than one download can save.")
+        if not all_pages or not data.get("next") or not raw_items:
+            break
+        offset += len(raw_items)
     return songs
 
 
@@ -912,7 +942,7 @@ def artist_albums_page(args):
     return {**page, "songs": [], "trackWarning": ""}
 
 
-def album_details(item):
+def album_details(item, include_tracks=True):
     album_id = str(item.get("id") or "")
     if str(item.get("source") or "") != "apple" or not re.fullmatch(r"[0-9]{1,32}", album_id):
         query = " ".join(part for part in (str(item.get("artist") or ""), str(item.get("title") or "")) if part)
@@ -927,8 +957,9 @@ def album_details(item):
     album_id = safe_catalog_id(album_id)
     album_data = apple_url("/albums/" + album_id).get("data") or []
     album = normalize_apple(album_data[0], "albums") if album_data else item
-    artists = catalog_artist_records(album.get("artistIds"), album.get("artists"))
-    return {"album": album, "artists": artists, "songs": tracks_for_album(album)}
+    artists = catalog_artist_records(album.get("artistIds"), album.get("artists")) if include_tracks else []
+    return {"album": album, "artists": artists,
+            "songs": tracks_for_album(album) if include_tracks else []}
 
 
 def song_artists(args):
@@ -972,23 +1003,198 @@ def value_at_path(value, path):
     return current
 
 
-def provider_template(provider, template_name, values):
-    template = str(provider.get(template_name) or "").strip()
+def provider_template(provider, template_name, values, require_values=False):
+    template = str(value_at_path(provider, template_name) or "").strip()
     if not template:
         return ""
     substitutions = {
         "base_url": str(provider.get("base_url") or "").rstrip("/"),
         **{key: str(value or "") for key, value in values.items()},
     }
+    placeholders = re.findall(r"\{([^{}]+)\}", template)
+    if any(key not in substitutions for key in placeholders):
+        raise MusicError("A provider URL template has an unknown placeholder.")
+    if require_values and any(not substitutions[key] for key in placeholders):
+        raise MusicError("This download URL needs metadata that is missing from the selected item.")
     for key, value in substitutions.items():
         encoded = value if key == "base_url" else urllib.parse.quote(value, safe="")
         template = template.replace("{" + key + "}", encoded)
     if re.search(r"\{[^{}]+\}", template):
-        raise MusicError("A playback provider URL template has an unknown placeholder.")
-    parsed = urllib.parse.urlparse(template)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise MusicError("A playback provider URL must use HTTP or HTTPS.")
+        raise MusicError("A provider URL template has an unknown placeholder.")
+    try:
+        parsed = urllib.parse.urlparse(template)
+        parsed.port  # Reject malformed port numbers.
+        valid = parsed.scheme in ("http", "https") and parsed.hostname and not re.search(r"\s", template)
+    except ValueError:
+        valid = False
+    if not valid:
+        raise MusicError("A provider URL must use a valid HTTP or HTTPS address.")
     return template
+
+
+def download_provider(kind):
+    for provider in music_config()["providers"]:
+        download = provider.get("download") or {}
+        if isinstance(download, dict) and str(download.get(kind) or "").strip():
+            return provider
+    return None
+
+
+def download_capabilities():
+    return {kind: download_provider(kind) is not None for kind in ("track", "album")}
+
+
+def download_url(kind, item):
+    if kind not in ("track", "album") or not isinstance(item, dict):
+        raise MusicError("Choose a song or album to download.")
+    provider = download_provider(kind)
+    if provider is None:
+        raise MusicError("No download provider is configured for this item.")
+    if provider["download"][kind].strip() == "stream":
+        raise MusicError("This provider saves streams instead of opening a download URL.")
+    title = str(item.get("title") or "").strip()
+    artist = str(item.get("artist") or "").strip()
+    item_id = str(item.get("id") or "").strip()
+    if kind == "album" and item_id.startswith("name:"):
+        item_id = ""  # Album rows inferred from a song may have a temporary name key.
+    album_id = item.get("albumId") if kind == "track" else item_id
+    values = {
+        "id": item_id,
+        "track_id": item_id if kind == "track" else "",
+        "album_id": str(album_id or "").strip(),
+        "title": title,
+        "artist": artist,
+        "album": str(item.get("album") or (title if kind == "album" else "")).strip(),
+        "isrc": str(item.get("isrc") or "").strip() if kind == "track" else "",
+        "query": " ".join(value for value in (artist, title) if value),
+    }
+    return provider_template(provider, "download." + kind, values, require_values=True)
+
+
+def save_stream_track(track, provider, directory):
+    title = str(track.get("title") or "").strip()
+    artist = str(track.get("artist") or "").strip()
+    album = str(track.get("album") or "").strip()
+    release_date = str(track.get("releaseDate") or "").strip()[:10]
+    if not (title and artist and album and re.fullmatch(r"\d{4}-\d{2}-\d{2}", release_date)):
+        raise MusicError("A song needs a title, artist, album, and full release date to save to Music.")
+    stem = f"{safe_name(title)} - {safe_name(artist)} - {safe_name(album)} ({release_date})"
+    resolved = resolve_track(track, providers=[provider], local_first=False)
+    headers = provider_headers(provider)
+    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+    if not any(name.lower() == "user-agent" for name in headers):
+        command += ["-user_agent", USER_AGENT]
+    if headers:
+        command += ["-headers", "".join(f"{name}: {value}\r\n" for name, value in headers.items())]
+    command += ["-i", resolved["url"], "-map", "0:a:0", "-c:a", "copy", "-f", "matroska"]
+    directory.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix=".zephyrus-music-", suffix=".mka", dir=directory, delete=False) as output:
+        temporary = Path(output.name)
+    process = None
+    try:
+        try:
+            process = subprocess.Popen(command + [str(temporary)], stdin=subprocess.DEVNULL,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        except FileNotFoundError as error:
+            raise MusicError("Install ffmpeg to save music streams.") from error
+        with _download_processes_lock:
+            _download_processes.add(process)
+        try:
+            process.communicate(timeout=1800)
+        except subprocess.TimeoutExpired as error:
+            process.kill()
+            process.communicate()
+            raise MusicError("Saving this music stream timed out.") from error
+        if process.returncode != 0 or temporary.stat().st_size == 0:
+            raise MusicError("The configured provider's stream could not be saved.")
+        for number in range(1, 1001):
+            suffix = "" if number == 1 else f" ({number})"
+            target = directory / (stem + suffix + ".mka")
+            try:
+                os.link(temporary, target)
+                return str(target)
+            except FileExistsError:
+                continue
+        raise MusicError("Too many copies of this song already exist in Music.")
+    finally:
+        if process is not None:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+            with _download_processes_lock:
+                _download_processes.discard(process)
+        temporary.unlink(missing_ok=True)
+
+
+def stop_downloads(signum, frame):
+    with _download_processes_lock:
+        processes = list(_download_processes)
+    for process in processes:
+        if process.poll() is None:
+            process.terminate()
+    raise SystemExit(0)
+
+
+def save_stream_download(kind, item, provider):
+    if kind not in ("track", "album") or not isinstance(item, dict):
+        raise MusicError("Choose a song or album to download.")
+    if not shutil.which("ffmpeg"):
+        raise MusicError("Install ffmpeg to save music streams.")
+    directory = xdg_dir("XDG_MUSIC_DIR", "Music")
+    if kind == "track":
+        try:
+            path = save_stream_track(item, provider, directory)
+        except OSError as error:
+            raise MusicError("Could not write the music download.") from error
+        return {"saved": 1, "failed": 0, "path": path}
+
+    details = album_details(item, include_tracks=False)
+    album = details.get("album") or item
+    tracks = tracks_for_album(album, all_pages=True)
+    if not tracks:
+        raise MusicError("No tracks were found for this album.")
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        raise MusicError("Could not write the music download.") from error
+    saved = 0
+    first_failure = None
+    for track in tracks:
+        try:
+            save_stream_track(track, provider, directory)
+            saved += 1
+        except (MusicError, OSError) as error:
+            if first_failure is None:
+                first_failure = error
+            continue
+    if not saved:
+        if isinstance(first_failure, MusicError):
+            raise first_failure
+        raise MusicError("Could not write the music download.")
+    return {"saved": saved, "failed": len(tracks) - saved, "path": str(directory)}
+
+
+def open_download(args):
+    kind = args.get("kind")
+    provider = download_provider(kind)
+    if provider is None:
+        raise MusicError("No download provider is configured for this item.")
+    if provider["download"][kind].strip() == "stream":
+        return save_stream_download(kind, args.get("item"), provider)
+    url = download_url(kind, args.get("item"))
+    try:
+        subprocess.Popen(
+            browser_argv("music", url), stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except (OSError, ValueError) as error:
+        raise MusicError("Could not open the download URL.") from error
+    return {"started": True}
 
 
 def provider_headers(provider):
@@ -1166,12 +1372,13 @@ def provider_results(provider, wanted, query):
     return candidates
 
 
-def resolve_track(track):
+def resolve_track(track, providers=None, local_first=True):
     local_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "zephyrus-shell/media"
-    local_files = LocalLibrary(local_data).files({**track, "kind": "music"})
-    if local_files:
-        return {"url": local_files[0]["path"], "headers": {}}
-    providers = music_config()["providers"]
+    if local_first:
+        local_files = LocalLibrary(local_data).files({**track, "kind": "music"})
+        if local_files:
+            return {"url": local_files[0]["path"], "headers": {}}
+    providers = music_config()["providers"] if providers is None else providers
     if not providers:
         raise MusicError("No playback providers are configured in music.json.")
     title = str(track.get("title") or "").strip()
@@ -1462,6 +1669,10 @@ def dispatch(args):
         return song_artists(args)
     if operation == "lyrics":
         return fetch_lyrics(args)
+    if operation == "download-capabilities":
+        return download_capabilities()
+    if operation == "download":
+        return open_download(args)
     if operation == "play":
         return start_player(args)
     if operation == "player-state":
@@ -1480,6 +1691,7 @@ def dispatch(args):
 def main():
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from services.worker import serve
+    signal.signal(signal.SIGTERM, stop_downloads)
     serve(dispatch, errors=(MusicError,), latest=("search", "search-page", "artist", "artist-info", "album", "lyrics", "play"), controls=("player-command", "player-state", "player-cleanup", "favorites-save", "favorites-load"), scope=lambda r: (r["op"], r.get("category", "")))
 
 

@@ -21,8 +21,7 @@ Selection displays the catalogue record immediately, then hydrates metadata and
 artwork independently. Late responses cannot replace a newer selection. Image,
 logo, and rating slots reserve space. Shared double-buffered image transitions
 crossfade backgrounds, title logos, and poster replacements. Initial images appear immediately once decoded. Enriched artwork owns its fields,
-so a late details response cannot revert the chosen image. A stable catalogue model appends rows without rebuilding existing cards or resetting scroll position. Artwork uses landscape promotional IMDb
-images, optional TMDB artwork with textless backdrops preferred, then MDBList's
+so a late details response cannot revert the chosen image. A stable catalogue model appends rows without rebuilding existing cards or resetting scroll position. Artwork uses TMDB artwork with textless backdrops preferred, then MDBList's
 backdrop when available. TMDB supplies title logos, preferring English. A missing
 or failed logo falls back to the title text. Portrait posters are never stretched
 into backdrops. The layout is inspired by the supplied Arctic Fuse screenshots;
@@ -73,15 +72,12 @@ Replace the example provider with your service's URL:
 }
 ```
 
-- IMDbApi is the primary provider and needs no key. Network failures, rate limits,
-  and server errors suspend IMDbApi requests for five minutes, including across
-  module reopenings; configured alternatives are used immediately during that time.
-- `tmdb_key`: a TMDB API key (v3), enabling metadata fallback, title logos,
-  trailers, additional artwork, and TMDB ID resolution.
+- `tmdb_key`: a TMDB API key (v3), enabling discovery, title search, details,
+  title logos, trailers, artwork, episodes, and ID resolution.
 - `omdb_key`: optional fallback for title search, full details, seasons and episodes;
   also adds ratings and missing metadata. OMDb has no discovery feed or backdrop/
-  title-logo API, so TMDB is still needed for those features during an IMDbApi outage.
-  Search fallback is IMDbApi → TMDB → OMDb; details and episodes use the same order.
+  title-logo API, so TMDB is needed for those features.
+  Search, details, and episodes use TMDB first, then OMDb when configured.
   Pagination stays with the provider that supplied the page.
 - `mdblist_key`: optional additional ratings and preferred backdrops.
 - `watchmode_key`: optional Watch links. `region` selects preferred sources.
@@ -127,8 +123,7 @@ per-episode online playback templates; Movies has no episode controls. Favorites
 persist independently of metadata refresh. Spoiler text omits Wikipedia headings
 and edit links, including for previously cached plots.
 
-IMDbApi search returns at most 50 results; client-side filters/sorts operate on
-that result set. TMDB fallback search uses typed, paginated endpoints. Discovery
+TMDB search uses typed, paginated endpoints. Discovery
 filters are sent to providers. Missing metadata can limit search filtering. Rating
 sources retain their source labels and values; they are not converted to a common
 scale. Optional enrichment failures leave the available title usable.
@@ -140,9 +135,8 @@ Local files are registered by catalogue identity during import or a Local scan.
 The scan uses `guessit` to propose a match and requires exact title and year
 for automatic catalogue matching. Uncertain matches wait for manual selection.
 
-IMDbApi was unavailable during verification. Live TMDB fallback was verified for
-both catalogues, title details, and TV seasons using the existing configuration.
-OMDb title/plot retrieval was also verified live; fallback search, details, seasons,
+TMDB was verified for both catalogues, title details, and TV seasons using the existing configuration.
+OMDb title/plot retrieval was also verified live; search, details, seasons,
 and episodes have fixture coverage. It uses `omdb_key` in the same config.
 See the [OMDb API documentation](https://www.omdbapi.com/) for its supported
 search, title, and season parameters.
@@ -167,8 +161,7 @@ names and the selected playback target, not metadata API credentials.
 stdin/stdout. Up to four requests run concurrently. Responses carry request IDs;
 the UI guards browse, title, and episode generations. Rapid poster selection waits
 90 ms before starting hydration so intermediate titles do not flood the worker.
-Cast, filmography and episode views instantiate only visible rows. When TMDB
-already supplied artwork and credits, enrichment skips duplicate IMDb requests. The worker is destroyed with
+Cast, filmography and episode views instantiate only visible rows. The worker is destroyed with
 the module. The explicitly launched browser/player may outlive it.
 
 Checks:

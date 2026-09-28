@@ -18,6 +18,8 @@ TestCase {
         property var columnQueries: ({})
         property var columnErrors: ({})
         property var paging: ({})
+        property var downloadCapabilities: ({track: false, album: false})
+        property bool downloadLoading: false
         property var selectedArtist: null
         property var selectedAlbum: null
         property var selectedSong: null
@@ -34,6 +36,7 @@ TestCase {
         function artistsForSong(song) { return []; }
         function albumForSong(song) { return null; }
         function loadMore(kind) {}
+        function download(kind, item) {}
     }
 
     Music.MusicResultPane {
@@ -82,5 +85,34 @@ TestCase {
         compare(songList.contentY, positions[0]);
         compare(albumList.contentY, positions[1]);
         compare(tableList.contentY, positions[2]);
+    }
+
+    function test_download_actions_follow_each_capability() {
+        controller.items = {
+            songs: makeItems("song", 1),
+            albums: makeItems("album", 1)
+        };
+        tryCompare(findChild(songsPane, "musicResultList"), "count", 1);
+        tryCompare(findChild(albumsPane, "musicResultList"), "count", 1);
+        tryCompare(findChild(songTable, "musicSongList"), "count", 1);
+        const trackPane = findChild(songsPane, "musicPaneTrackDownload");
+        const albumPane = findChild(albumsPane, "musicPaneAlbumDownload");
+        const trackTable = findChild(songTable, "musicTableTrackDownload");
+        const albumTable = findChild(songTable, "musicTableAlbumDownload");
+        verify(trackPane && albumPane && trackTable && albumTable);
+        const cases = [
+            {track: false, album: false},
+            {track: true, album: false},
+            {track: false, album: true},
+            {track: true, album: true}
+        ];
+        for (const capabilities of cases) {
+            controller.downloadCapabilities = capabilities;
+            compare(trackPane.visible, capabilities.track);
+            compare(trackTable.visible, capabilities.track);
+            compare(albumPane.visible, capabilities.album);
+            compare(albumTable.visible, capabilities.album);
+        }
+        controller.downloadCapabilities = ({track: false, album: false});
     }
 }

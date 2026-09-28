@@ -19,17 +19,21 @@ class MediaTests(unittest.TestCase):
         self.movie = dict(id='tt123',imdbId='tt123',kind='movie',title='Movie')
     def configure(self, value):
         self.backend.config_path.write_text(json.dumps(value))
-    def test_person_filmography_pages_and_sorts_newest_first(self):
+    def test_person_resolves_imdb_identity_through_tmdb_and_sorts_newest_first(self):
+        self.configure({'tmdb_key':'test'})
         responses = [
-            {'displayName':'Actor'},
-            {'credits':[{'title':{'id':'tt2','primaryTitle':'Later','startYear':2020}}], 'nextPageToken':'older'},
-            {'credits':[{'title':{'id':'tt1','primaryTitle':'First','startYear':1990,'primaryImage':{'url':'https://example.org/poster'}}}, {'title':{'id':'tt2','primaryTitle':'Later','startYear':2020}}]},
+            {'person_results':[{'id':10}]},
+            {'name':'Actor','combined_credits':{'cast':[
+                {'id':2,'media_type':'movie','title':'Later','release_date':'2020-01-01'},
+                {'id':1,'media_type':'movie','title':'First','release_date':'1990-01-01','poster_path':'/poster.jpg'}
+            ]}}
         ]
-        with patch.object(self.backend,'imdb',side_effect=responses) as api:
+        with patch.object(self.backend,'tmdb',side_effect=responses) as api:
             result=self.backend.person({'person':{'id':'nm1'}})
-        self.assertEqual([t['id'] for t in result['credits']],['tt2','tt1'])
-        self.assertEqual(result['credits'][1]['poster'],'https://example.org/poster')
-        self.assertEqual(api.call_args.args[1]['pageToken'],'older')
+        self.assertEqual([t['title'] for t in result['credits']],['Later','First'])
+        self.assertEqual(result['credits'][1]['poster'],'https://image.tmdb.org/t/p/w500/poster.jpg')
+        self.assertEqual(api.call_args_list[0].args,('find/nm1',))
+        self.assertEqual(api.call_args_list[0].kwargs,{'external_source':'imdb_id'})
 
     def test_person_combines_cast_and_crew_roles_without_duplicate_titles(self):
         data={'name':'Person','combined_credits':{
@@ -43,15 +47,15 @@ class MediaTests(unittest.TestCase):
         self.assertEqual(result['credits'][0]['roles'],['Producer'])
 
     def test_separate_kinds_and_pagination(self):
-        with patch.object(m,'http',return_value={'titles':[{'id':'tt123','type':'movie','primaryTitle':'Film'},{'id':'tt456','type':'tvSeries','primaryTitle':'Series'}],'nextPageToken':'next'}) as api:
+        self.configure({'tmdb_key':'test'})
+        with patch.object(m,'http',return_value={'results':[{'id':12,'title':'Film'}],'total_pages':2}) as api:
             result=self.backend.browse(dict(kind='movie'))
-            self.assertEqual([t['id'] for t in result['items']],['tt123'])
-            self.assertEqual(result['next'],'next')
-            self.assertEqual(api.call_args.args[1]['types'],'MOVIE')
-    def test_tmdb_fallback_continues_same_provider(self):
+            self.assertEqual([t['id'] for t in result['items']],['tmdb:movie:12'])
+            self.assertEqual(result['next'],'tmdb:2')
+            self.assertTrue(api.call_args.args[0].endswith('/discover/movie'))
+    def test_tmdb_pagination_continues_same_provider(self):
         self.configure({'tmdb_key':'test-secret'})
         def api(url,params):
-            if url.startswith(m.IMDB): raise m.MediaError('offline')
             return {'results':[{'id':12,'title':'Fallback'}],'total_pages':3}
         with patch.object(m,'http',side_effect=api) as request:
             first=self.backend.browse({'kind':'movie'})
@@ -84,15 +88,12 @@ class MediaTests(unittest.TestCase):
             self.assertEqual(local['poster'], posters[0]['poster'])
             self.assertEqual(local['localPath'], path)
     def test_optional_enrichment_failure_preserves_details(self):
+        self.configure({'tmdb_key':'test'})
         self.backend.save_title(self.movie|{'plot':'Hydrated plot','cast':[{'name':'Actor'}]})
         with patch.object(m,'http',side_effect=m.MediaError('offline')):
             result=self.backend.artwork({'title':self.movie})
         self.assertEqual(result['title']['plot'],'Hydrated plot')
         self.assertTrue(result['warnings'])
-    def test_artwork_prefers_landscape_promotional(self):
-        items=[{'url':'portrait','width':800,'height':1200,'type':'promo'},{'url':'still','width':1920,'height':1080,'type':'still'},{'url':'art','width':1600,'height':900,'type':'promotional'}]
-        self.assertEqual(m.choose_backdrop(items),'art')
-        self.assertEqual(m.choose_backdrop(items[:1]),'')
     def test_episode_template_and_invalid_input(self):
         title=self.movie|{'kind':'tv','tmdbId':42}
         self.assertEqual(m.template_url('https://example.org/{kind:film|show}/{tmdbId}/{season}/{episode}',title,2,3),'https://example.org/show/42/2/3')
@@ -146,31 +147,39 @@ class MediaTests(unittest.TestCase):
         with self.assertRaisesRegex(m.MediaError,'season is unavailable'):
             self.backend.handle({'op':'play','online':True,'provider':0,'title':self.movie|{'kind':'tv'}})
 
-    def test_artwork_skips_redundant_imdb_requests_when_tmdb_supplies_fields(self):
+    def test_artwork_uses_tmdb_cast_and_backdrop(self):
         self.configure({'tmdb_key':'test'})
         data={'images':{'backdrops':[{'file_path':'/backdrop.jpg'}]},
               'credits':{'cast':[{'id':1,'name':'Actor','character':'Lead'}]}}
-        with patch.object(self.backend,'tmdb',return_value=data), patch.object(self.backend,'imdb') as imdb:
+        with patch.object(self.backend,'tmdb',return_value=data) as api:
             result=self.backend.artwork({'title':self.movie|{'tmdbId':42}})
-        imdb.assert_not_called()
+        self.assertEqual(api.call_count,1)
         self.assertEqual(result['title']['cast'][0]['name'],'Actor')
         self.assertTrue(result['title']['backdrop'].endswith('/backdrop.jpg'))
 
-    def test_outage_cooldown_is_shared_across_worker_restarts_and_expires(self):
-        with patch.object(m,'http',side_effect=m.MediaError('offline')) as api:
-            for backend in [self.backend,m.Backend(self.backend.config_path,self.backend.data,self.backend.cache)]:
-                with self.assertRaises(m.MediaError):backend.imdb('/titles')
-            self.assertEqual(api.call_count,1)
-        self.backend.put('provider:imdb',{'retryAfter':0})
-        with patch.object(m,'http',return_value={'titles':[]}) as api:
-            self.backend.imdb('/titles')
-            self.assertEqual(api.call_count,1)
-    def test_not_found_does_not_disable_imdb(self):
-        with patch.object(m,'http',side_effect=m.MediaError('not found',retryable=False)) as api:
-            for path in ['/titles/tt123','/titles/tt456']:
-                with self.assertRaises(m.MediaError):self.backend.imdb(path)
-            self.assertEqual(api.call_count,2)
-    def test_omdb_search_fallback_and_pagination(self):
+    def test_tmdb_details_keep_existing_imdb_identity(self):
+        self.configure({'tmdb_key':'test'})
+        with patch.object(self.backend,'tmdb',return_value={'id':42,'title':'Movie','overview':'New plot'}):
+            result=self.backend.details({'title':self.movie|{'tmdbId':42}})
+        self.assertEqual(result['id'],'tt123')
+        self.assertEqual(result['imdbId'],'tt123')
+        self.assertEqual(result['tmdbId'],42)
+        self.assertEqual(result['plot'],'New plot')
+
+    def test_tmdb_episodes_load_seasons_and_episode_artwork(self):
+        self.configure({'tmdb_key':'test'})
+        title=self.movie|{'kind':'tv','tmdbId':42}
+        def api(path,**params):
+            if path=='tv/42': return {'seasons':[{'season_number':1}]}
+            self.assertEqual(path,'tv/42/season/1')
+            return {'episodes':[{'episode_number':1,'name':'Pilot','still_path':'/still.jpg'}]}
+        with patch.object(self.backend,'tmdb',side_effect=api):
+            self.assertEqual(self.backend.episodes({'title':title})['seasons'],['1'])
+            result=self.backend.episodes({'title':title,'season':'1'})
+        self.assertEqual(result['items'][0]['number'],1)
+        self.assertEqual(result['items'][0]['image'],'https://image.tmdb.org/t/p/w300/still.jpg')
+
+    def test_omdb_search_when_tmdb_fails_and_pagination(self):
         self.configure({'tmdb_key':'tmdb-secret','omdb_key':'omdb-secret'})
         def api(url,params):
             if url!=m.OMDB: raise m.MediaError('offline')
@@ -188,7 +197,6 @@ class MediaTests(unittest.TestCase):
         self.configure({'omdb_key':'test'})
         self.backend.handle(dict(op='save',title=self.movie,values={'favorite':True,'note':'Keep this'}))
         def api(url,params):
-            if url==m.IMDB+'/titles/tt123':raise m.MediaError('offline')
             self.assertEqual(url,m.OMDB)
             self.assertEqual(params['i'],'tt123')
             return {'imdbID':'tt123','Type':'movie','Title':'Movie','Plot':'Full plot','Year':'2024','Runtime':'112 min','imdbRating':'8.2','imdbVotes':'123,456','Actors':'A, B','Ratings':[{'Source':'Internet Movie Database','Value':'8.2/10'}]}
@@ -202,7 +210,7 @@ class MediaTests(unittest.TestCase):
         self.configure({'omdb_key':'test'})
         title=self.movie|{'kind':'tv'}
         def api(url,params):
-            if url.startswith(m.IMDB):raise m.MediaError('offline')
+            self.assertEqual(url,m.OMDB)
             if 'Season' not in params:return {'totalSeasons':'2'}
             return {'Episodes':[{'Episode':'1','Title':'Pilot','Released':'2020-01-01','imdbRating':'N/A'}]}
         with patch.object(m,'http',side_effect=api):
@@ -223,11 +231,11 @@ class MediaTests(unittest.TestCase):
     def test_omdb_no_results_is_a_successful_empty_page(self):
         self.configure({'omdb_key':'test'})
         def api(url,params):
-            if url.startswith(m.IMDB):raise m.MediaError('offline')
+            self.assertEqual(url,m.OMDB)
             return {'Response':'False','Error':'Movie not found!'}
         with patch.object(m,'http',side_effect=api):
             self.assertEqual(self.backend.browse({'kind':'movie','query':'no matches'}),{'items':[],'next':''})
-    def test_stale_catalogue_survives_both_primary_and_fallback_outages(self):
+    def test_stale_catalogue_survives_tmdb_outage(self):
         self.configure({'tmdb_key':'test'})
         key='browse:'+json.dumps(['movie','',{},''],sort_keys=True)
         self.backend.put(key,dict(items=[self.movie],next=''))

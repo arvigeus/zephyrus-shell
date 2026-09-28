@@ -27,9 +27,10 @@ Item {
     function failPending(message) {
         for (const id of Object.keys(callbacks)) settle(id, null, message);
     }
-    function request(op, args, callback) {
+    function request(op, args, callback, timeoutMs) {
         const id = ++serial;
-        callbacks[id] = {callback: callback || function() {}, deadline: Date.now() + timeout};
+        callbacks[id] = {callback: callback || function() {},
+                         deadline: timeoutMs === 0 ? Infinity : Date.now() + (timeoutMs || timeout)};
         if (stopped) {
             settle(id, null, serviceName + " service stopped. Close and reopen this module.");
             return id;

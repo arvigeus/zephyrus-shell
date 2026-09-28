@@ -59,8 +59,8 @@ path to this project's `hyprland/hyprland.lua` with Lua's `dofile`.
   and opens them in Zed. New Project offers interactive starters, Git Clone supports clone modes,
   and project menus provide Mise and maintenance actions. See [Projects](docs/projects.md).
 - Movies and TV Series offer shared catalogue services, search/filters, rail/grid views,
-  title artwork, favorites, online provider selection, trailers, full cast/crew, and TV episodes. IMDbApi outages
-  fall back to configured TMDB/OMDb services (OMDb supports search, not discovery). See
+  title artwork, favorites, online provider selection, trailers, full cast/crew, and TV episodes. TMDB provides discovery;
+  configured OMDb can supply title search, details, and episodes when needed. See
   [media configuration](docs/media.md) for API keys, provider templates, and limitations.
 - Books opens on current Open Library trends with searchable Work-level results,
   subject/language/year filters, rail/grid covers, author links, lazy editions, and

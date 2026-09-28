@@ -84,6 +84,10 @@ For example:
       "track_artists_field": "artistNames",
       "track_isrc_field": "isrc",
       "stream_url": "{base_url}/track/{id}",
+      "download": {
+        "track": "stream",
+        "album": "stream"
+      },
       "headers": {
         "Origin": "https://service.example",
         "Referer": "https://service.example/"
@@ -103,6 +107,35 @@ supports `{base_url}`, `{id}`, `{track_id}`, `{query}`, `{artist}`, `{title}`,
 and `{isrc}`. IDs and query values are URL-encoded. Static `headers` are used
 for the search request and forwarded to mpv for streaming. Providers are tried
 in the order listed. Leave `providers` empty for catalog-only browsing.
+
+`download` is optional. Set `track`, `album`, both, or neither to expose the
+matching Download icons. Music uses the first provider in the ordered list with
+a value for that action. Set a value to `"stream"` to resolve a matching song
+through that provider's `search_url` and `stream_url`, then save its audio with
+`ffmpeg` without re-encoding. The resolved stream must be readable by `ffmpeg`;
+Music reports a failed save if it is not. An album saves each matching song and
+reports how many tracks succeeded.
+Files go to `XDG_MUSIC_DIR` (or `~/Music`) as
+`<song> - <artist> - <album> (YYYY-MM-DD).mka`. A full release date and the other
+filename fields are required. `.mka` is a Matroska audio container; the codec
+inside (for example, FLAC) retains the quality supplied by the provider. This
+does not import the files into the Local library. Install `ffmpeg` for stream
+downloads.
+
+Alternatively, a value may be an HTTP(S) download URL template if the provider
+offers an endpoint that returns a file or redirects to one. Download templates
+use the same URL encoding and `{base_url}` syntax as search and stream
+templates. They may use `{id}`,
+`{title}`, `{artist}`, and `{query}`; tracks may also use `{track_id}`, `{album_id}`,
+`{album}`, and `{isrc}`, while albums may use `{album_id}` and `{album}`. For
+downloads, `{id}` is the selected Apple catalog song or album ID (or the ID of
+another displayed source), while the stream template's `{id}` comes from the
+playback provider's search result. Values required by a download template must
+be present on the selected item. Music opens the expanded URL with the configured
+Music browser command; the provider endpoint handles the file or redirect.
+Provider authors are responsible for supplying URLs that accept these catalog
+values. Existing configurations without `download` work unchanged and show no
+Download icons.
 
 `lyrics_providers` is an ordered list of optional LRCLIB-compatible lyrics
 endpoints. Music looks up lyrics only when the lyrics button is clicked; it does

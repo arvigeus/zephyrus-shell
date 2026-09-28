@@ -9,7 +9,9 @@ import "../../media" as M
 ColumnLayout {
     id: root
     property var host
-    function requestRetention(enabled) { if (host) host.requestKeepRunning("music", enabled); }
+    property bool playbackWantsRetention: false
+    function updateRetention() { if (host) host.requestKeepRunning("music", playbackWantsRetention || downloadLoading); }
+    function requestRetention(enabled) { playbackWantsRetention = enabled; updateRetention(); }
     property string section: "discover"
     property var localSongs: []
     property string localQuery: ""
@@ -48,6 +50,10 @@ ColumnLayout {
     property string entityError: ""
     property string entityWarning: ""
     property string favoriteError: ""
+    property string downloadError: ""
+    property string downloadMessage: ""
+    property bool downloadLoading: false
+    property var downloadCapabilities: ({track: false, album: false})
     property alias playMessage: playback.playMessage
     property string lyricsTitle: ""
     property string lyricsText: ""
@@ -150,6 +156,25 @@ ColumnLayout {
             root.lyricsText = result && result.available ? result.lyrics || "" : "";
             root.lyricsProvider = result && result.available ? result.provider || "" : "";
         });
+    }
+
+    function download(kind, item) {
+        if (!item || downloadLoading) return;
+        downloadError = "";
+        downloadMessage = "";
+        downloadLoading = true;
+        updateRetention();
+        backendService.request("download", {kind: kind, item: item}, (result, failure) => {
+            root.downloadLoading = false;
+            root.updateRetention();
+            if (failure) root.downloadError = failure;
+            else if (result && result.path) {
+                const count = Number(result.saved || 0);
+                root.downloadMessage = result.failed
+                    ? "Saved " + count + " tracks; " + result.failed + " could not be saved. " + result.path
+                    : "Saved " + (kind === "album" ? count + " tracks to " : "track to ") + result.path;
+            } else root.downloadMessage = "Opened the download URL.";
+        }, 0);
     }
 
     function showArtistInfo(artist) {
@@ -846,6 +871,10 @@ ColumnLayout {
     Component.onCompleted: {
         loadFavorites();
         requestSearch();
+        backendService.request("download-capabilities", {}, (result, failure) => {
+            if (failure) root.downloadError = failure;
+            else root.downloadCapabilities = result || ({track: false, album: false});
+        });
     }
 
     Timer {
@@ -984,6 +1013,20 @@ ColumnLayout {
         visible: !root.allSearchActive && !!root.entityWarning
         Layout.fillWidth: true
         text: root.entityWarning
+        color: Theme.muted
+        wrapMode: Text.Wrap
+    }
+    W.Label {
+        visible: !!root.downloadError
+        Layout.fillWidth: true
+        text: root.downloadError
+        color: Theme.danger
+        wrapMode: Text.Wrap
+    }
+    W.Label {
+        visible: root.downloadLoading || !!root.downloadMessage
+        Layout.fillWidth: true
+        text: root.downloadLoading ? "Saving to Music…" : root.downloadMessage
         color: Theme.muted
         wrapMode: Text.Wrap
     }

@@ -233,13 +233,16 @@ Item {
                                     id: songActions
                                     entityHovered: rowMouse.containsMouse
                                     W.IconButton {
+                                        objectName: "musicPaneTrackDownload"
+                                        visible: !!root.controller.downloadCapabilities.track
+                                        enabled: !root.controller.downloadLoading
                                         Layout.preferredWidth: 28
                                         Layout.preferredHeight: 28
-                                        iconName: "file-text"
-                                        iconSize: 15
+                                        iconName: "download"
+                                        iconSize: 16
                                         opacity: songActions.revealed || hovered || activeFocus ? 1 : 0
-                                        text: "Show lyrics for " + (resultRow.modelData.title || "this song")
-                                        onClicked: root.controller.showLyrics(resultRow.modelData)
+                                        text: "Download track"
+                                        onClicked: root.controller.download("track", resultRow.modelData)
                                     }
                                     W.IconButton {
                                         Layout.preferredWidth: 28
@@ -249,6 +252,15 @@ Item {
                                         opacity: songActions.revealed || hovered || activeFocus ? 1 : 0
                                         text: "Find " + (resultRow.modelData.title || "this song")
                                         onClicked: root.controller.findLocal(resultRow.modelData, "song")
+                                    }
+                                    W.IconButton {
+                                        Layout.preferredWidth: 28
+                                        Layout.preferredHeight: 28
+                                        iconName: "file-text"
+                                        iconSize: 15
+                                        opacity: songActions.revealed || hovered || activeFocus ? 1 : 0
+                                        text: "Show lyrics for " + (resultRow.modelData.title || "this song")
+                                        onClicked: root.controller.showLyrics(resultRow.modelData)
                                     }
                                     W.IconButton {
                                         Layout.preferredWidth: 32
@@ -328,6 +340,15 @@ Item {
                                 MusicRowActionGroup {
                                     id: artistActions
                                     visible: root.kind === "artists"
+                                    W.IconButton {
+                                        Layout.preferredWidth: 28
+                                        Layout.preferredHeight: 28
+                                        iconName: "file-search-corner"
+                                        iconSize: 16
+                                        opacity: artistActions.revealed || hovered || activeFocus ? 1 : 0
+                                        text: "Find " + (resultRow.modelData.name || "this artist")
+                                        onClicked: root.controller.findLocal(resultRow.modelData, "artist")
+                                    }
                                     entityHovered: rowMouse.containsMouse
                                     W.IconButton {
                                         Layout.preferredWidth: 28
@@ -337,15 +358,6 @@ Item {
                                         opacity: artistActions.revealed || hovered || activeFocus ? 1 : 0
                                         text: "Artist information for " + (resultRow.modelData.name || "this artist")
                                         onClicked: root.controller.showArtistInfo(resultRow.modelData)
-                                    }
-                                    W.IconButton {
-                                        Layout.preferredWidth: 28
-                                        Layout.preferredHeight: 28
-                                        iconName: "file-search-corner"
-                                        iconSize: 16
-                                        opacity: artistActions.revealed || hovered || activeFocus ? 1 : 0
-                                        text: "Find " + (resultRow.modelData.name || "this artist")
-                                        onClicked: root.controller.findLocal(resultRow.modelData, "artist")
                                     }
                                     W.IconButton {
                                         Layout.preferredWidth: 32
@@ -371,6 +383,18 @@ Item {
                             id: albumActions
                             visible: root.kind === "albums"
                             entityHovered: rowMouse.containsMouse
+                            W.IconButton {
+                                objectName: "musicPaneAlbumDownload"
+                                visible: !!root.controller.downloadCapabilities.album
+                                enabled: !root.controller.downloadLoading
+                                Layout.preferredWidth: 28
+                                Layout.preferredHeight: 28
+                                iconName: "download"
+                                iconSize: 16
+                                opacity: albumActions.revealed || hovered || activeFocus ? 1 : 0
+                                text: "Download album"
+                                onClicked: root.controller.download("album", resultRow.modelData)
+                            }
                             W.IconButton {
                                 Layout.preferredWidth: 28
                                 Layout.preferredHeight: 28

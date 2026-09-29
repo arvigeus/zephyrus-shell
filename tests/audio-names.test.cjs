@@ -24,3 +24,12 @@ test('missing and unplugged devices are represented honestly', () => {
   const node = {name:'monitor',description:'Monitor'};
   assert.equal(context.describe(node,{devices:{monitor:{properties:{},available:false}}}).available,false);
 });
+test('the two unused Navi outputs are hidden by stable node identity', () => {
+  const navi = JSON.parse(fs.readFileSync(path.join(__dirname, '../config/audio/05-navi-hdmi.json')));
+  for (const suffix of ['3', '7']) {
+    const node = {name: `alsa_output.pci-0000_03_00.1.pro-output-${suffix}`, description: 'Navi HDMI audio'};
+    assert.equal(context.describe(node, {rules: [...navi, ...rules]}).hidden, true);
+  }
+  const other = {name: 'alsa_output.another-gpu.pro-output-3', description: 'Another HDMI audio'};
+  assert.equal(context.describe(other, {rules: [...navi, ...rules]}).hidden, false);
+});

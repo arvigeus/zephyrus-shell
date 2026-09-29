@@ -31,6 +31,7 @@ QtObject {
         }
         onExited: (exitCode, exitStatus) => {
             if (root.actionSucceeded && ["profile", "brightness", "gpu", "chargeLimit"].includes(root.actionName)) Profiles.edit(root.actionName, root.actionValue);
+            if (root.actionSucceeded && root.actionName === "clean-thumbnails") HardwareSnapshot.homeUsage = null;
             if (exitCode === 0 && root.closeAfterAction) ShellState.close();
             else root.refresh();
         }

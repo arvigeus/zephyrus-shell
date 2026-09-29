@@ -9,7 +9,9 @@ DrawerFrame {
     id: root
     property string page: ""
     property bool expandSections: false
-    title: ({wifi: "Wi-Fi", bluetooth: "Bluetooth", display: "Displays", cpu: "Processor", gpu: "Graphics", memory: "Memory"})[page] || "Settings"
+    property alias wifiExpanded: connectivity.wifiExpanded
+    property alias bluetoothExpanded: connectivity.bluetoothExpanded
+    title: ({display: "Displays", cpu: "Processor", gpu: "Graphics", system: "System"})[page] || "Settings"
     canGoBack: page !== ""
     backLabel: "Back to Settings"
     onBackRequested: page = ""
@@ -25,10 +27,8 @@ DrawerFrame {
         Loader {
             visible: active; active: root.page !== ""
             Layout.fillWidth: true; Layout.fillHeight: true
-            sourceComponent: root.page === "wifi" ? wifiPage : root.page === "bluetooth" ? bluetoothPage : root.page === "display" ? displayPage : hardwarePage
+            sourceComponent: root.page === "display" ? displayPage : hardwarePage
         }
-        Component { id: wifiPage; WifiPage {} }
-        Component { id: bluetoothPage; BluetoothPage {} }
         Component { id: displayPage; DisplayPage { machine: machineService } }
         Component { id: hardwarePage; HardwarePage { machine: machineService; page: root.page } }
         ScrollArea {
@@ -36,8 +36,10 @@ DrawerFrame {
             visible: root.page === ""
             Layout.fillWidth: true; Layout.fillHeight: true; clip: true
             contentWidth: availableWidth
+            contentHeight: controls.implicitHeight
             ColumnLayout {
-                width: controlScroll.availableWidth; spacing: 16
+                id: controls
+                width: controlScroll.availableWidth; height: implicitHeight; spacing: 16
                 enabled: !Profiles.applying
                 RowLayout {
                     Layout.fillWidth: true
@@ -47,7 +49,7 @@ DrawerFrame {
                     }
                     Choice { Layout.fillWidth: true; model: Profiles.names; displayText: Profiles.data.active || "Loading profiles…"; enabled: Profiles.loaded && !Profiles.busy && !machineService.busy; Accessible.name: "Settings profile"; onActivated: index => Profiles.select(model[index]) }
                 }
-                ConnectivitySection { onOpenPage: page => root.page = page }
+                ConnectivitySection { id: connectivity }
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: 8
                     AudioSection { expanded: root.expandSections }
@@ -58,7 +60,7 @@ DrawerFrame {
                 Action { text: Attention.quiet ? "Do not disturb · On" : "Do not disturb · Off"; Layout.fillWidth: true; highlighted: Attention.quiet; onClicked: Attention.quiet = !Attention.quiet }
             }
         }
-        Label { visible: text !== ""; text: machineService.error || Profiles.error; color: Theme.danger; wrapMode: Text.Wrap; Layout.fillWidth: true }
+        Label { visible: text !== ""; text: machineService.error || Profiles.error || KeepAwake.error; color: Theme.danger; wrapMode: Text.Wrap; Layout.fillWidth: true }
         SessionActions { visible: root.page === ""; machine: machineService }
     }
 }

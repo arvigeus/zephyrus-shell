@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import Quickshell.Services.Pipewire
 import "../widgets"
 import "../core"
+import "../core/StatusIcons.js" as StatusIcons
 
 ColumnLayout {
     id: root
@@ -13,12 +14,12 @@ ColumnLayout {
     readonly property var node: input ? Pipewire.defaultAudioSource : Pipewire.defaultAudioSink
     readonly property var sources: Pipewire.nodes.values.filter(n => !n.isStream && n.audio && !n.isSink)
     readonly property bool silenced: input ? sources.length > 0 && sources.every(n => n.audio.muted) : !!node && node.audio.muted
-    readonly property var choices: Pipewire.nodes.values.filter(n => !n.isStream && n.audio && n.isSink !== input)
+    readonly property var choices: Pipewire.nodes.values.filter(n => !n.isStream && n.audio && n.isSink !== input && !inventory.describe(n).hidden)
     Layout.fillWidth: true; spacing: 4
     RowLayout {
         Layout.fillWidth: true
         IconButton {
-            iconName: root.input ? (root.silenced ? "mic-off" : "mic") : (root.silenced ? "volume-x" : "volume-2")
+            iconName: root.input ? (root.silenced ? "mic-off" : "mic") : StatusIcons.volumeIcon(root.node ? root.node.audio.volume : 0, root.silenced || !root.node)
             text: root.input ? (root.silenced ? "Enable all microphones" : "Disable all microphones") : (root.silenced ? "Unmute speakers" : "Mute speakers")
             enabled: !!root.node
             onClicked: {

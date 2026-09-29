@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import "../widgets"
 import "../core"
+import "../core/StatusIcons.js" as StatusIcons
 ColumnLayout {
     id: root
     required property var machine
@@ -10,8 +11,9 @@ ColumnLayout {
     Layout.fillWidth: true; spacing: 4
     RowLayout {
         Layout.fillWidth: true
-        Icon { name: "sun"; Layout.preferredWidth: 42 }
+        Icon { name: StatusIcons.brightnessIcon(brightnessSlider.value); Layout.preferredWidth: 42 }
         LevelSlider {
+            id: brightnessSlider
             Layout.fillWidth: true; from: 5; to: 100; stepSize: 1
             value: root.machine.snapshot.brightness || 5
             enabled: !!root.machine.snapshot.brightnessAvailable && !root.machine.busy

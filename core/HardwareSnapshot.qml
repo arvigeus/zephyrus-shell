@@ -5,6 +5,7 @@ import Quickshell.Io
 QtObject {
     id: root
     property var data: ({})
+    property var homeUsage: null
     property string error: ""
     readonly property bool busy: query.running
     function refresh() { if (!busy) { error = ""; query.running = true; } }

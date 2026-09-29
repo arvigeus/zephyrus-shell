@@ -48,3 +48,10 @@ audio controls exist. No new background audio daemon is installed.
 Optional `role` values are `speaker`, `headphones`, `microphone`, `headset`, and
 `hdmi`. Roles choose device icons; PipeWire source/sink type determines which
 selector lists the device. Existing rules without roles remain supported.
+
+Set `"hidden": true` in a matching rule to omit an unwanted output or input from
+the chooser. Hidden rules do not need a `label`. Match stable `node.name` and port
+properties so another device is not hidden by accident. The currently selected
+device still controls the main volume or microphone slider, even if hidden from
+the chooser. The bundled `05-navi-hdmi.json` hides this machine's two unused Navi
+HDMI/DisplayPort outputs; remove or edit that file if either connection is used.

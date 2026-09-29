@@ -11,6 +11,13 @@ spec.loader.exec_module(audio)
 
 
 class AudioTests(unittest.TestCase):
+    def test_hidden_rule_needs_identity_but_no_label(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "hidden.json").write_text(json.dumps([{"match": {"node.name": "gpu-output"}, "hidden": True}]))
+            rules, errors = audio.load_rules(directory)
+            self.assertEqual(errors, [])
+            self.assertTrue(rules[0]["hidden"])
+
     def test_bad_rule_file_does_not_disable_good_rules(self):
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, "bad.json").write_text('[{"label":"Too broad"}]')

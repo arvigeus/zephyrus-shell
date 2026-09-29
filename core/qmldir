@@ -8,3 +8,4 @@ singleton Browser 1.0 Browser.qml
 singleton Profiles 1.0 Profiles.qml
 
 singleton HardwareSnapshot 1.0 HardwareSnapshot.qml
+singleton KeepAwake 1.0 KeepAwake.qml

@@ -6,10 +6,11 @@ import shutil
 import subprocess
 import sys
 import re
+import time
 
 
-def command(args, strict=False):
-    result = subprocess.run(args, capture_output=True, text=True, timeout=8)
+def command(args, strict=False, timeout=8):
+    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
     if strict and result.returncode:
         raise RuntimeError(result.stderr.strip() or f"{args[0]} exited {result.returncode}")
     return result.stdout.strip()
@@ -54,6 +55,75 @@ def gpu_status():
         return {"mode": "", "modes": [], "error": str(error)}
 
 
+def scheduled_shutdown():
+    if not shutil.which("systemctl"):
+        return ""
+    try:
+        result = subprocess.run(["systemctl", "poweroff", "--when=show"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    status = (result.stdout or result.stderr).strip()
+    return status if result.returncode == 0 and "No scheduled shutdown" not in status else ""
+
+
+def clean_thumbnail_cache():
+    cache_root = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))).expanduser()
+    if not cache_root.is_absolute():
+        raise ValueError("XDG_CACHE_HOME must be an absolute directory")
+    thumbnails = cache_root / "thumbnails"
+    if thumbnails.is_symlink():
+        raise ValueError("Thumbnail cache is a symlink; refusing to remove it")
+    if not thumbnails.exists():
+        return
+    if not thumbnails.is_dir() or thumbnails.stat().st_uid != os.getuid():
+        raise ValueError("Thumbnail cache must be a directory owned by this user")
+    if thumbnails.is_mount():
+        raise ValueError("Thumbnail cache is a mount point; refusing to remove it")
+    entries = list(thumbnails.iterdir())
+    if any(entry.is_mount() for entry in entries):
+        raise ValueError("Thumbnail cache contains a mount point; refusing to remove it")
+    for entry in entries:
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
+
+
+def cpu_usage():
+    def counters():
+        values = [int(value) for value in read("/proc/stat").splitlines()[0].split()[1:]]
+        return sum(values), values[3] + values[4]
+
+    first_total, first_idle = counters()
+    time.sleep(0.12)
+    last_total, last_idle = counters()
+    elapsed = last_total - first_total
+    return round(100 * (1 - (last_idle - first_idle) / elapsed)) if elapsed > 0 else 0
+
+
+def gpu_hardware():
+    cards = []
+    for card in sorted(Path("/sys/class/drm").glob("card[0-9]*")):
+        device = card / "device"
+        if not (device / "vendor").exists():
+            continue
+        pci_address = device.resolve().name
+        description = command(["lspci", "-s", pci_address, "-mm"]) if shutil.which("lspci") else ""
+        match = re.search(r'"(?:VGA compatible controller|3D controller|Display controller)"\s+"[^"]+"\s+"([^"]+)"', description)
+        name = match[1] if match else "Graphics " + pci_address
+        product = re.search(r"\[([^]]+)\]", name)
+        if product and "/" not in product[1]:
+            name = product[1]
+        elif product and "Radeon RX" in product[1]:
+            series = re.search(r"Radeon RX (\d)", product[1])
+            name = f"AMD Radeon RX {series[1]}000 series" if series else name.split(" [", 1)[0]
+        else:
+            name = re.sub(r"\s*\[[^]]+\]", "", name).strip()
+        busy = read(device / "gpu_busy_percent")
+        cards.append({"name": name, "usage": min(100, max(0, int(busy))) if busy.isdigit() else None})
+    return cards
+
+
 def hardware():
     mem = {line.split(":")[0]: int(line.split()[1]) for line in read("/proc/meminfo").splitlines() if len(line.split()) >= 2}
     total = mem.get("MemTotal", 0); used = total - mem.get("MemAvailable", total)
@@ -66,7 +136,15 @@ def hardware():
                 temperatures.append({"driver": read(hw / "name"), "label": read(f.with_name(f.name.replace("_input", "_label")), read(hw / "name")), "value": round(int(value) / 1000)})
         for f in hw.glob("fan*_input"):
             if read(f).isdigit(): fans.append({"label": read(hw / "name") + " " + f.stem, "value": read(f)})
-    return {"memoryPercent": round(used / max(total, 1) * 100), "memoryUsed": round(used / 1048576, 1), "memoryTotal": round(total / 1048576, 1), "temperatures": temperatures, "fans": fans, "load": read("/proc/loadavg").split(" ")[0], "boost": read("/sys/devices/system/cpu/cpufreq/boost")}
+    processor = next((line.split(":", 1)[1].strip() for line in read("/proc/cpuinfo").splitlines() if line.startswith("model name")), "Processor")
+    processor = re.sub(r"\s+with Radeon Graphics$", "", processor)
+    storage = shutil.disk_usage("/")
+    graphics = gpu_hardware()
+    gpu_loads = [card["usage"] for card in graphics if card["usage"] is not None]
+    return {"cpuName": processor, "cpuPercent": cpu_usage(), "gpuName": " + ".join(card["name"] for card in graphics) or "Graphics", "gpuPercent": max(gpu_loads) if gpu_loads else None,
+            "memoryPercent": round(used / max(total, 1) * 100), "memoryUsed": round(used / 1048576, 1), "memoryTotal": round(total / 1048576, 1),
+            "storagePercent": round((storage.total - storage.free) / max(storage.total, 1) * 100), "storageUsed": round((storage.total - storage.free) / 1073741824, 1), "storageTotal": round(storage.total / 1073741824, 1),
+            "temperatures": temperatures, "fans": fans, "load": read("/proc/loadavg").split(" ")[0], "boost": read("/sys/devices/system/cpu/cpufreq/boost")}
 
 
 def snapshot():
@@ -111,6 +189,7 @@ def snapshot():
         bluetoothEditor=bool(shutil.which("blueman-manager") or shutil.which("systemsettings")),
         profile=command(["powerprofilesctl", "get"]) if profiles else "",
         profiles=[p for p in ["power-saver", "balanced", "performance"] if p + ":" in profiles],
+        scheduledShutdown=scheduled_shutdown(),
         asus=bool(shutil.which("asusctl")),
         hyprland=bool(os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")),
         monitors=monitors,
@@ -136,6 +215,14 @@ def action(name, value):
         else:
             result = subprocess.run(["pkexec", "tee", str(target)], input=str(percent), capture_output=True, text=True, timeout=60)
             if result.returncode: raise RuntimeError(result.stderr.strip() or "Charge limit authorization was cancelled")
+    elif name == "schedule-poweroff":
+        if value not in ("15", "30", "60", "90", "120", "180", "240", "300"):
+            raise ValueError("Unsupported shutdown delay")
+        command(["systemctl", "poweroff", f"--when=+{value}min"], True, 60)
+    elif name == "cancel-poweroff":
+        command(["systemctl", "poweroff", "--when=cancel"], True, 60)
+    elif name == "clean-thumbnails" and value == "confirm":
+        clean_thumbnail_cache()
     elif name in ("primary", "display", "display-mode", "display-scale"):
         monitors = json.loads(command(["hyprctl", "monitors", "all", "-j"], True))
         data = json.loads(value) if name != "primary" else {"name": value}

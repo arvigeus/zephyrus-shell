@@ -37,6 +37,7 @@ Scope {
             Region { item: center }
             Region { item: right }
         }
+        IdleInhibitor { window: bar; enabled: KeepAwake.mode === "screen" && KeepAwake.active }
         Row {
             id: left
             x: 14; y: 12; spacing: 8

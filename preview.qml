@@ -69,7 +69,12 @@ ShellRoot {
                     if (step === panels.length) { stop(); finish.start(); return; }
                     ShellState.panel = panels[step];
                     ShellState.pluginId = step === 2 ? "apps" : "";
-                    if (step >= 5) Qt.callLater(() => { if (right.item) { right.item.page = ["wifi", "bluetooth", "display", "cpu", "gpu", "memory", ""][step - 5]; right.item.expandSections = step === 11; } });
+                    if (step >= 5) Qt.callLater(() => { if (right.item) {
+                        right.item.page = ["", "", "display", "cpu", "gpu", "system", ""][step - 5];
+                        right.item.wifiExpanded = step === 5;
+                        right.item.bluetoothExpanded = step === 6;
+                        right.item.expandSections = step === 11;
+                    } });
                 });
             }
         }

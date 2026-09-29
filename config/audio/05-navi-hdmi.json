@@ -1,0 +1,10 @@
+[
+  {
+    "match": {"node.name": "alsa_output.pci-0000_03_00.1.pro-output-3"},
+    "hidden": true
+  },
+  {
+    "match": {"node.name": "alsa_output.pci-0000_03_00.1.pro-output-7"},
+    "hidden": true
+  }
+]

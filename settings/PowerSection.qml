@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Quickshell.Services.UPower
 import "../widgets"
 import "../core"
+import "../core/StatusIcons.js" as StatusIcons
 ColumnLayout {
     id: root
     required property var machine
@@ -13,7 +14,7 @@ ColumnLayout {
     Layout.fillWidth: true; spacing: 4
     RowLayout {
         Layout.fillWidth: true
-        Icon { name: root.machine.snapshot.batteryStatus === "Charging" ? "battery-charging" : root.percent >= 95 ? "battery-full" : root.percent < 20 ? "battery-low" : "battery"; Layout.preferredWidth: 42 }
+        Icon { name: StatusIcons.batteryIcon(root.percent, root.battery && root.battery.isPresent ? root.battery.state === UPowerDeviceState.Charging : root.machine.snapshot.batteryStatus === "Charging"); Layout.preferredWidth: 42 }
         Slider {
             id: limit
             Layout.fillWidth: true; implicitHeight: 42

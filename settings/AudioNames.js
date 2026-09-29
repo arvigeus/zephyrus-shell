@@ -7,8 +7,9 @@ function describe(node, snapshot) {
         Object.keys(rule.match || {}).every(key => String(properties[key] || "") === rule.match[key]) &&
         Object.keys(rule.contains || {}).every(key => String(properties[key] || "").includes(rule.contains[key])));
     return {
-        label: rule ? rule.label : node.description || node.name,
+        label: rule && rule.label ? rule.label : node.description || node.name,
         role: rule && rule.role ? rule.role : (node.isSink ? "speaker" : "microphone"),
+        hidden: !!(rule && rule.hidden),
         detail: (route && route.port ? route.port + " · " : "") + node.name,
         available: !route || route.available
     };

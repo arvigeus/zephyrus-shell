@@ -15,8 +15,10 @@ def load_rules(directory):
             for rule in data:
                 if "role" in rule and rule["role"] not in ("speaker", "headphones", "microphone", "headset", "hdmi"):
                     raise ValueError("unknown audio role")
-                if not isinstance(rule.get("label"), str) or not rule["label"].strip():
-                    raise ValueError("each rule needs a label")
+                if not isinstance(rule.get("hidden", False), bool):
+                    raise ValueError("hidden must be a boolean")
+                if not rule.get("hidden") and (not isinstance(rule.get("label"), str) or not rule["label"].strip()):
+                    raise ValueError("visible rules need a label")
                 if not rule.get("match") and not rule.get("contains"):
                     raise ValueError("each rule needs match or contains fields")
                 for key in ("match", "contains"):

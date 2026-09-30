@@ -1,5 +1,13 @@
 # Verification on this machine
 
+Battery information follow-up, 2026-09-30: machine/settings Python tests cover
+Wh and mAh drivers, missing readings, multiple packs, and estimates honoring the
+charge limit. `bash scripts/check-power.sh` uses the production PowerSection and
+battery-details command with isolated XDG state to verify lazy creation, refresh
+without replacing the card, destruction on collapse, and reopening. The actual
+battery card was captured and visually inspected. Charge-limit writes and profile
+transitions were not exercised.
+
 Architecture review, 2026-09-30: 262 Python tests and 27 portable QML tests passed,
 as did both Node suites, Hyprland configuration parsing, all eight README smoke
 scripts, and the offline performance budgets. The retained check now includes six

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import re
 import time
+import math
 
 
 def command(args, strict=False, timeout=8):
@@ -160,6 +161,78 @@ def hardware(*, hwmon_root=Path("/sys/class/hwmon")):
             "fans": fans, "load": read("/proc/loadavg").split(" ")[0], "boost": read("/sys/devices/system/cpu/cpufreq/boost")}
 
 
+def external_power_online(supply_root=Path("/sys/class/power_supply")):
+    """Keep adapter presence separate from a pack's charging/discharging state."""
+    readings = []
+    for supply in sorted(supply_root.glob("*")):
+        kind = read(supply / "type")
+        if read(supply / "scope") == "Device" or not (kind == "Mains" or kind == "Wireless" or kind.startswith("USB")):
+            continue
+        online = read(supply / "online")
+        if online in ("0", "1"):
+            readings.append(online == "1")
+    return any(readings) if readings else None
+
+
+def battery_status_text(status, external_power):
+    descriptions = {"Charging": "Charging", "Discharging": "Battery discharging", "Full": "Fully charged", "Not charging": "Not charging"}
+    description = descriptions.get(status, "Battery status unavailable")
+    if external_power is True:
+        return "Plugged in · " + description
+    if status == "Discharging" and external_power is False:
+        return "On battery"
+    return description
+
+
+def battery_details(*, supply_root=Path("/sys/class/power_supply")):
+    """Read pack details only on expansion, without commands or privileged access."""
+    def number(pack, field):
+        try:
+            value = float(read(pack / field))
+            return value if math.isfinite(value) and value >= 0 else None
+        except ValueError:
+            return None
+
+    external_power = external_power_online(supply_root)
+    packs = []
+    for pack in sorted(supply_root.glob("*")):
+        if read(pack / "type") != "Battery" or read(pack / "scope") == "Device" or read(pack / "present") == "0":
+            continue
+        # Keep capacity pairs in the same units; some drivers only report charge.
+        unit, scale = "Wh", 1000000
+        full, design, now = [number(pack, field) for field in ("energy_full", "energy_full_design", "energy_now")]
+        if not full or not design:
+            charge = [number(pack, field) for field in ("charge_full", "charge_full_design", "charge_now")]
+            if (charge[0] and charge[1]) or not any(value is not None for value in (full, design, now)):
+                unit, scale = "mAh", 1000
+                full, design, now = charge
+        health = round(full / design * 100, 1) if full and design else None
+        power = number(pack, "power_now")
+        current, voltage = number(pack, "current_now"), number(pack, "voltage_now")
+        watts = power / 1000000 if power is not None else current * voltage / 1e12 if current is not None and voltage is not None else None
+        status = read(pack / "status")
+        charge_limit = number(pack, "charge_control_end_threshold")
+        if charge_limit is None or not 50 <= charge_limit <= 100:
+            charge_limit = 100
+        rate = power if unit == "Wh" else current
+        seconds = None
+        if rate and now is not None and (status == "Charging" or status == "Discharging" and external_power is not True):
+            remaining = max(0, full * charge_limit / 100 - now) if status == "Charging" and full else now if status == "Discharging" else None
+            if remaining is not None and remaining > 0:
+                seconds = round(remaining / rate * 3600)
+        temperature = number(pack, "temp")
+        packs.append({
+            "name": pack.name, "manufacturer": read(pack / "manufacturer"), "model": read(pack / "model_name"),
+            "technology": {"Li-ion": "Lithium-ion", "Li-poly": "Lithium-polymer", "NiMH": "Nickel-metal hydride"}.get(read(pack / "technology"), read(pack / "technology")),
+            "status": status, "statusText": battery_status_text(status, external_power), "externalPower": external_power,
+            "percent": number(pack, "capacity"), "healthPercent": health,
+            "fullCapacity": full / scale if full else None, "designCapacity": design / scale if design else None,
+            "capacityUnit": unit, "watts": watts, "seconds": seconds, "chargeLimit": charge_limit,
+            "cycles": number(pack, "cycle_count"), "temperature": temperature / 10 if temperature is not None else None,
+        })
+    return {"batteries": packs}
+
+
 def snapshot():
     light = backlight()
     batteries = [p for p in Path("/sys/class/power_supply").glob("*") if read(p / "type") == "Battery" and read(p / "scope") != "Device"]
@@ -174,9 +247,11 @@ def snapshot():
     energy = float(read(battery / "energy_now", "0")) / 1000000 if battery else 0
     full = float(read(battery / "energy_full", "0")) / 1000000 if battery else 0
     status = read(battery / "status") if battery else ""
+    external_power = external_power_online()
     hours = ((full - energy) if status == "Charging" else energy) / power if power > 0 else 0
     minutes = round(max(0, hours) * 60)
-    battery_info = (f"{minutes // 60}h {minutes % 60}m " + ("until charged" if status == "Charging" else "remaining")) if minutes and status in ("Charging", "Discharging") else status
+    estimate_available = status == "Charging" or status == "Discharging" and external_power is not True
+    battery_info = (f"{minutes // 60}h {minutes % 60}m " + ("until charged" if status == "Charging" else "remaining")) if minutes and estimate_available else battery_status_text(status, external_power) if battery else ""
     if power > 0 and status == "Discharging": battery_info += f" · {power:.1f} W"
     external = aliases.get(primary, {}).get("ddcBus")
     brightness = round(int(read(light / "brightness", "0")) / max(1, int(read(light / "max_brightness", "1"))) * 100) if light else 0
@@ -189,7 +264,7 @@ def snapshot():
     return dict(
         hardware=hardware(), gpu=gpu_status(), primary=primary, brightnessAvailable=can_brighten,
         batteryPercent=int(read(battery / "capacity", "0")) if battery else 0,
-        batteryStatus=status, batteryInfo=battery_info,
+        batteryStatus=status, batteryInfo=battery_info, externalPower=external_power,
         model=read("/sys/class/dmi/id/product_name", "Linux desktop"),
         backlight=light.name if light else "",
         brightness=brightness,
@@ -290,7 +365,8 @@ def action(name, value):
 
 if __name__ == "__main__":
     try:
-        print(json.dumps(snapshot() if sys.argv[1] == "snapshot" else action(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "")))
+        operation = sys.argv[1]
+        print(json.dumps(snapshot() if operation == "snapshot" else battery_details() if operation == "battery-details" else action(operation, sys.argv[2] if len(sys.argv) > 2 else "")))
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         print(json.dumps({"error": str(error)}))
         sys.exit(1)

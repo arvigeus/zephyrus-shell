@@ -25,6 +25,7 @@ QtObject {
     }
     property Connections profileChanges: Connections { target: Profiles; function onBusyChanged() { if (!Profiles.busy) root.refresh(); } }
     property Connections batteryChanges: Connections { target: UPower.displayDevice; function onPercentageChanged() { root.refresh(); } function onStateChanged() { root.refresh(); } }
+    property Connections powerSourceChanges: Connections { target: UPower; function onOnBatteryChanged() { root.refresh(); } }
     property Process action: Process {
         stdout: StdioCollector {
             onStreamFinished: { try { const result = JSON.parse(text); root.error = result.error || ""; root.actionSucceeded = !!result.ok; } catch (error) { root.error = "Action did not return a result."; } }

@@ -37,19 +37,19 @@ ColumnLayout {
             }
         }
         Label { text: root.machine.snapshot.battery ? Math.round(root.percent) + "%" : "—"; color: Theme.muted; Layout.preferredWidth: 38; horizontalAlignment: Text.AlignRight }
-        IconButton { text: "Battery automation"; iconName: root.expanded ? "chevron-up" : "chevron-down"; onClicked: root.expanded = !root.expanded }
+        IconButton { text: "Battery information"; iconName: root.expanded ? "chevron-up" : "chevron-down"; onClicked: root.expanded = !root.expanded }
     }
     Label { Layout.leftMargin: 48; Layout.fillWidth: true; text: root.machine.snapshot.batteryInfo || "No battery detected"; color: Theme.muted; font.pixelSize: 12; wrapMode: Text.Wrap }
-    ColumnLayout {
-        visible: root.expanded; Layout.fillWidth: true; Layout.leftMargin: 48
-        Repeater {
-            model: [{key: "discharging", label: "On battery"}, {key: "low", label: "Low battery · " + (Profiles.data.lowBatteryPercent || 20) + "%"}, {key: "default", label: "Plugged in"}]
-            RowLayout {
-                required property var modelData
-                Layout.fillWidth: true
-                Label { text: modelData.label; Layout.fillWidth: true; color: Theme.muted }
-                Choice { Layout.preferredWidth: 170; model: ["Keep current"].concat(Profiles.names); currentIndex: Math.max(0, model.indexOf(Profiles.data.battery[modelData.key] || "Keep current")); enabled: !Profiles.busy; onActivated: index => Profiles.assign(modelData.key, index === 0 ? "" : model[index]) }
-            }
-        }
+    Loader {
+        id: detailsLoader
+        objectName: "batteryDetailsLoader"
+        visible: active; active: root.expanded; asynchronous: true
+        Layout.fillWidth: true; Layout.leftMargin: 48
+        sourceComponent: BatteryDetails { machine: root.machine }
+    }
+    Label {
+        visible: root.expanded && detailsLoader.status === Loader.Loading
+        Layout.leftMargin: 48; Layout.fillWidth: true
+        text: "Reading battery information…"; color: Theme.muted; font.pixelSize: 12
     }
 }

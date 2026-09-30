@@ -9,8 +9,25 @@ rename profiles, then restart the shell. Only keys included in a profile apply:
 `brightness` (5–100), `chargeLimit` (50–100), and `gpu` (a supported Cardwire mode).
 Audio routing, volume and display topology are independent of profiles.
 
-Battery expansion assigns profiles to plugged-in, discharging and low-battery
-states. “Keep current” disables that trigger. Low battery defaults to 20%.
+Battery expansion loads a read-only information card for each laptop battery:
+charge and status, estimated time until full (or the charge limit) or empty, health relative to its
+original capacity, power draw or charging power, charge cycles, and temperature
+when available. Capacity uses Wh or mAh according to the driver's readings;
+missing readings are marked unavailable. Pack manufacturer, model and chemistry
+appear below the readings. Details are read asynchronously from sysfs only while
+expanded, refresh with hardware updates and every five seconds while visible,
+and are released when collapsed. Battery power measures power flowing into or
+out of the battery, not total system consumption from the adapter. A plugged-in
+battery at its charge limit can show `0.0 W · Idle` while the laptop uses adapter
+power. Hover this row for the reading's meaning in the current battery state.
+Adapter online status is read separately from battery status: a pack may still
+report discharging while plugged in. That combination shows “Plugged in · Battery
+discharging” and hides the battery-only runtime estimate. UPower power-source
+events also refresh the hardware snapshot on plugging or unplugging.
+
+Automatic profile assignments remain configurable in the state file's `battery`
+object (`default`, `discharging`, and `low` map to profile names; an empty string
+disables a trigger). Low battery defaults to 20%.
 Transitions use UPower events even with the drawer closed; they do not repeatedly
 override manual selection within the same state. An assigned profile also applies
 at shell startup. Defaults have no automatic assignments. If one setting fails,

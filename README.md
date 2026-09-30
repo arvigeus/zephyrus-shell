@@ -83,10 +83,10 @@ path to this project's `hyprland/hyprland.lua` with Lua's `dofile`.
 - Confirmed session actions; floating windows by default, optional tiling per window.
 - A static, procedurally drawn background. No wallpaper download or resident animation.
 
-The Settings drawer has saved profiles, expandable connectivity/audio/display/battery controls,
+The Settings drawer has saved profiles, expandable connectivity/audio/display controls and lazily loaded battery information,
 CPU/GPU and System cards, and Cardwire GPU switching. Hardware controls are enabled only
 when their backend is available. See [settings configuration](docs/settings.md)
-for profiles, battery automation, display aliases, DDC brightness and limitations.
+for profiles, battery health and automation, display aliases, DDC brightness and limitations.
 Networking, Bluetooth, audio and battery automation use service events. Hardware
 readings refresh on opening, actions, battery changes or manual refresh.
 

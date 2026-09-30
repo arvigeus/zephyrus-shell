@@ -37,6 +37,7 @@ packages=(
     qmltermwidget
     noto-fonts
     python
+    python-dateutil
     python-dbus
     python-gobject
     pipewire

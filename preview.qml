@@ -17,7 +17,12 @@ ShellRoot {
             id: canvas
             anchors.fill: parent
             Action { z: 1; x: 14; y: 12; text: "Spaces"; iconName: "grid-vertical"; onClicked: ShellState.toggle("left") }
-            Action { z: 1; anchors.horizontalCenter: parent.horizontalCenter; y: 12; text: "Mon, Sep 21   ·   10:45"; onClicked: ShellState.toggle("center") }
+            Action {
+                z: 1; anchors.horizontalCenter: parent.horizontalCenter; y: 12
+                text: Qt.formatDateTime(previewClock.date, "ddd, MMM d   ·   HH:mm") + (Attention.count ? "   • " + Attention.count : "")
+                onClicked: ShellState.toggle("center")
+                SystemClock { id: previewClock; precision: SystemClock.Minutes }
+            }
             StatusPill { z: 1; anchors.right: parent.right; anchors.rightMargin: 14; y: 12; onClicked: ShellState.toggle("right") }
             ModuleLoader {
                 x: 0; y: 0; width: parent.width; height: parent.height
@@ -51,16 +56,48 @@ ShellRoot {
                 opened: ShellState.panel === "right"
                 contentSource: Qt.resolvedUrl("drawers/ControlDrawer.qml")
             }
+            MouseArea {
+                visible: ShellState.panel === "center"
+                x: 0; y: Theme.pillHeight; width: canvas.width; height: Math.max(0, centerPreview.y - y)
+                acceptedButtons: Qt.AllButtons
+                onClicked: ShellState.dismissPanel()
+            }
+            MouseArea {
+                visible: ShellState.panel === "center"
+                x: 0; y: centerPreview.y; width: centerPreview.x; height: centerPreview.height
+                acceptedButtons: Qt.AllButtons
+                onClicked: ShellState.dismissPanel()
+            }
+            MouseArea {
+                visible: ShellState.panel === "center"
+                x: centerPreview.x + centerPreview.width; y: centerPreview.y
+                width: canvas.width - x; height: centerPreview.height
+                acceptedButtons: Qt.AllButtons
+                onClicked: ShellState.dismissPanel()
+            }
+            MouseArea {
+                visible: ShellState.panel === "center"
+                x: 0; y: centerPreview.y + centerPreview.height
+                width: canvas.width; height: canvas.height - y
+                acceptedButtons: Qt.AllButtons
+                onClicked: ShellState.dismissPanel()
+            }
             Loader {
-                anchors.horizontalCenter: parent.horizontalCenter; y: 72; width: Math.min(850, canvas.width - 28); height: Math.min(canvas.width < 728 ? 700 : 460, canvas.height - 90)
+                id: centerPreview
+                anchors.horizontalCenter: parent.horizontalCenter; y: 72; width: Math.min(1240, canvas.width - 28); height: Math.min(canvas.width < 900 ? 700 : 600, canvas.height - 90)
                 active: ShellState.panel === "center"
                 sourceComponent: AttentionPanel {}
             }
         }
         Timer {
             property int step: 0
+            property int attentionWait: 0
             interval: 1200; repeat: true; running: Quickshell.env("DRAWER_SHELL_CAPTURE") === "1"
             onTriggered: {
+                if (step === 4 && centerPreview.item && attentionWait++ < 15
+                        && ((centerPreview.item.forecast === null && centerPreview.item.weatherError === "")
+                            || (centerPreview.item.cloud.state === "loading" && centerPreview.item.cloudError === "")))
+                    return;
                 const panels = ["", "left", "module", "right", "center", "right", "right", "right", "right", "right", "right", "right"];
                 const target = Paths.file("tests/artifacts/preview-" + step + ".png");
                 canvas.grabToImage(result => {

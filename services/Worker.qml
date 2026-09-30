@@ -13,6 +13,7 @@ Item {
     property var callbacks: ({})
     property bool stopped: false
     signal failed(string message)
+    signal ready()
 
     function settle(id, result, error) {
         const pending = callbacks[id];
@@ -51,6 +52,7 @@ Item {
         id: worker
         command: ["python3", "-u", Paths.file(root.backend)]
         running: true
+        onStarted: root.ready()
         stdinEnabled: true
         stdout: SplitParser {
             onRead: data => {

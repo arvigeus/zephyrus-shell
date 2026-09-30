@@ -103,18 +103,55 @@ Scope {
         Loader { anchors.fill: parent; active: parent.visible; sourceComponent: UserProfilePanel {} }
     }
     PanelWindow {
+        id: attentionWindow
         screen: root.screen
         visible: root.selected && ShellState.panel === "center"
-        anchors.top: true
-        margins.top: 72
-        implicitWidth: Math.min(850, root.screen.width - 28)
-        implicitHeight: Math.min(root.screen.width < 728 ? 700 : 460, root.screen.height - 90)
+        anchors { top: true; bottom: true; left: true; right: true }
+        readonly property real popupWidth: Math.min(1240, width - 28)
+        readonly property real popupHeight: Math.min(width < 900 ? 700 : 600, height - 90)
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
+        WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "zephyrus-shell-attention"
         WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        mask: Region {
+            Region { item: attentionAbove }
+            Region { item: attentionLeft }
+            Region { item: attentionRight }
+            Region { item: attentionBelow }
+            Region { item: attentionPopup }
+        }
+        MouseArea {
+            id: attentionAbove
+            x: 0; y: Theme.pillHeight; width: parent.width; height: Math.max(0, attentionPopup.y - y)
+            acceptedButtons: Qt.AllButtons
+            onClicked: ShellState.dismissPanel()
+        }
+        MouseArea {
+            id: attentionLeft
+            x: 0; y: attentionPopup.y; width: attentionPopup.x; height: attentionPopup.height
+            acceptedButtons: Qt.AllButtons
+            onClicked: ShellState.dismissPanel()
+        }
+        MouseArea {
+            id: attentionRight
+            x: attentionPopup.x + attentionPopup.width; y: attentionPopup.y
+            width: parent.width - x; height: attentionPopup.height
+            acceptedButtons: Qt.AllButtons
+            onClicked: ShellState.dismissPanel()
+        }
+        MouseArea {
+            id: attentionBelow
+            x: 0; y: attentionPopup.y + attentionPopup.height
+            width: parent.width; height: parent.height - y
+            acceptedButtons: Qt.AllButtons
+            onClicked: ShellState.dismissPanel()
+        }
         Loader {
-            anchors.fill: parent; active: parent.visible
+            id: attentionPopup
+            x: (parent.width - width) / 2; y: 72
+            width: attentionWindow.popupWidth; height: attentionWindow.popupHeight
+            active: parent.visible
             sourceComponent: AttentionPanel {}
         }
     }

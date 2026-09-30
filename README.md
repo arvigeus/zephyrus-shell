@@ -28,7 +28,8 @@ From KDE or another desktop, use the ordinary-window preview:
 dbus-run-session quickshell -p ./preview.qml
 ```
 
-The preview uses real components. Its clock label is illustrative. A private bus
+The preview uses real components and the current system clock. Its center panel
+uses the configured weather and Nextcloud data. A private bus
 keeps its notification server separate from the existing desktop. Running apps and
 tray integration are exercised by the actual shell, not this component preview.
 
@@ -73,7 +74,8 @@ path to this project's `hyprland/hyprland.lua` with Lua's `dofile`.
   module ends that shell session. It uses the packaged QMLTermWidget component.
 - Spaces opens the module drawer over the current view. Desktop reveals the Hyprland session; Music and Radio can keep playing there until closed.
 - Running-window activation and tray activation/context menus beside the left pill.
-- Clock, navigable calendar, notifications, actions, dismissal, toast, and do-not-disturb.
+- Live clock, weather, navigable Nextcloud calendar, task lists, notifications,
+  actions, dismissal, toast, and do-not-disturb. Attention has Priority and All views.
 - Separate named audio output and microphone selection, level and mute controls.
 - GNOME-style Wi-Fi/Bluetooth split tiles, with device selection inside Control room.
 - Inline Wi-Fi passwords and Bluetooth pairing confirmation/PIN entry.
@@ -92,6 +94,7 @@ readings refresh on opening, actions, battery changes or manual refresh.
 
 The one-time setup script installs the required Arch Linux packages, including
 Quickshell, Hyprland, Qt Quick Controls, QMLTermWidget, Noto Sans Mono, Python 3,
+python-dateutil,
 PipeWire/WirePlumber, the PulseAudio compatibility service, NetworkManager, UPower,
 a polkit agent, and Bluetooth/audio bindings. Your existing Kitty and Dolphin bindings
 are retained. No external network or Bluetooth settings application is launched by
@@ -99,9 +102,9 @@ the drawer. See [system setup](docs/setup.md) for optional packages and service 
 
 No screen locker is currently installed on this machine. This shell does **not**
 provide a lock screen; suspend is not a substitute for locking. Set up `hyprlock`
-and `hypridle` before relying on the session for unattended use. Weather, external
-calendars, tasks, persistent notification history, and local media-library scanning are
-future features, not placeholder controls. Current notifications are retained only
+and `hypridle` before relying on the session for unattended use. Weather and Nextcloud
+need the [attention configuration](docs/attention-design.md). Persistent notification
+history and local media-library scanning are future integrations. Notifications are retained only
 for the shell's lifetime, capped at 100. Wi-Fi supports saved profiles, open networks,
 and WPA/WPA2/WPA3 personal passwords. New enterprise/certificate profiles and hidden
 network creation are not yet implemented. Bluetooth discovery is user-triggered
@@ -133,7 +136,7 @@ and typography live in `core/Theme.qml`; individual machine sections live in
 `settings/`; window behavior is in `hyprland/windows.lua`.
 
 See [audio naming](docs/audio-names.md) for per-monitor/per-device JSON rules, and
-[attention design](docs/attention-design.md) for the planned Nextcloud task model.
+[attention configuration](docs/attention-design.md) for weather and Nextcloud.
 
 ## Check changes
 

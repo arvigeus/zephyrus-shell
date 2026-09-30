@@ -7,6 +7,7 @@ import "../core"
 
 ColumnLayout {
     id: root
+    property var host
     property var files: []
     property string requestedPath: ""
     property string path: ""
@@ -144,7 +145,7 @@ ColumnLayout {
         service.request("play_with", {path:path,subtitle:source}, (result, failure) => {
             if (current !== generation) return;
             if (failure) error = failure;
-            else Quickshell.execDetached(result.command);
+            else External.launch(result.command, root.host);
         });
     }
     function toggleLanguage(code) {

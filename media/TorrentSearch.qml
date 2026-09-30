@@ -6,6 +6,7 @@ import "../widgets" as W
 
 ColumnLayout {
     id: root
+    property var host
     required property var title
     property bool tracksLoading: false
     property string lookupError: ""
@@ -100,6 +101,7 @@ ColumnLayout {
         service.request("start_qbittorrent", {}, (result, failure) => {
             startLoading = false;
             if (failure) { error = failure; canStartQbittorrent = true; return; }
+            if (result && result.started && host) { host.close(); return; }
             launchPending = true;
             launchDeadline = Date.now() + 30000;
             connect();
@@ -308,7 +310,7 @@ ColumnLayout {
                 RowLayout {
                     Layout.fillWidth: true; spacing: 8
                     W.Label { Layout.fillWidth: true; text: root.sizeLabel(resultRow.modelData.size) + " · " + resultRow.modelData.seeders + " seeds" + (resultRow.modelData.site ? " · " + resultRow.modelData.site : "") + (resultRow.modelData.yearMismatch ? " · Different year" : "") + (resultRow.modelData.episodeMismatch ? " · Different episode" : "") + (resultRow.modelData.seasonMismatch ? " · Different season" : ""); color: resultRow.modelData.yearMismatch || resultRow.modelData.episodeMismatch || resultRow.modelData.seasonMismatch ? Theme.danger : Theme.muted; elide: Text.ElideRight }
-                    W.IconButton { iconName: "info"; text: "Release details for " + resultRow.modelData.name; visible: !!resultRow.modelData.descriptionUrl; onClicked: Browser.open(resultRow.modelData.descriptionUrl, root.title.kind === "tv" ? "series" : "movies") }
+                    W.IconButton { iconName: "info"; text: "Release details for " + resultRow.modelData.name; visible: !!resultRow.modelData.descriptionUrl; onClicked: Browser.open(resultRow.modelData.descriptionUrl, root.title.kind === "tv" ? "series" : "movies", "", root.host) }
                     W.IconButton { iconName: "download"; text: "Download " + resultRow.modelData.name; enabled: !resultRow.modelData.yearMismatch && !resultRow.modelData.episodeMismatch && !resultRow.modelData.seasonMismatch && !!resultRow.modelData.url; onClicked: root.queue(resultRow.modelData) }
                 }
             }

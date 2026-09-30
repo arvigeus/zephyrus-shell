@@ -20,6 +20,7 @@ API_ROOT = "https://wallhaven.cc/api/v1"
 BING_FEED_ROOT = "https://www.bing.com/HPImageArchive.aspx"
 USER_AGENT = "ZephyrusShell-Pictures/1.0"
 MAX_IMAGE_BYTES = 250 * 1024 * 1024
+WALLPAPER_DOWNLOAD_SECONDS = 60
 BING_CACHE_SECONDS = 900
 BING_CATALOG_CACHE = {}
 WALLHAVEN_TAG_CACHE = {}
@@ -608,8 +609,9 @@ def download_wallpaper(item):
         return path
     request = Request(item["path"], headers={"Accept": "image/*", "User-Agent": USER_AGENT})
     temporary = None
+    deadline = time.monotonic() + WALLPAPER_DOWNLOAD_SECONDS
     try:
-        with urlopen(request, timeout=40) as response:
+        with urlopen(request, timeout=10) as response:
             content_type = response.headers.get_content_type()
             if not content_type.startswith("image/"):
                 raise ValueError(f"{item['providerName']} did not return an image file.")
@@ -620,7 +622,13 @@ def download_wallpaper(item):
                 temporary = Path(output.name)
                 total = 0
                 while True:
-                    chunk = response.read(1024 * 1024)
+                    if time.monotonic() >= deadline:
+                        raise ValueError("Wallpaper download timed out. Try again.")
+                    # read1 returns available data instead of waiting for a full
+                    # megabyte from a slow server before checking the deadline.
+                    chunk = response.read1(256 * 1024)
+                    if time.monotonic() >= deadline:
+                        raise ValueError("Wallpaper download timed out. Try again.")
                     if not chunk:
                         break
                     total += len(chunk)
@@ -638,6 +646,25 @@ def download_wallpaper(item):
     finally:
         if temporary and temporary.exists():
             temporary.unlink(missing_ok=True)
+
+
+def apply_shell_wallpaper(path):
+    # The shell owns an opaque background surface; another desktop's wallpaper
+    # service cannot change it. Backdrop watches this setting on every screen.
+    setting = config_root() / "zephyrus-shell" / "wallpaper.json"
+    setting.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=setting.parent,
+                                         prefix=".wallpaper-", delete=False) as output:
+            temporary = Path(output.name)
+            json.dump({"image": path.resolve().as_uri()}, output)
+            output.write("\n")
+        os.replace(temporary, setting)
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
+    return "Zephyrus Shell"
 
 
 def run_wallpaper_command(command, path, timeout=15):
@@ -742,13 +769,22 @@ def apply_wallpaper(path):
     raise ValueError(message)
 
 
+def apply_lock_wallpaper(path):
+    from services.wallpaper import update_lock_background
+    update_lock_background(path, config_root())
+
+
 def set_wallpaper(args):
     item = clean_item(args.get("wallpaper"))
     if not item:
         raise ValueError("Select a valid wallpaper first.")
+    target = args.get("target", "shell")
+    if target not in {"shell", "desktop"}:
+        raise ValueError("Unknown wallpaper target.")
     path = download_wallpaper(item)
-    service = apply_wallpaper(path)
-    return {"path": str(path), "service": service, "message": "Wallpaper set using " + service + "."}
+    service = apply_shell_wallpaper(path) if target == "shell" else apply_wallpaper(path)
+    apply_lock_wallpaper(path)
+    return {"path": str(path), "service": service, "message": "Wallpaper set using " + service + ". Lock screen updated."}
 
 
 def run(request):
@@ -771,6 +807,8 @@ def run(request):
 def command_line():
     parser = argparse.ArgumentParser(description="Set a random wallpaper from Pictures providers.")
     parser.add_argument("--random", action="store_true", help="download and apply a random wallpaper")
+    parser.add_argument("--target", choices=("shell", "desktop"), default="shell",
+                        help="apply to Zephyrus Shell (default) or an external desktop service")
     parser.add_argument("--provider", choices=tuple(PROVIDERS), help="choose a provider; default: choose one at random")
     parser.add_argument("--country", choices=tuple(BING_MARKETS), default="US", help="Bing market country (default: US)")
     args = parser.parse_args()
@@ -787,7 +825,7 @@ def command_line():
         item = random_wallpaper(request)
         for attempt in range(12):
             try:
-                result = set_wallpaper({"wallpaper": item})
+                result = set_wallpaper({"wallpaper": item, "target": args.target})
                 break
             except ValueError as error:
                 if attempt == 11 or not str(error).startswith("No supported wallpaper service responded."):

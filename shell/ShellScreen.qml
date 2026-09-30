@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import "../core"
 import "../widgets"
 import "../drawers"
@@ -30,37 +31,61 @@ Scope {
         implicitHeight: Theme.pillHeight
         exclusiveZone: Theme.pillHeight
         color: "transparent"
-        WlrLayershell.layer: leftDrawer.visible || rightDrawer.visible ? WlrLayer.Top : WlrLayer.Overlay
+        // Desktop panels sit below fullscreen apps. Raise the pills above an
+        // open module, then lower them while the overlay drawers animate.
+        WlrLayershell.layer: moduleWindow.visible && !leftDrawer.visible && !rightDrawer.visible
+            ? WlrLayer.Overlay : WlrLayer.Top
         WlrLayershell.namespace: "zephyrus-shell-bar"
+        // Hyprland restricts pointer input to exclusive-focus surfaces. Keep the
+        // bar in that set alongside the module, whose hit region starts below it.
+        WlrLayershell.keyboardFocus: root.screen.name === ShellState.pluginMonitor && (ShellState.panel === "module" || (root.selected && ShellState.panel === "center"))
+            ? WlrKeyboardFocus.Exclusive
+            : root.selected && ShellState.panel === "center" ? WlrKeyboardFocus.OnDemand
+            : WlrKeyboardFocus.None
+        Shortcut {
+            sequence: "Escape"
+            enabled: (root.screen.name === ShellState.pluginMonitor && ShellState.panel === "module") || (root.selected && ShellState.panel === "center")
+            onActivated: {
+                if (ShellState.panel === "center") {
+                    if (attentionContent.item) attentionContent.item.dismiss();
+                    else ShellState.dismissPanel();
+                } else ShellState.close();
+            }
+        }
         mask: Region {
-            Region { item: left }
+            Region { item: spaces }
+            Region { item: runningApps }
             Region { item: center }
             Region { item: right }
+            Region { item: tray }
         }
         IdleInhibitor { window: bar; enabled: KeepAwake.mode === "screen" && KeepAwake.active }
         Row {
             id: left
-            x: 14; y: 12; spacing: 8
-            Action { text: "Spaces"; iconName: "grid-vertical"; highlighted: root.selected && ShellState.panel === "left"; onClicked: ShellState.toggle("left", root.screen.name) }
-            RunningApps { maximumWidth: Math.max(0, bar.width / 2 - 260); window: bar }
+            x: 14; y: Theme.pillVerticalPadding; spacing: 8
+            BarAction { id: spaces; text: "Spaces"; iconName: "grid-vertical"; showToolTip: false; highlighted: root.selected && ShellState.panel === "left"; onClicked: ShellState.toggle("left", root.screen.name) }
+            RunningApps { id: runningApps; maximumWidth: Math.max(0, center.x - left.x - spaces.width - 2 * left.spacing); window: bar }
         }
-        Action {
+        ClockPill {
             id: center
             anchors.horizontalCenter: parent.horizontalCenter
-            y: 12
-            text: Qt.formatDateTime(clock.date, "ddd, MMM d   ·   HH:mm") + (Attention.count ? "   • " + Attention.count : "")
+            y: Theme.pillVerticalPadding
             highlighted: root.selected && ShellState.panel === "center"
             onClicked: ShellState.toggle("center", root.screen.name)
-            SystemClock { id: clock; precision: SystemClock.Minutes }
         }
-        StatusPill {
-            id: right
-            anchors.right: parent.right; anchors.rightMargin: 14; y: 12
-            highlighted: root.selected && ShellState.panel === "right"
-            onClicked: ShellState.toggle("right", root.screen.name)
+        Row {
+            anchors.right: parent.right; anchors.rightMargin: 14; y: Theme.pillVerticalPadding
+            spacing: 8
+            TrayPill { id: tray; window: bar; maximumWidth: Math.max(0, bar.width - 14 - right.width - center.x - center.width - 16) }
+            StatusPill {
+                id: right
+                highlighted: root.selected && ShellState.panel === "right"
+                onClicked: ShellState.toggle("right", root.screen.name)
+            }
         }
     }
     PanelWindow {
+        id: moduleWindow
         screen: root.screen
         visible: root.screen.name === ShellState.pluginMonitor && !!ShellState.pluginId
         anchors { top: true; bottom: true; left: true; right: true }
@@ -68,7 +93,11 @@ Scope {
         color: "transparent"
         WlrLayershell.layer: WlrLayer.Top
         WlrLayershell.namespace: "zephyrus-shell-module"
-        WlrLayershell.keyboardFocus: visible && ShellState.panel === "module" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        // Keep focus stable while the anchored popup is open. Reacquiring it
+        // on dismissal can redirect the stationary pointer away from the bar.
+        WlrLayershell.keyboardFocus: visible && (ShellState.panel === "module" || (root.selected && ShellState.panel === "center")) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        // The backdrop still fills the screen; module input leaves the pills to the bar.
+        mask: Region { x: 0; y: Theme.pillHeight; width: moduleWindow.width; height: Math.max(0, moduleWindow.height - y) }
         ModuleLoader {
             anchors.fill: parent
             screenName: root.screen.name
@@ -100,64 +129,32 @@ Scope {
         WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         Loader { anchors.fill: parent; active: parent.visible; sourceComponent: UserProfilePanel {} }
     }
-    PanelWindow {
+    PopupWindow {
         id: attentionWindow
-        screen: root.screen
         visible: root.selected && ShellState.panel === "center"
-        anchors { top: true; bottom: true; left: true; right: true }
-        readonly property real popupWidth: Math.min(1240, width - 28)
-        readonly property real popupHeight: Math.min(width < 900 ? 700 : 600, height - 90)
-        exclusionMode: ExclusionMode.Ignore
+        anchor.window: bar
+        anchor.rect.x: (bar.width - width) / 2
+        anchor.rect.y: Theme.pillHeight + 6
+        implicitWidth: Math.min(1240, root.screen.width - 28)
+        implicitHeight: Math.min(root.screen.width < 900 ? 700 : 600, root.screen.height - Theme.pillHeight - 24)
         color: "transparent"
-        WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.namespace: "zephyrus-shell-attention"
-        WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-        mask: Region {
-            Region { item: attentionAbove }
-            Region { item: attentionLeft }
-            Region { item: attentionRight }
-            Region { item: attentionBelow }
-            Region { item: attentionPopup }
+        // Wait for the popup surface before whitelisting it alongside the bar.
+        onWindowConnected: Qt.callLater(() => { if (visible) attentionGrab.active = true; })
+        onVisibleChanged: { if (!visible) attentionGrab.active = false; }
+        HyprlandFocusGrab {
+            id: attentionGrab
+            windows: [attentionWindow, bar]
+            onCleared: {
+                if (root.selected && ShellState.panel === "center") ShellState.dismissPanel();
+            }
         }
-        MouseArea {
-            id: attentionAbove
-            x: 0; y: Theme.pillHeight; width: parent.width; height: Math.max(0, attentionPopup.y - y)
-            acceptedButtons: Qt.AllButtons
-            onClicked: ShellState.dismissPanel()
-        }
-        MouseArea {
-            id: attentionLeft
-            x: 0; y: attentionPopup.y; width: attentionPopup.x; height: attentionPopup.height
-            acceptedButtons: Qt.AllButtons
-            onClicked: ShellState.dismissPanel()
-        }
-        MouseArea {
-            id: attentionRight
-            x: attentionPopup.x + attentionPopup.width; y: attentionPopup.y
-            width: parent.width - x; height: attentionPopup.height
-            acceptedButtons: Qt.AllButtons
-            onClicked: ShellState.dismissPanel()
-        }
-        MouseArea {
-            id: attentionBelow
-            x: 0; y: attentionPopup.y + attentionPopup.height
-            width: parent.width; height: parent.height - y
-            acceptedButtons: Qt.AllButtons
-            onClicked: ShellState.dismissPanel()
-        }
-        Loader {
-            id: attentionPopup
-            x: (parent.width - width) / 2; y: 72
-            width: attentionWindow.popupWidth; height: attentionWindow.popupHeight
-            active: parent.visible
-            sourceComponent: AttentionPanel {}
-        }
+        Loader { id: attentionContent; anchors.fill: parent; active: parent.visible; sourceComponent: AttentionPanel {} }
     }
     PanelWindow {
         screen: root.screen
         visible: Attention.toast !== "" && ShellState.panel !== "center"
         anchors.top: true
-        margins.top: 72
+        margins.top: Theme.pillHeight + 6
         implicitWidth: 360; implicitHeight: 64
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"

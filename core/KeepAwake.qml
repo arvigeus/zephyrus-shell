@@ -16,6 +16,11 @@ QtObject {
         mode = next;
         sleepLock.running = next === "sleep";
         screenLock.running = next === "screen";
+        if (next !== "off") wakeDisplays.running = true;
+    }
+
+    property Process wakeDisplays: Process {
+        command: ["hyprctl", "dispatch", "hl.dsp.dpms({ action = \"enable\" })"]
     }
     function lockStopped(kind) {
         if (mode !== kind) return;

@@ -351,17 +351,20 @@ ColumnLayout {
     }
 
     function popupBelow(button, popup) {
+        // Clamp in module coordinates, then position relative to the trigger.
         const point = button.mapToItem(root, 0, button.height);
-        popup.x = Math.max(0, Math.min(point.x, root.width - popup.width));
-        popup.y = Math.max(0, Math.min(point.y + 5, root.height - popup.height));
+        popup.x = Math.max(0, Math.min(point.x, root.width - popup.width)) - point.x;
+        popup.y = Math.max(0, Math.min(point.y + 5, root.height - popup.height)) - (point.y - button.height);
     }
 
     function showCountryPopup() {
+        if (countryPopup.visible) { countryPopup.close(); return; }
         popupBelow(countryButton, countryPopup);
         countryPopup.open();
     }
 
     function showGenrePopup() {
+        if (genrePopup.visible) { genrePopup.close(); return; }
         popupBelow(genreButton, genrePopup);
         genrePopup.open();
     }
@@ -575,13 +578,13 @@ ColumnLayout {
 
     Popup {
         id: countryPopup
-        parent: root
+        parent: countryButton
         popupType: Popup.Item
         width: Math.max(260, countryButton.width)
         height: Math.min(400, root.height - 16)
         padding: 6
         focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.controlRadius }
         onOpened: {
             root.loadCountries();
@@ -654,13 +657,13 @@ ColumnLayout {
 
     Popup {
         id: genrePopup
-        parent: root
+        parent: genreButton
         popupType: Popup.Item
         width: 340
         height: Math.min(460, root.height - 16)
         padding: 8
         focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.controlRadius }
         onOpened: {
             root.loadGenres();
@@ -1011,6 +1014,9 @@ ColumnLayout {
                         }
                     }
                     popup: Popup {
+                        parent: qualitySelector
+                        popupType: Popup.Item
+                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
                         y: qualitySelector.height
                         width: qualitySelector.width
                         implicitHeight: Math.min(contentItem.implicitHeight + padding * 2, 240)

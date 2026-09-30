@@ -37,16 +37,19 @@ two weeks), so Bing search and random selection are limited to those images.
 Pictures keeps Bing's title, copyright credit, and Bing detail link with each
 image. The images remain copyrighted by their listed owners.
 
-Use **Set as desktop wallpaper** to download the selected original and apply
-it. The module supports swww, hyprpaper, KDE Plasma, and GNOME. On a custom
-desktop, set `ZEPHYRUS_WALLPAPER_COMMAND` to a command with an optional `{path}`
-argument, for example `my-wallpaper-tool --file {path}`.
+Use **Set wallpaper & lock screen** to download the selected original and apply
+it to Zephyrus Shell's desktop on every monitor. No separate wallpaper daemon
+is needed. The choice is saved in
+`$XDG_CONFIG_HOME/zephyrus-shell/wallpaper.json` and survives closing Pictures
+and restarting the shell. Downloaded originals are kept in
+`$XDG_DATA_HOME/zephyrus-shell/wallpapers` (or `~/.local/share/zephyrus-shell/wallpapers`).
+Downloads have a one-minute deadline; failures restore the button and display
+an error. Close Pictures with Escape or select Desktop to see the wallpaper.
 
-To set a random wallpaper at startup in Hyprland, start hyprpaper and add the
-backend command to `hyprland.conf`:
+To set a random wallpaper at startup in Hyprland, add the backend command to
+`hyprland.conf`:
 
 ```ini
-exec-once = hyprpaper
 exec-once = python3 /absolute/path/to/zephyrus-shell/pictures/backend.py --random
 ```
 
@@ -55,5 +58,17 @@ provider. Pin a provider with `--provider=wallhaven` or `--provider=bing`; use
 `--country=VN` (or another supported country code) to choose the Bing market
 when Bing is selected. Wallhaven uses its random API ordering. Bing chooses
 from the recent images in its homepage feed. Wallhaven uses the default SFW
-filters. The command uses the same wallpaper service detection as the module
-button. For swww, start `swww-daemon` instead of hyprpaper.
+filters. The command updates the same saved desktop setting as the module
+button, including when it runs before the shell starts.
+
+For use outside Zephyrus Shell, add `--target=desktop`. This retains support
+for swww, hyprpaper, KDE Plasma, and GNOME. Start `swww-daemon` or hyprpaper
+when using those services. On a custom desktop, set
+`ZEPHYRUS_WALLPAPER_COMMAND` to a command with an optional `{path}` argument,
+for example `my-wallpaper-tool --file {path}`. An external wallpaper service
+cannot replace Zephyrus Shell's own opaque background.
+
+Setting a wallpaper also updates the lock-screen image. Hyprlock reads the
+atomic `zephyrus-shell/lock-wallpaper` symlink on the next lock; the image stays
+in the Pictures cache, with no second download or wallpaper daemon. This applies
+to both shell and external desktop targets.

@@ -1,5 +1,134 @@
 # Verification on this machine
 
+Popup dismissal follow-up, 2026-10-01: Attention now uses a native popup anchored
+to its clock pill's bar, with a Hyprland focus grab activated after the popup's
+surface exists. Native virtual pointer and keyboard input in an isolated headless
+compositor verified repeated pill clicks without mouse movement, outside clicks
+on every side, inside clicks remaining open, Escape from both the bar and popup,
+and reopening/restoring Applications and Music without losing bar input. The
+module and bar retain their focus mode while Attention is open.
+
+Dropdown triggers now toggle their current popup and exclude the trigger from
+press-outside dismissal. This covers shared choices, media split buttons, Pictures
+tags, Settings sleep/shutdown options, Games store options, Music genres, Radio
+countries/genres/quality, Projects menus and Files actions. Seven portable popup
+checks exercise press/release separately, repeated toggling, outside/Escape
+closure and option selection. The full portable QML suite and the Modules,
+Settings and Pictures smoke checks passed. Temporary compositor and input clients
+were closed; no session power actions ran.
+
+Panel spacing and fullscreen behavior, 2026-09-30: bottom padding is now 2 px,
+with the existing 6 px top padding and 34 px controls, reserving 42 px. The desktop
+bar uses the Top layer; visible shell modules raise it to Overlay, while drawers
+continue to stack above it. An isolated compositor verified maximized windows keep
+the panel, fullscreen covers it, and leaving fullscreen restores it. Real mpv
+playback of a generated test pattern covered the panel and restored it on exit.
+Movies, TV Series and Applications kept their pills visible; Spaces, Attention,
+Settings clicks and Escape passed for each. All 44 portable QML checks, the
+12 preview captures and retained-module checks passed. The running session has
+42 px Top-layer bars on both monitors. Temporary test processes were closed.
+VLC and Firefox were not individually exercised.
+
+Compact panel and separate pills, 2026-09-30: the bar now reserves 46 px, with
+34 px controls and 6 px outer vertical padding. An isolated compositor rendered
+separate Spaces, window-list, clock, tray and Settings pills with two real Kitty
+windows and a private StatusNotifierItem; tray activation and all three panel
+buttons passed. Applications, Movies and Music still accepted panel clicks and
+Escape, including after returning from Attention. Seven drag gesture checks,
+preview captures and retained-module checks passed. Temporary test processes
+were closed.
+
+Module top-bar input fix, 2026-09-30: reproduced Spaces clicks being routed to
+the exclusive-focus module surface in an isolated Hyprland compositor. The bar
+now joins the exclusive surfaces while a module is active, and module input
+starts below the 66 px bar while its background still fills the screen. Production
+surfaces accepted Spaces, Attention and Settings clicks from Applications,
+Movies and Music. Escape closed each module and also worked after returning from
+Attention with the pointer over the bar. An Applications capture confirmed search
+typing. Retained-module lifecycle checks passed; temporary test processes were
+closed.
+
+Window-list ordering refresh fix, 2026-09-30: production drop tests exposed
+intermediate orders built from mixed old/new positions while Quickshell updated
+each client in an IPC response. `WindowOrderModel` now publishes after the batch
+finishes and suppresses unchanged orders. All 44 portable QML checks, the
+window-order Node suite and preview smoke passed. An isolated compositor exercised
+all 12 before/after targets among three windows through production RunningApps,
+in both maximized and ordinary half-width columns. Desktop coordinates, published
+model and button positions agreed after every drop; logs no longer showed partial
+orders. Temporary windows and compositor were closed. A persistent mismatch was
+not reproduced, and physical dragging remains for user testing.
+
+Window-list drop-position fix, 2026-09-30: reproduced a committed release
+reporting `(0, 0)` after Qt reset the drag centroid, which cleared RunningApps'
+drop target. The handler now forwards the released event point's scene position.
+All 39 portable QML tests, the window-order Node suite and preview smoke passed.
+Regression cases check the final position for a normal drop, a changed insertion
+target on release and a release outside the list. Physical dragging remains for
+user testing.
+
+Window-list drag follow-up, 2026-09-30: 37 portable QML tests and all three Node
+suites passed. Gesture tests use the actual `ReorderDrag` inside a Flickable and
+cover ordinary clicks, committed release without accidental activation, and
+cancelled grabs. In an isolated Hyprland compositor, real Kitty columns moved
+left and right through production `WindowList.reorder` and `RunningApps` drop
+entry points; insertion targets, edge scrolling and outside cancellation passed.
+Floating-window drops were rejected and reordering preserved pointer position.
+The test bar forced its pending Row layout because the locked outer session was
+not rendering nested frames. Preview and production Wayland smoke passed; live
+config errors are empty and the shell reloaded. Physical dragging remains for
+user testing.
+
+Window-list order follow-up, 2026-09-30: the production model reproduced opening
+1 and 2, focusing 1, then opening 3 as 1,3,2. Moving the third column to the right
+updated it to 1,2,3 in the same running model. Temporary Kitty test windows were
+closed and the user's original focus restored. Focused Node tests cover insertion,
+column movement, scroll offsets, maximized columns, workspace/monitor separation,
+floating windows, missing metadata and QML IPC coordinate sequences. Preview and
+production Wayland smoke passed; the actual running-app icon still reached Ready.
+
+
+Live Hyprland feedback, 2026-09-30: switched the running session to native
+scrolling columns and disabled/unloaded hyprbars; removed its repository setup
+and startup hooks. All 302 Python tests, 32 portable QML tests, both Node suites,
+preview and production Wayland smoke passed. Both repository configuration and
+the installed shim passed `Hyprland --verify-config`; live config errors are
+empty. Three real Kitty test windows joined scrolling columns, native maximized
+state stayed below the 66 px pill reservation, and layout focus could leave a
+maximized column. Only test windows were closed, with focus restored afterward.
+Alt+F4 is registered; physical key/border gestures remain for user testing.
+The production RunningApps component resolved the current ChatGPT desktop entry
+and its absolute icon path, and its Image reached Ready. Invalid icon paths in
+other installed desktop entries remain blank. The laptop now uses a personal
+125% monitor override; window rounding is 8 px and transitions are shorter.
+
+
+Initial desktop-session preparation, 2026-09-30 (before live feedback): all 302 Python tests, 32 portable QML
+tests, both Node suites, all nine smoke scripts (including power and current
+Wayland), and offline performance budgets passed. Both repository Lua and the
+installed development shim passed `Hyprland --verify-config`. hyprbars built and
+loaded through hyprpm at the official 0.56.2 pin; actual plugin options and config
+reload were checked in an isolated nested compositor. Production floating rules,
+maximized state/restore and opt-in tiling were exercised on real Kitty windows.
+
+The real Nextcloud account and DAV/Music credentials were migrated with private
+permissions, and a live read-only calendar refresh returned ready, fresh data.
+No events or tasks were written during verification. Focused tests cover
+configuration, credential-provider replacement, separate capabilities, DAV scope
+and redirects, migration conflicts and interruption recovery. Session tests cover
+owned startup/disconnect cleanup and reversible shim setup, backup preservation,
+rollback and refusing to remove user edits.
+
+hypridle parsed all three listeners and acquired its lock-notify sleep inhibitor.
+hyprlock parsed its configuration and reached session lock in the nested test.
+Nested DRM/capture warnings prevented a usable compositor screenshot; no visual
+comparison of the actual hyprbars strip is claimed. Lock authentication, real
+login startup/teardown, suspend/resume, portal dialogs/sharing and physical
+multi-monitor/hotplug still require the [live session checklist](session.md).
+The existing KDE session was left running; the nested compositor and test
+processes were closed. System packages and reversible user configuration were
+installed as part of this session request.
+
 Battery information follow-up, 2026-09-30: machine/settings Python tests cover
 Wh and mAh drivers, missing readings, multiple packs, and estimates honoring the
 charge limit. `bash scripts/check-power.sh` uses the production PowerSection and
@@ -56,3 +185,26 @@ configuration was replaced and no system packages were installed.
 Application lifecycle and favorites: `bash scripts/check-apps.sh` uses an isolated
 configuration directory and two shell processes to verify the load gate, default
 Favorites view, add/remove behavior, persistence across restart, and destruction.
+
+
+Settings/display/session follow-up, 2026-10-01: 322 Python tests passed. Power,
+Pictures, Settings lifecycle and component preview smoke checks passed. Settings
+kept its real drawer instance and fresh hardware snapshot across close/reopen;
+closing cancelled a held action, and a completed hold executed exactly once
+through an intercepted backend. Display-page and shared-weather captures were
+visually inspected. Hyprland configuration verification passed.
+
+An isolated nested Hyprland compositor exercised production display actions:
+left-to-right arrangement, scaling, disabling/re-enabling an output and Lua DPMS
+`disable`/`enable` passed with no compositor config errors. On the physical
+machine, loading the installed `i2c-dev` module exposed the Dell S2722DC on
+DisplayPort AUX bus 19. Its read-only VCP brightness query and the production
+snapshot both reported brightness as available. The existing selected wallpaper
+was synchronized to the lock-background link. Physical idle, suspend/resume,
+PAM unlock and prolonged dock sleep still need a fresh-session live check;
+tests did not suspend, shut down or log out the user's desktop.
+
+The weather pill passed shared-forecast and visual checks. With explicit user
+consent, the real one-shot weather service returned the configured Ha Long
+forecast with no error. All monitor pills share that result and the existing
+15-minute provider cache.

@@ -10,7 +10,7 @@ ColumnLayout {
     Layout.fillWidth: true
     spacing: 8
     property bool expanded: false
-    AudioInventory { id: inventory }
+    AudioInventory { id: inventory; active: root.visible }
     PwObjectTracker { objects: Pipewire.nodes.values.filter(node => !node.isStream && node.audio) }
     AudioDeviceControl { expanded: root.expanded; inventory: inventory }
     AudioDeviceControl { expanded: root.expanded; inventory: inventory; input: true }

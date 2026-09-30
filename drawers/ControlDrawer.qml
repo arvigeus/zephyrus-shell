@@ -9,6 +9,7 @@ DrawerFrame {
     id: root
     property string page: ""
     property bool expandSections: false
+    onVisibleChanged: if (visible) { HardwareSnapshot.ensureFresh(); forceActiveFocus(); }
     property alias wifiExpanded: connectivity.wifiExpanded
     property alias bluetoothExpanded: connectivity.bluetoothExpanded
     title: ({display: "Displays", cpu: "Processor", gpu: "Graphics", system: "System"})[page] || "Settings"

@@ -7,6 +7,7 @@ Button {
     id: root
     property string iconName: ""
     property bool destructive: false
+    property color idleColor: "transparent"
     property int textAlignment: Text.AlignHCenter
     implicitHeight: 42
     implicitWidth: Math.max(42, contentItem.implicitWidth + 28)
@@ -30,7 +31,7 @@ Button {
     }
     background: Rectangle {
         radius: Theme.controlRadius
-        color: root.down ? Theme.raised : root.highlighted ? Theme.accentSurface : root.hovered ? Theme.surface : "transparent"
+        color: root.down ? Theme.raised : root.highlighted ? Theme.accentSurface : root.hovered ? Theme.surface : root.idleColor
         border.color: root.activeFocus ? Theme.accent : "transparent"
         border.width: root.activeFocus ? 2 : 1
         opacity: root.enabled ? 1 : 0.5

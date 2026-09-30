@@ -70,6 +70,11 @@ your root. Do not create a plugin singleton or import a module with permanent
 background work. Use owned Process objects for workers, never detached execution;
 explicitly stop any external resources in Component.onDestruction when needed.
 Launching a user application is intentionally detached and may survive the drawer.
+Use `External.launch(command, host)` for these launches, or
+`Browser.open(url, moduleId, command, host)` for browser links (`command` may be
+an empty string to use the configured browser). Both close the owning module
+after handing off, removing its overlay and releasing keyboard focus. Pass the
+same host to nested controls that open external applications.
 
 Persist important state to a plugin-specific XDG data directory before destruction.
 State held only in QML is lost on close. Avoid polling when a service offers signals.
@@ -90,7 +95,7 @@ when reloaded, and normal Quickshell source hot reload handles QML edits.
 ## Presentation and icons
 
 The Spaces drawer lists Desktop and the installed modules. Selecting one closes the drawer and opens
-a full desktop overlay behind the pills, with content starting below the 66 px
+a full desktop overlay behind the pills, with content starting below the 46 px
 pill bar. The pills remain visible and clickable. The host has no heading or
 navigation buttons: Escape closes the visible module; Desktop hides it while
 the module has an active retention request.

@@ -334,7 +334,9 @@ Item {
         service.request("play", {title:selected,online:!!online,provider:providerIndex,mode:audioMode,season:episode ? episode.season : null,episode:episode ? episode.number : null}, (result, failure) => {
             if (generation !== selectionGeneration) return;
             playLoading = false;
-            if (failure) detailError = failure; else if (result.type === "direct") Quickshell.execDetached(result.command); else Browser.open(result.url, root.kind === "tv" ? "series" : "movies");
+            if (failure) detailError = failure;
+            else if (result.type === "direct") External.launch(result.command, root.host);
+            else Browser.open(result.url, root.kind === "tv" ? "series" : "movies", "", root.host);
         });
     }
     function loadEpisodes(append) {
@@ -505,7 +507,7 @@ Item {
                 }
                 W.Label { Layout.fillWidth: true; text: [root.selected.year,root.animeMode ? root.selected.format : (root.selected.runtime ? root.selected.runtime + " min" : ""),root.animeMode && root.kind === "tv" && root.selected.episodesCount ? root.selected.episodesCount + (root.selected.episodesCount === 1 ? " episode" : " episodes") : "",(root.selected.genres || []).join(" / ")].filter(Boolean).join("   ·   "); color: Theme.muted }
                 W.Label { visible: root.animeMode && !!(root.selected.premiere || root.selected.sourceMaterial || root.selected.ageRating); Layout.fillWidth: true; text: [root.selected.premiere,root.selected.sourceMaterial ? "Source: " + root.selected.sourceMaterial : "",root.selected.ageRating ? "Rated " + root.selected.ageRating : ""].filter(Boolean).join("   ·   "); color: Theme.muted; wrapMode: Text.Wrap }
-                Ratings { Layout.fillWidth: true; Layout.minimumHeight: 28; ratings: root.selected.ratings || []; title: root.selected }
+                Ratings { host: root.host; Layout.fillWidth: true; Layout.minimumHeight: 28; ratings: root.selected.ratings || []; title: root.selected }
                 Flow {
                     Layout.fillWidth: true; spacing: 8
                     SplitButton {
@@ -522,7 +524,7 @@ Item {
                         }
                     }
                     W.Choice { visible: root.animeMode; width: 85; model: ["Sub","Dub"]; onActivated: root.audioMode = currentIndex === 1 ? "dub" : "sub"; Accessible.name: "Anime audio" }
-                    SplitButton { visible: root.trailers.length > 0; text: root.trailers.length === 1 ? "Trailer" : "Trailers"; options: root.trailers.map(t => t.title); currentIndex: root.trailerIndex; onTriggered: index => { root.trailerIndex=index; if (root.trailers[index]) Browser.open(root.trailers[index].url, root.kind === "tv" ? "series" : "movies"); } }
+                    SplitButton { visible: root.trailers.length > 0; text: root.trailers.length === 1 ? "Trailer" : "Trailers"; options: root.trailers.map(t => t.title); currentIndex: root.trailerIndex; onTriggered: index => { root.trailerIndex=index; if (root.trailers[index]) Browser.open(root.trailers[index].url, root.kind === "tv" ? "series" : "movies", "", root.host); } }
                     W.IconButton { iconName: root.personal.favorite ? "star-filled" : "star"; text: root.personal.favorite ? "Remove favorite" : "Add favorite"; onClicked: root.save({favorite:!root.personal.favorite}) }
                     W.IconButton { iconName: "refresh-cw"; text: "Refresh title"; onClicked: root.refreshTitle() }
                     BusyIndicator { objectName: "titleLoadingIndicator"; running: root.titleLoading; visible: running; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
@@ -561,7 +563,7 @@ Item {
                                         required property var modelData
                                         spacing: 0
                                         W.CrossfadeImage { source: modelData.image || ""; imageWidth: 84; Layout.preferredWidth: 36; Layout.preferredHeight: 48 }
-                                        W.Action { text: modelData.name; enabled: !!modelData.id || !!modelData.url; onClicked: modelData.url ? Browser.open(modelData.url, root.kind === "tv" ? "series" : "movies") : root.showPerson(modelData) }
+                                        W.Action { text: modelData.name; enabled: !!modelData.id || !!modelData.url; onClicked: modelData.url ? Browser.open(modelData.url, root.kind === "tv" ? "series" : "movies", "", root.host) : root.showPerson(modelData) }
                                     } }
                                 }
                             }
@@ -573,7 +575,7 @@ Item {
                             images: root.selected.screenshots || []
                             onActivated: index => gallery.show(images, index, root.selected.title)
                         }
-                        Repeater { model: root.tab === "watch" ? root.links : []; W.Action { required property var modelData; text: modelData.name; onClicked: Browser.open(modelData.url, root.kind === "tv" ? "series" : "movies") } }
+                        Repeater { model: root.tab === "watch" ? root.links : []; W.Action { required property var modelData; text: modelData.name; onClicked: Browser.open(modelData.url, root.kind === "tv" ? "series" : "movies", "", root.host) } }
                         W.Label { visible: root.tab === "watch" && !root.extraLoading && !root.links.length; text: "No viewing options found."; color: Theme.muted }
                         W.Label { visible: root.tab === "spoilers"; Layout.fillWidth: true; text: root.spoiler; wrapMode: Text.Wrap }
                     }
@@ -589,6 +591,7 @@ Item {
                     onActivated: title => root.animeMode ? root.openRelated(title) : root.selectTitle(title)
                 }
                 TorrentSearch {
+                    host: root.host
                     objectName: "torrentSearch"
                     visible: root.tab === "torrent"
                     Layout.fillWidth: true; Layout.fillHeight: true
@@ -603,6 +606,7 @@ Item {
                     }
                 }
                 Subtitles {
+                    host: root.host
                     objectName: "subtitleBrowser"
                     visible: root.tab === "subtitles" && root.localFiles.length > 0
                     Layout.fillWidth: true; Layout.fillHeight: true
@@ -622,7 +626,7 @@ Item {
                         required property var modelData
                         width: castView.width; implicitHeight: Math.max(68,castText.implicitHeight+16)
                         text: modelData.name; enabled: !!modelData.id || !!modelData.url
-                        onClicked: modelData.url ? Browser.open(modelData.url, root.kind === "tv" ? "series" : "movies") : root.showPerson(modelData)
+                        onClicked: modelData.url ? Browser.open(modelData.url, root.kind === "tv" ? "series" : "movies", "", root.host) : root.showPerson(modelData)
                         contentItem: RowLayout {
                             spacing: 12
                             W.CrossfadeImage { source: castRow.modelData.image || ""; imageWidth: 84; Layout.preferredWidth: 42; Layout.preferredHeight: 60 }

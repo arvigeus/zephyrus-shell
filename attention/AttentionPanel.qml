@@ -11,10 +11,9 @@ Rectangle {
     readonly property var cloud: AttentionData.cloud || ({state: "loading", events: [], tasks: [], calendars: []})
     readonly property string weatherError: AttentionData.weatherError
     readonly property string cloudError: AttentionData.cloudError
-    property bool weatherLoading: false
+    readonly property bool weatherLoading: AttentionData.weatherLoading
     property bool cloudLoading: false
     property int cloudGeneration: 0
-    property int weatherGeneration: 0
     property string compactPage: "calendar"
     readonly property bool compactLayout: width < 990
     color: Theme.background
@@ -22,10 +21,11 @@ Rectangle {
     focus: true
 
     Component.onCompleted: forceActiveFocus()
-    Keys.onEscapePressed: {
+    function dismiss() {
         if (editor.opened) editor.close();
         else ShellState.dismissPanel();
     }
+    Keys.onEscapePressed: root.dismiss()
 
     SystemClock { id: clock; precision: SystemClock.Minutes }
     Worker {
@@ -48,19 +48,7 @@ Rectangle {
     }
 
     function monthKey() { return Qt.formatDate(calendarPane.month, "yyyy-MM"); }
-    function refreshWeather() {
-        const generation = ++weatherGeneration;
-        weatherLoading = true;
-        service.request("weather", {}, (result, error) => {
-            if (generation !== weatherGeneration) return;
-            weatherLoading = false;
-            AttentionData.weatherError = error;
-            AttentionData.weatherCheckedAt = Date.now();
-            if (result) {
-                AttentionData.forecast = result;
-            }
-        });
-    }
+    function refreshWeather() { AttentionData.refreshWeather(true); }
     function refreshCloud(force) {
         const generation = ++cloudGeneration;
         const month = calendarPane.month;

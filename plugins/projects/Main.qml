@@ -91,6 +91,8 @@ Item {
                                 && (item.label + " " + item.description + " " + item.category).toLowerCase().includes(query));
     }
     function openMenu(button, menu) {
+        if (menu.visible) { menu.close(); return; }
+        menu.parent = button;
         const window = root.Window.window;
         if (!window) { menu.open(); return; }
         const point = button.mapToItem(window.contentItem, 0, 0);
@@ -98,7 +100,9 @@ Item {
         const below = point.y + button.height;
         const height = menu.implicitHeight || 220;
         const y = below + height < window.height - 8 ? below : Math.max(8, point.y - height);
-        menu.popup(window.contentItem, x, y);
+        menu.x = x - point.x;
+        menu.y = y - point.y;
+        menu.open();
     }
     function showForm(nextMode) {
         formError = "";
@@ -310,6 +314,7 @@ Item {
                 Menu {
                     id: recentMenu
                     popupType: Popup.Item
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
                     width: 230
                     background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.controlRadius }
                     MenuAction { text: "Update installed tools"; enabled: root.miseAvailable; onTriggered: root.showGlobalAction("globalUpdate") }
@@ -420,6 +425,7 @@ Item {
                         Menu {
                             id: cardMenu
                             popupType: Popup.Item
+                            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
                             width: 190
                             background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.controlRadius }
                             MenuAction { text: "Bootstrap"; enabled: root.miseAvailable; onTriggered: root.showProjectAction("bootstrap", card.modelData) }

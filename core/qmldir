@@ -5,8 +5,10 @@ singleton Attention 1.0 Attention.qml
 singleton AttentionData 1.0 AttentionData.qml
 singleton Paths 1.0 Paths.qml
 singleton Browser 1.0 Browser.qml
+singleton External 1.0 External.qml
 
 singleton Profiles 1.0 Profiles.qml
 
 singleton HardwareSnapshot 1.0 HardwareSnapshot.qml
 singleton KeepAwake 1.0 KeepAwake.qml
+singleton WindowList 1.0 WindowList.qml

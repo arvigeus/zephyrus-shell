@@ -1,0 +1,12 @@
+{
+  "url": "https://cloud.example.com/",
+  "username": "your-username",
+  "credentials": {
+    "dav": {"provider": "file", "file": "dav-app-password"},
+    "music": {"provider": "file", "file": "music-api-key"}
+  },
+  "capabilities": {
+    "dav": {"credential": "dav"},
+    "music_subsonic": {"credential": "music"}
+  }
+}

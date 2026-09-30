@@ -32,25 +32,19 @@ latitude, longitude, and IANA timezone. The KDE weather location ID is not an
 Open-Meteo coordinate; for Ha Long (`VN1580410`), the coordinates are
 `20.95045, 107.07336`.
 
-The `nextcloud.url` is the instance base URL, and `nextcloud.username` is the login
-name. Generate a dedicated app password in Nextcloud Personal settings → Security.
-Save it in the file named by `nextcloud.password_file` with mode `0600`; keep it out
-of this repository. The shell reads the file but never writes or logs the password.
-For example:
+The shared account lives in `zephyrus-shell/nextcloud.json`, with private DAV and
+Music credential references. See [Nextcloud setup and migration](nextcloud.md).
+Attention owns only calendar/task selection in `attention.json`:
 
-```sh
-mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/zephyrus-shell"
-read -rsp 'Nextcloud app password: ' nc_pass
-printf '%s' "$nc_pass" > "${XDG_CONFIG_HOME:-$HOME/.config}/zephyrus-shell/nextcloud-app-password"
-unset nc_pass
-chmod 600 "${XDG_CONFIG_HOME:-$HOME/.config}/zephyrus-shell/nextcloud-app-password"
+```json
+"calendar": {"calendars": ["Personal", "finance"], "task_lists": ["Tasks"]}
 ```
 
-Omit `nextcloud.calendars` to show **all** discovered event calendars. To select
-specific ones, add an array of their display names or CalDAV slugs, for example
-`"calendars": ["Personal", "finance"]`. Likewise, omit `nextcloud.task_lists`
-to include all task lists, or provide an array to filter them. Calendar and task
-list names are discovered from `/remote.php/dav/calendars/<username>/`.
+Omit `calendar.calendars` to show all discovered event calendars and omit
+`calendar.task_lists` to show all task lists. Select by display name or CalDAV
+slug; empty arrays select none. Collection names are discovered from
+`/remote.php/dav/calendars/<username>/`. Run `python3 scripts/migrate-nextcloud.py`
+to move existing account settings and loose credentials while preserving filters.
 
 Weather refreshes every 15 minutes and keeps a saved forecast for offline use.
 The large reading shows current model conditions, with humidity, feels-like

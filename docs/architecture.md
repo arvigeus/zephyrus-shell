@@ -25,6 +25,7 @@ in its module backend, so the shell only handles navigation and lifetime.
 | Entry point and IPC | `shell.qml` |
 | Per-monitor surfaces and input regions | `shell/ShellScreen.qml` |
 | Running windows and tray | `shell/RunningApps.qml` |
+| Shared compositor geometry and window ordering | `core/WindowList.qml`, `core/windows/WindowOrderModel.qml`, `core/WindowOrder.js` |
 | Background | `shell/Backdrop.qml` |
 | Shared module overlay and host contract | `shell/ModuleOverlay.qml` |
 | Panel selection | `core/ShellState.qml` |
@@ -45,20 +46,34 @@ in its module backend, so the shell only handles navigation and lifetime.
 | Allowlisted machine actions | `scripts/machine.py` |
 | Calendar and notification views | `attention/` |
 | Independent library entries | `plugins/<id>/` |
-| Floating behavior and shortcuts | `hyprland/` |
+| Scrolling layout, optional floating and shortcuts | `hyprland/` |
 
-`ShellScreen` creates a bar and overlay windows per monitor. Its bar reserves 66 px
+`ShellScreen` creates a bar and overlay windows per monitor. Its bar reserves 46 px
 for windows and uses an input mask containing only the pills and app icons. Drawers
 ignore the exclusive zone and sit above the bar, covering the corresponding pill
-without rearranging floating windows. They touch the top, bottom, and side edges
+without rearranging desktop windows. They touch the top, bottom, and side edges
 with square corners. `DrawerSlide.qml` animates entry and exit from the owning
-edge over 220 ms; the window and content remain alive until exit completes.
+edge over 140 ms; the window and content remain alive until exit completes.
 Each drawer uses a transparent full-screen surface with a separate outside-click
 area that never overlaps the drawer rectangle. Outside clicks are consumed to
 dismiss, without activating the application behind it. Module backgrounds fill the desktop behind the bar; content starts below it.
 The bar uses the overlay layer above the module’s top layer, leaving pills visible and
 clickable. One module is visible at a time; retained modules can keep their owned
 players and workers alive behind the Desktop.
+
+`WindowList` keeps Wayland activation handles and orders them by Hyprland's
+monitor, workspace and horizontal column geometry. It refreshes after compositor
+events settle, with one shared one-second geometry refresh while multiple windows
+exist to cover silent column moves. `WindowOrderModel` coalesces per-window IPC
+changes until the current response has finished, publishing one complete order
+and suppressing updates when only the scroll offset changes.
+`RunningApps` wraps that list in `ScriptModel`
+so reordering preserves existing buttons, decoded icons and keyboard focus.
+Without compositor metadata it retains the Wayland list as a fallback.
+`widgets/ReorderDrag.qml` supplies the local pointer gesture; `RunningApps` owns
+the insertion marker and edge scrolling. A completed drop goes through
+`WindowList` to `zephyrus.reorder_column` in `hyprland/windows.lua`, which checks
+current workspace/monitor geometry and uses native scrolling-column swaps.
 
 Drawer windows stay declared but their Loader is inactive while hidden. The Spaces
 drawer lists Desktop first, then plugin metadata. Opening it leaves the current
@@ -147,3 +162,21 @@ Sensor selection and weather interpretation belong to their Python data owners:
 `attention/weather.py` summarizes full local days from hourly conditions. QML
 formats these results and lays out the current, hourly and daily views; it does
 not choose sensors or infer daily weather independently.
+
+## Settings and weather snapshots
+
+The right drawer is created lazily and retained after its closing animation.
+Its last hardware snapshot stays usable while fresh readings arrive. Reopening
+within 30 seconds reuses the snapshot; explicit refresh, completed actions,
+monitor hotplug/reload and power-source changes refresh it. Native PipeWire,
+NetworkManager and UPower properties continue to drive live status. Shared,
+debounced event connections avoid duplicate queries from multiple monitor bars.
+Old snapshot responses cannot overwrite a change made by an action. DDC reads
+are cached for 60 seconds and invalidated after brightness writes. Hidden
+battery polling, Wi-Fi/Bluetooth scanning and the audio subscription stop while
+the drawer is closed. Optional module workers retain their normal lifecycle.
+
+All clock pills and Attention share `AttentionData`'s forecast and one one-shot
+weather request every 15 minutes. The existing disk cache survives shell restarts
+and keeps the previous forecast during network errors. No resident weather
+worker, per-monitor network request or second-by-second polling is added.

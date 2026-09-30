@@ -21,6 +21,9 @@ QtObject {
     readonly property int moduleMargin: Design.Theme.moduleMargin
     readonly property int moduleTopMargin: Design.Theme.moduleTopMargin
     readonly property int pillHeight: Design.Theme.pillHeight
+    readonly property int pillControlHeight: Design.Theme.pillControlHeight
+    readonly property int pillVerticalPadding: Design.Theme.pillVerticalPadding
+    readonly property int pillBottomPadding: Design.Theme.pillBottomPadding
     readonly property int catalogueSearchWidth: Design.Theme.catalogueSearchWidth
     function scrim(opacity) { return Design.Theme.scrim(opacity); }
 }

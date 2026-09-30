@@ -2,12 +2,13 @@
 
 - Use bundled Lucide SVGs through `widgets/Icon.qml` or `Action.iconName` for interface icons. Do not introduce Unicode symbols, emoji, or another icon family as interface icons. Application and brand artwork may use their own icons through `AppIcon`.
 - Plugin manifest `icon` values are bundled Lucide icon names (without `.svg`).
-- The Spaces drawer lists Desktop first, then modules. Selecting a module closes the drawer and opens its content in the shared desktop overlay below the 66 px pill bar. Keep module loading and host navigation in `shell/ModuleOverlay.qml` so all modules share this behavior.
+- The Spaces drawer lists Desktop first, then modules. Selecting a module closes the drawer and opens its content in the shared desktop overlay below the 42 px pill bar. Keep module loading and host navigation in `shell/ModuleOverlay.qml` so all modules share this behavior.
 - Plugins own their runtime resources. Any module may request retention with `host.requestKeepRunning(id, true)` while it has background work; otherwise selecting Desktop or another module destroys it. Escape or explicit Close always destroys it.
 - Keep lifecycle bookkeeping in `core/ShellState.qml`. Module hosts act on their owning instance; cross-module navigation uses `host.openPlugin(id, payload)` and destination `handleOpen(payload)`. The shell does not interpret feature records.
 - Reuse owned worker infrastructure in `services/`; optional plugin services must not become core singletons. Smoke tests use real entry points and lifecycle actions, not a parallel implementation.
 
 - Module backgrounds extend behind the pills; content starts below them. Do not add a shared heading or navigation buttons. Escape closes the module; selecting Desktop hides retained modules and closes others. Default backgrounds are translucent; optional root `property url backgroundImage` uses an opaque image background.
+- The desktop bar uses the Top layer so fullscreen applications cover it. Raise it to Overlay while a shell module is visible, except while drawers are showing; shell modules keep their content below the pills.
 - Missing application icons remain blank. Application grid labels share a fixed top alignment below their icon slots.
 
 - Both drawers are flush to their screen edges with square corners and stack above the pills. Use shared `DrawerSlide.qml` for entry/exit motion; retain content until closing animation completes.

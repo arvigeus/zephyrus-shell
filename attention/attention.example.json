@@ -5,9 +5,5 @@
     "longitude": 107.07336,
     "timezone": "Asia/Ho_Chi_Minh"
   },
-  "nextcloud": {
-    "url": "https://cloud.example.com/",
-    "username": "your-username",
-    "password_file": "~/.config/zephyrus-shell/nextcloud-app-password"
-  }
+  "calendar": {}
 }

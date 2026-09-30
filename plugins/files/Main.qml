@@ -75,6 +75,8 @@ ColumnLayout {
         });
     }
     function openActions(button, menu, entryPath) {
+        if (menu.visible) { menu.close(); return; }
+        menu.parent = button;
         if (pendingDeletePath && pendingDeletePath !== entryPath) {
             pendingDeletePath = "";
             deleteConfirmation.stop();
@@ -87,7 +89,9 @@ ColumnLayout {
         const menuHeight = menu.implicitHeight || 168;
         const below = point.y + button.height;
         const menuY = below + menuHeight <= window.height - 8 ? below : Math.max(8, point.y - menuHeight);
-        menu.popup(window.contentItem, menuX, menuY);
+        menu.x = menuX - point.x;
+        menu.y = menuY - point.y;
+        menu.open();
         menu.currentIndex = selectedIndex;
     }
     function activateMenuAction(actionIndex, entry, menu) {
@@ -239,6 +243,7 @@ ColumnLayout {
                     id: actions
                     property var anchorButton: gear
                     popupType: Popup.Item
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
                     width: 220
                     focus: true
                     background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.controlRadius }

@@ -156,5 +156,112 @@ class BatteryDetailsTests(unittest.TestCase):
             self.assertEqual(machine.battery_details(supply_root=Path(directory)), {"batteries": []})
 
 
+class DisplayTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        environment = patch.dict(machine.os.environ, {"XDG_CONFIG_HOME": str(self.root)})
+        environment.start()
+        self.addCleanup(environment.stop)
+        self.monitors = [
+            {"name": "eDP-2", "width": 1920, "height": 1080, "refreshRate": 60,
+             "x": 0, "y": 0, "scale": 1.25, "availableModes": ["1920x1080@60.00Hz"], "disabled": False},
+            {"name": "DP-3", "width": 2560, "height": 1440, "refreshRate": 60,
+             "x": 1536, "y": 0, "scale": 1, "availableModes": ["2560x1440@60.00Hz"], "disabled": False}]
+
+    def command(self, args, *unused):
+        import json
+        return json.dumps(self.monitors) if "monitors" in args else "ok"
+
+    def test_aux_ddc_bus_precedes_legacy_adapter_and_explicit_override(self):
+        port = self.root / "card2-DP-3"
+        (port / "ddc/i2c-dev/i2c-10").mkdir(parents=True)
+        (port / "i2c-19/i2c-dev/i2c-19").mkdir(parents=True)
+        self.assertEqual(machine.ddc_bus("DP-3", {}, self.root), 19)
+        self.assertEqual(machine.ddc_bus("DP-3", {"DP-3": {"ddcBus": 7}}, self.root), 7)
+        self.assertIsNone(machine.ddc_bus("DP-9", {}, self.root))
+
+    def test_order_uses_logical_width_and_atomic_persistent_lua(self):
+        import json
+        with patch.object(machine, "command", side_effect=self.command) as command:
+            machine.action("display-order", json.dumps({"order": ["DP-3", "eDP-2"]}))
+        script = command.call_args.args[0]
+        self.assertEqual(script[:2], ["hyprctl", "eval"])
+        self.assertIn('position = "2560x0"', script[2])
+        saved = self.root / "zephyrus-shell/display-settings.lua"
+        self.assertIn('"DP-3"', saved.read_text())
+        self.assertEqual(len(list(saved.parent.iterdir())), 1)
+
+    def test_scale_reflows_neighbors_without_overlap(self):
+        import json
+        with patch.object(machine, "command", side_effect=self.command) as command:
+            machine.action("display-scale", json.dumps({"name": "eDP-2", "scale": 1.5}))
+        self.assertIn('position = "1280x0"', command.call_args.args[0][2])
+
+    def test_disable_uses_lua_and_is_session_only(self):
+        import json
+        with patch.object(machine, "command", side_effect=self.command) as command:
+            machine.action("display", json.dumps({"name": "DP-3", "enabled": False}))
+        self.assertIn('disabled = true', command.call_args.args[0][2])
+        self.assertFalse((self.root / "zephyrus-shell/display-settings.lua").exists())
+
+    def test_last_display_cannot_be_disabled(self):
+        import json
+        self.monitors[1]["disabled"] = True
+        with patch.object(machine, "command", side_effect=self.command) as command:
+            with self.assertRaisesRegex(ValueError, "at least one"):
+                machine.action("display", json.dumps({"name": "eDP-2", "enabled": False}))
+        self.assertEqual(command.call_count, 1)
+
+    def test_rejects_duplicate_order_and_unlisted_mode(self):
+        import json
+        with patch.object(machine, "command", side_effect=self.command) as command:
+            for name, data in [("display-order", {"order": ["DP-3", "DP-3"]}),
+                               ("display-mode", {"name": "DP-3", "mode": "unsafe; reboot"})]:
+                with self.assertRaises(ValueError):
+                    machine.action(name, json.dumps(data))
+        self.assertEqual(command.call_count, 2)
+
+    def test_failed_compositor_change_does_not_save_rule(self):
+        import json
+        def fail(args, *unused):
+            if "eval" in args:
+                raise RuntimeError("rejected")
+            return json.dumps(self.monitors)
+        with patch.object(machine, "command", side_effect=fail):
+            with self.assertRaises(RuntimeError):
+                machine.action("display-scale", json.dumps({"name": "DP-3", "scale": 1.25}))
+        self.assertFalse((self.root / "zephyrus-shell/display-settings.lua").exists())
+
+
+class DdcCacheTests(unittest.TestCase):
+    def test_cache_reuses_probe_and_explicit_refresh_reads_again(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "i2c-19").touch()
+            with patch.object(machine, "STATE", root / "state"), \
+                 patch.object(machine.shutil, "which", return_value="ddcutil"), \
+                 patch.object(machine, "command", return_value="VCP 10 C 45 100") as query:
+                self.assertEqual(machine.ddc_brightness(19, device_root=root), (45, ""))
+                self.assertEqual(machine.ddc_brightness(19, device_root=root), (45, ""))
+                self.assertEqual(query.call_count, 1)
+                self.assertEqual(machine.ddc_brightness(19, refresh=True, device_root=root), (45, ""))
+                self.assertEqual(query.call_count, 2)
+
+    def test_unresponsive_monitor_caches_diagnostic_without_repeated_probes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "i2c-19").touch()
+            with patch.object(machine, "STATE", root / "state"), \
+                 patch.object(machine.shutil, "which", return_value="ddcutil"), \
+                 patch.object(machine, "command", side_effect=RuntimeError("No response")) as query:
+                value, error = machine.ddc_brightness(19, device_root=root)
+                self.assertIsNone(value)
+                self.assertIn("No response", error)
+                self.assertEqual(machine.ddc_brightness(19, device_root=root), (None, error))
+                self.assertEqual(query.call_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

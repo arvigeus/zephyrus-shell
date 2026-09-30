@@ -59,9 +59,12 @@ ColumnLayout {
     Repeater {
         model: root.devices
         delegate: Item {
+            id: scanner
             required property var modelData
             property bool previous: false
-            Component.onCompleted: { previous = modelData.scannerEnabled; modelData.scannerEnabled = true; }
+            property bool ready: false
+            Component.onCompleted: { previous = modelData.scannerEnabled; ready = true; modelData.scannerEnabled = root.visible; }
+            Connections { target: root; function onVisibleChanged() { if (scanner.ready) scanner.modelData.scannerEnabled = root.visible ? true : scanner.previous; } }
             Component.onDestruction: if (modelData) modelData.scannerEnabled = previous
         }
     }

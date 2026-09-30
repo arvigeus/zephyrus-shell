@@ -817,12 +817,14 @@ ColumnLayout {
     }
 
     function popupBelow(button, popup) {
+        // Clamp in module coordinates, then position relative to the trigger.
         const point = button.mapToItem(root, 0, button.height);
-        popup.x = Math.max(0, Math.min(point.x, root.width - popup.width));
-        popup.y = Math.max(0, Math.min(point.y + 5, root.height - popup.height));
+        popup.x = Math.max(0, Math.min(point.x, root.width - popup.width)) - point.x;
+        popup.y = Math.max(0, Math.min(point.y + 5, root.height - popup.height)) - (point.y - button.height);
     }
 
     function showGenrePopup() {
+        if (genrePopup.visible) { genrePopup.close(); return; }
         popupBelow(genreButton, genrePopup);
         genrePopup.open();
     }
@@ -1059,6 +1061,7 @@ ColumnLayout {
         }
     }
     M.TorrentSearch {
+        host: root.host
         id: musicFinder
         objectName: "musicTorrentSearch"
         visible: root.torrentOpen && !!root.torrentTarget.id
@@ -1353,7 +1356,7 @@ ColumnLayout {
                         visible: !!(root.artistInfo && root.artistInfo.url)
                         iconName: "music"
                         text: "Open in Apple Music"
-                        onClicked: Browser.open(root.artistInfo.url, "music")
+                        onClicked: Browser.open(root.artistInfo.url, "music", "", root.host)
                     }
                 }
             }
@@ -1434,13 +1437,13 @@ ColumnLayout {
 
     Popup {
         id: genrePopup
-        parent: root
+        parent: genreButton
         popupType: Popup.Item
         width: 300
         height: Math.min(420, root.height - 16)
         padding: 8
         focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         onOpened: {
             root.loadGenres();
             genreSearch.text = "";

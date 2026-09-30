@@ -406,13 +406,13 @@ Item {
                         }
                         Flow {
                             Layout.fillWidth: true; spacing: 6
-                            W.IconButton { visible: root.localFiles.length > 0; iconName: "folder-open"; text: "Open local book"; onClicked: Quickshell.execDetached(["xdg-open", root.localFiles[0].path]) }
+                            W.IconButton { visible: root.localFiles.length > 0; iconName: "folder-open"; text: "Open local book"; onClicked: External.launch(["xdg-open", root.localFiles[0].path], root.host) }
                             W.IconButton {
                                 objectName: "openLibraryButton"
                                 iconName: "book-open"
                                 text: root.readingAction || "Open in Open Library"
                                 Accessible.name: text
-                                onClicked: Browser.open(root.readingUrl(), "books")
+                                onClicked: Browser.open(root.readingUrl(), "books", "", root.host)
                             }
                             W.IconButton { objectName: "favoriteButton"; iconName: root.personal.favorite ? "star-filled" : "star"; text: root.personal.favorite ? "Remove from Favorites" : "Add to Favorites"; onClicked: root.saveFavorite(!root.personal.favorite) }
                             W.IconButton { iconName: "refresh-cw"; text: "Refresh book details"; onClicked: root.refreshBook() }

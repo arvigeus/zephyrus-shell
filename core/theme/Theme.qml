@@ -17,8 +17,11 @@ QtObject {
     readonly property int radius: 10
     readonly property int controlRadius: 5
     readonly property int moduleMargin: 28
-    readonly property int moduleTopMargin: 80
-    readonly property int pillHeight: 66
+    readonly property int moduleTopMargin: pillHeight + 14
+    readonly property int pillControlHeight: 34
+    readonly property int pillVerticalPadding: 6
+    readonly property int pillBottomPadding: 2
+    readonly property int pillHeight: pillControlHeight + pillVerticalPadding + pillBottomPadding
     readonly property int gap: 12
     readonly property int catalogueSearchWidth: 420
 }

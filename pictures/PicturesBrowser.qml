@@ -645,7 +645,7 @@ Item {
                         W.Action {
                             objectName: "setWallpaperButton"
                             iconName: "monitor"
-                            text: root.settingWallpaper ? "Setting wallpaper…" : "Set as desktop wallpaper"
+                            text: root.settingWallpaper ? "Setting wallpaper…" : "Set wallpaper & lock screen"
                             enabled: !!root.selected.id && !root.settingWallpaper
                             onClicked: root.setDesktopWallpaper()
                         }
@@ -660,7 +660,7 @@ Item {
                             iconName: "globe"
                             text: "Open on " + (root.selected.siteName || root.providerName(root.selected.provider || root.providerId))
                             enabled: !!root.selected.url
-                            onClicked: Browser.open(root.selected.url, "pictures")
+                            onClicked: Browser.open(root.selected.url, "pictures", "", root.host)
                         }
                     }
                     BusyIndicator { visible: root.settingWallpaper; running: visible; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }

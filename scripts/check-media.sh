@@ -7,12 +7,16 @@ export XDG_CONFIG_HOME="$media_test_root/config" XDG_DATA_HOME="$media_test_root
 export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
 mkdir -p "$XDG_CONFIG_HOME/zephyrus-shell" tests/artifacts
 python3 - <<'PY'
-import sys,json
+import sys,json,os
 from pathlib import Path
 sys.path.insert(0,'media')
 from backend import Backend
 b=Backend()
-b.config_path.write_text(json.dumps({"providers":[{"name":"First service","movie_url":"https://example.org/movie/{imdbId}","series_url":"https://example.org/tv/{imdbId}/{season}/{episode}"},{"name":"Second service","movie_url":"https://example.net/{imdbId}","series_url":"https://example.net/{imdbId}"}],"anime_sources":[{"name":"Fixture source","strategy":"mal_embed","embed_url":"https://example.org/{malId}/{episode}/{mode}","blob_pattern":"blob=([^ ]+)","xor_key":"fixture"}]}))
+launcher=b.cache/'external-fixture.py'
+launcher.write_text('#!/usr/bin/env python3\nimport json, os, sys, time\nfrom pathlib import Path\ntime.sleep(0.1)\nwith (Path(os.environ["XDG_CACHE_HOME"])/"external-launches.jsonl").open("a") as output: output.write(json.dumps(sys.argv[1:])+"\\n")\n')
+launcher.chmod(0o700)
+(b.config_path.parent/'browser.json').write_text(json.dumps({'command':[str(launcher)]}))
+b.config_path.write_text(json.dumps({"player":[str(launcher)],"providers":[{"name":"First service","movie_url":"https://example.org/movie/{imdbId}","series_url":"https://example.org/tv/{imdbId}/{season}/{episode}"},{"name":"Second service","movie_url":"https://example.net/{imdbId}.mp4","series_url":"https://example.net/{imdbId}"}],"anime_sources":[{"name":"Fixture source","strategy":"mal_embed","embed_url":"https://example.org/{malId}/{episode}/{mode}","blob_pattern":"blob=([^ ]+)","xor_key":"fixture"}]}))
 # Local art exercises asynchronous images without network or credentials.
 art=b.cache/'fixture.svg'
 art.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><defs><linearGradient id="g"><stop stop-color="#18343f"/><stop offset="1" stop-color="#7d5165"/></linearGradient></defs><path fill="url(#g)" d="M0 0h1600v900H0z"/><circle cx="1250" cy="340" r="180" fill="#cfaf88"/><path d="M0 850L600 400l350 300 350-200 300 350z" fill="#1a242e"/></svg>')
@@ -79,3 +83,39 @@ timeout 20s dbus-run-session quickshell -p "$PWD/media-smoke.qml" --no-color > "
 cat "$media_test_root/log"
 rg -q 'MEDIA PASS' "$media_test_root/log"
 if rg -q 'ReferenceError|TypeError|Cannot assign|Binding loop|MEDIA FAIL' "$media_test_root/log"; then exit 1; fi
+
+# Launch harmless detached fixtures through the real module controls and workers.
+python3 - <<'PYPLAYER'
+import json, os
+from pathlib import Path
+config = Path(os.environ['XDG_CONFIG_HOME'])/'zephyrus-shell/media.json'
+value = json.loads(config.read_text())
+player = Path(value['player'][0]).with_name('mpv')
+player.symlink_to(value['player'][0])
+value['player'] = [str(player)]
+config.write_text(json.dumps(value))
+PYPLAYER
+export https_proxy=http://127.0.0.1:9 http_proxy=http://127.0.0.1:9
+unset ALL_PROXY all_proxy NO_PROXY no_proxy
+timeout 20s dbus-run-session quickshell -p "$PWD/external-launch-smoke.qml" --no-color > "$media_test_root/external-log" 2>&1 || { cat "$media_test_root/external-log"; exit 1; }
+cat "$media_test_root/external-log"
+rg -q 'EXTERNAL PASS' "$media_test_root/external-log"
+if rg -q 'ReferenceError|TypeError|Cannot assign|Binding loop|EXTERNAL FAIL' "$media_test_root/external-log"; then exit 1; fi
+python3 - <<'PYVERIFY'
+import json, os, time
+from pathlib import Path
+path = Path(os.environ['XDG_CACHE_HOME'])/'external-launches.jsonl'
+for attempt in range(30):
+    launches = [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+    if len(launches) >= 7: break
+    time.sleep(0.1)
+assert len(launches) == 7, launches
+assert ['https://example.org/movie/tt1000'] in launches, launches
+assert ['--', 'https://example.net/tt1000.mp4'] in launches, launches
+assert ['https://example.org/trailer'] in launches, launches
+assert any('imdb.com/title/tt1000' in args[-1] for args in launches), launches
+assert ['https://example.org/tv/tt2001/1/1'] in launches, launches
+assert any(any(arg.startswith('--sub-file=') for arg in args) for args in launches), launches
+assert ['https://example.org/hidden-owner'] in launches, launches
+print('EXTERNAL DETACHED PASS: all seven applications survive module destruction')
+PYVERIFY

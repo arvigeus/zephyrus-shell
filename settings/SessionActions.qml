@@ -6,19 +6,18 @@ import "../core"
 
 ColumnLayout {
     id: root
+    objectName: "session-actions"
     required property var machine
-    property string pending: ""
-    property int pendingDelay: 0
+    function execute(name, delay) {
+        if (name === "suspend") KeepAwake.setMode("off");
+        machine.run(name, delay);
+    }
     readonly property var delays: [
         {minutes: 15, label: "15 min"}, {minutes: 30, label: "30 min"},
         {minutes: 60, label: "1 hour"}, {minutes: 90, label: "90 min"},
         {minutes: 120, label: "2 hours"}, {minutes: 180, label: "3 hours"},
         {minutes: 240, label: "4 hours"}, {minutes: 300, label: "5 hours"}
     ]
-    function delayLabel(minutes) {
-        const choice = delays.find(item => item.minutes === minutes);
-        return choice ? choice.label : "";
-    }
     Layout.fillWidth: true
     RowLayout {
         Layout.fillWidth: true
@@ -29,18 +28,19 @@ ColumnLayout {
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1
                 implicitHeight: 42
-                IconButton {
+                HoldAction {
+                    objectName: "session-action-" + parent.modelData.id
                     anchors.centerIn: parent
+                    holdDuration: 2000
                     iconName: parent.modelData.id !== "suspend" ? parent.modelData.icon : KeepAwake.mode === "screen" ? "eye" : KeepAwake.mode === "sleep" ? "coffee" : "moon"
-                    text: parent.modelData.id !== "suspend" ? parent.modelData.label : KeepAwake.mode === "screen" ? "Allow screen blanking and sleep" : KeepAwake.mode === "sleep" ? "Enable automatic sleep" : "Sleep"
+                    text: parent.modelData.label
                     highlighted: parent.modelData.id === "suspend" && KeepAwake.mode !== "off"
                     enabled: !root.machine.busy && (parent.modelData.id !== "logout" || !!root.machine.snapshot.hyprland)
-                    onClicked: {
-                        if (parent.modelData.id === "suspend" && KeepAwake.mode !== "off") KeepAwake.setMode("off");
-                        else root.pending = parent.modelData.id;
-                    }
+                    ToolTip.text: "Hold for 2 seconds to " + parent.modelData.label.toLowerCase()
+                    onActivated: root.execute(parent.modelData.id)
                 }
                 IconButton {
+                    id: sleepOptions
                     visible: parent.modelData.id === "suspend"
                     x: parent.width / 2 + 23
                     anchors.verticalCenter: parent.verticalCenter
@@ -50,16 +50,18 @@ ColumnLayout {
                     text: "Sleep options"
                     highlighted: sleepMenu.visible
                     enabled: !root.machine.busy
-                    onClicked: sleepMenu.open()
+                    onClicked: sleepMenu.visible ? sleepMenu.close() : sleepMenu.open()
                 }
                 Popup {
                     id: sleepMenu
+                    parent: sleepOptions
+                    popupType: Popup.Item
                     x: parent.width - width
                     y: -height - 8
                     width: 218
                     padding: 10
                     focus: true
-                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
                     background: Rectangle { color: Theme.surface; radius: Theme.controlRadius; border.color: Theme.border }
                     contentItem: ColumnLayout {
                         spacing: 2
@@ -67,7 +69,7 @@ ColumnLayout {
                             visible: KeepAwake.mode !== "sleep"
                             Layout.fillWidth: true
                             iconName: "coffee"
-                            text: "Keep awake"
+                            text: "Stay awake"
                             textAlignment: Text.AlignLeft
                             ToolTip.text: "Prevent automatic sleep while allowing the screen to dim or blank."
                             onClicked: { KeepAwake.setMode("sleep"); sleepMenu.close(); }
@@ -85,10 +87,9 @@ ColumnLayout {
                             visible: KeepAwake.mode !== "off"
                             Layout.fillWidth: true
                             iconName: "moon"
-                            text: "Sleep"
+                            text: "Allow automatic sleep"
                             textAlignment: Text.AlignLeft
-                            ToolTip.text: "Put the device to sleep after confirmation."
-                            onClicked: { root.pending = "suspend"; sleepMenu.close(); }
+                            onClicked: { KeepAwake.setMode("off"); sleepMenu.close(); }
                         }
                     }
                 }
@@ -98,14 +99,18 @@ ColumnLayout {
             Layout.fillWidth: true
             Layout.preferredWidth: 1
             implicitHeight: 42
-            IconButton {
+            HoldAction {
                 anchors.centerIn: parent
+                objectName: "session-action-poweroff"
+                holdDuration: 2000
                 iconName: "power"
                 text: "Power off"
                 enabled: !root.machine.busy
-                onClicked: { root.pending = "poweroff"; root.pendingDelay = 0; }
+                ToolTip.text: "Hold for 2 seconds to power off"
+                onActivated: root.execute("poweroff")
             }
             IconButton {
+                id: shutdownOptions
                 x: parent.width / 2 + 23
                 anchors.verticalCenter: parent.verticalCenter
                 width: 32
@@ -114,16 +119,18 @@ ColumnLayout {
                 text: "Shutdown options"
                 highlighted: shutdownMenu.visible
                 enabled: !root.machine.busy
-                onClicked: shutdownMenu.open()
+                onClicked: shutdownMenu.visible ? shutdownMenu.close() : shutdownMenu.open()
             }
             Popup {
                 id: shutdownMenu
+                parent: shutdownOptions
+                popupType: Popup.Item
                 x: parent.width - width
                 y: -height - 8
                 width: 242
                 padding: 10
                 focus: true
-                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
                 background: Rectangle { color: Theme.surface; radius: Theme.controlRadius; border.color: Theme.border }
                 contentItem: ColumnLayout {
                     spacing: 6
@@ -135,15 +142,19 @@ ColumnLayout {
                         columnSpacing: 2
                         Repeater {
                             model: root.delays
-                            Action {
+                            HoldAction {
                                 required property var modelData
+                                holdDuration: 2000
+                                showLabel: true
+                                iconSize: 16
+                                iconName: "power"
                                 text: modelData.label
+                                ToolTip.text: "Hold for 2 seconds to shut down in " + text
                                 Layout.fillWidth: true
                                 Layout.preferredWidth: 1
                                 Layout.preferredHeight: 36
-                                onClicked: {
-                                    root.pending = "schedule-poweroff";
-                                    root.pendingDelay = modelData.minutes;
+                                onActivated: {
+                                    root.execute("schedule-poweroff", modelData.minutes);
                                     shutdownMenu.close();
                                 }
                             }
@@ -163,22 +174,5 @@ ColumnLayout {
                 }
             }
         }
-    }
-    RowLayout {
-        visible: root.pending !== ""
-        Layout.fillWidth: true
-        Action {
-            text: root.pending === "schedule-poweroff" ? "Confirm shutdown in " + root.delayLabel(root.pendingDelay) : "Confirm " + root.pending
-            destructive: true
-            Layout.fillWidth: true
-            enabled: !root.machine.busy
-            onClicked: {
-                if (root.pending === "suspend") KeepAwake.setMode("off");
-                root.machine.run(root.pending, root.pending === "schedule-poweroff" ? root.pendingDelay : undefined);
-                root.pending = "";
-                root.pendingDelay = 0;
-            }
-        }
-        Action { text: "Cancel"; onClicked: { root.pending = ""; root.pendingDelay = 0; } }
     }
 }

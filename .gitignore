@@ -3,3 +3,8 @@ tests/artifacts/*.png
 tests/artifacts/*.log
 plugins/terminal/QMLTermWidget/
 plugins/terminal/.QMLTermWidget.new/
+credentials/
+secrets/
+nextcloud-app-password
+nextcloud-music-password
+nextcloud.json

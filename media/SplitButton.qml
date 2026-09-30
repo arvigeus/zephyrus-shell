@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import "../core"
+import "../core/theme"
 import "../widgets" as W
 
 RowLayout {
@@ -40,7 +40,7 @@ RowLayout {
         id: arrow
         visible: root.options.length > 1
         iconName: "chevron-down"; text: "Choose " + root.text.toLowerCase()
-        onClicked: menu.open()
+        onClicked: menu.visible ? menu.close() : menu.open()
         background: Rectangle {
             radius: Theme.controlRadius
             topLeftRadius: 0
@@ -51,7 +51,10 @@ RowLayout {
             border.width: 2
         }
         Menu {
-            id: menu; popupType: Popup.Item; y: arrow.height; width: Math.min(440,root.Window.width - 48)
+            id: menu
+            popupType: Popup.Item
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+            y: arrow.height; width: Math.min(440,root.Window.width - 48)
             background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.controlRadius }
             Repeater {
                 model: root.options

@@ -1,12 +1,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import "../core"
+import "../core/theme"
 import "../widgets" as W
 
 Item {
     id: root
 
+    property alias popup: popup
     property var options: []
     property string value: ""
     property string selectedLabel: ""
@@ -91,7 +92,7 @@ Item {
         focusPolicy: Qt.StrongFocus
         Accessible.name: root.value ? "Tags: " + root.displayValue() : "Tags"
         onClicked: {
-            if (popup.opened) {
+            if (popup.visible) {
                 popup.close();
                 return;
             }
@@ -131,11 +132,13 @@ Item {
 
     Popup {
         id: popup
+        parent: root
+        popupType: Popup.Item
         y: root.height + 4
         width: Math.max(root.width, 260)
         padding: 6
         focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         implicitHeight: popupContent.implicitHeight + padding * 2
 
         background: Rectangle {

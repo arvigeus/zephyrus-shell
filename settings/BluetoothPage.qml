@@ -20,6 +20,7 @@ ColumnLayout {
     property string error: ""
     property bool scanning: false
     property bool ownsDiscovery: false
+    onVisibleChanged: if (!visible) stopScan()
 
     function scan() {
         if (adapter && adapter.enabled) {

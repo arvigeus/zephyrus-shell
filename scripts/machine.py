@@ -8,6 +8,7 @@ import sys
 import re
 import time
 import math
+import tempfile
 
 
 def command(args, strict=False, timeout=8):
@@ -33,9 +34,172 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "zephyrus-shell"
 
 
+def config_directory():
+    return Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "zephyrus-shell"
+
+
+def atomic_write(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as output:
+            temporary = Path(output.name)
+            output.write(text)
+        temporary.replace(path)
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
+
+
 def display_config():
-    path = ROOT / "config/displays.json"
-    return json.loads(path.read_text()) if path.exists() else {}
+    defaults = json.loads((ROOT / "config/displays.json").read_text())
+    personal = config_directory() / "displays.json"
+    if personal.exists():
+        for name, settings in json.loads(personal.read_text()).items():
+            defaults[name] = dict(defaults.get(name, {}), **settings)
+    return defaults
+
+
+def ddc_bus(connector, config, drm_root=Path("/sys/class/drm")):
+    override = config.get(connector, {}).get("ddcBus")
+    if override is not None:
+        return int(override)
+    # Match the connector, never a guessed bus index or a costly full DDC scan.
+    for port in drm_root.glob("card*-" + connector):
+        # DisplayPort AUX adapters live directly under the connector and can
+        # differ from its legacy ddc adapter (USB-C/MST docks in particular).
+        aux = {int(bus.name.removeprefix("i2c-")) for bus in port.glob("i2c-*/i2c-dev/i2c-*")}
+        if len(aux) == 1:
+            return next(iter(aux))
+        buses = {int(bus.name.removeprefix("i2c-")) for bus in (port / "ddc/i2c-dev").glob("i2c-*")}
+        if len(buses) == 1:
+            return next(iter(buses))
+    return None
+
+
+def ddc_brightness(bus, refresh=False, device_root=Path("/dev")):
+    cache = STATE / ("ddc-brightness-" + str(bus) + ".json")
+    if not refresh:
+        try:
+            saved = json.loads(cache.read_text())
+            if time.time() - saved["checked"] < 60:
+                return saved["value"], saved["error"]
+        except (OSError, ValueError, KeyError):
+            pass
+    value, error = None, ""
+    if not shutil.which("ddcutil"):
+        error = "Install ddcutil with scripts/setup-system.sh."
+    elif bus is None:
+        error = "No DDC bus found. Choose a bus in Display settings."
+    elif not (device_root / f"i2c-{bus}").exists():
+        error = "DDC needs i2c-dev. Run scripts/setup-system.sh to enable it."
+    elif not os.access(device_root / f"i2c-{bus}", os.R_OK | os.W_OK):
+        error = "DDC access denied. Run setup-system.sh, then log out and back in."
+    else:
+        try:
+            result = command(["ddcutil", "--bus", str(bus), "getvcp", "10", "--terse"], True, 5)
+            match = re.search(r"C (\d+) (\d+)", result)
+            if not match:
+                raise ValueError("Brightness is not supported by this display.")
+            value = round(int(match[1]) / max(1, int(match[2])) * 100)
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as problem:
+            error = "Enable DDC/CI in the monitor menu. " + str(problem)
+    atomic_write(cache, json.dumps({"checked": time.time(), "value": value, "error": error}))
+    return value, error
+
+
+def monitor_rule(monitor, **changes):
+    rule = {"output": monitor["name"], "mode": f"{monitor['width']}x{monitor['height']}@{monitor['refreshRate']}",
+            "position": f"{monitor.get('x', 0)}x{monitor.get('y', 0)}", "scale": monitor.get("scale", 1),
+            "transform": monitor.get("transform", 0)}
+    rule.update(changes)
+    return rule
+
+
+def lua_rule(rule):
+    return "hl.monitor({ " + ", ".join(key + " = " + json.dumps(value) for key, value in rule.items()) + " })"
+
+
+def apply_monitor_rules(rules, persist=True):
+    command(["hyprctl", "eval", "; ".join(lua_rule(rule) for rule in rules)], True)
+    if not persist:
+        return
+    path = config_directory() / "display-settings.lua"
+    prefix = "-- Zephyrus display settings: "
+    saved = {}
+    if path.exists():
+        saved = json.loads(path.read_text().splitlines()[0].removeprefix(prefix))
+    for rule in rules:
+        saved[rule["output"]] = rule
+    # One atomic file contains both editable state and reloadable Lua rules.
+    atomic_write(path, prefix + json.dumps(saved) + "\n" + "\n".join(lua_rule(rule) for rule in saved.values()) + "\n")
+
+
+def display_action(name, value):
+    monitors = json.loads(command(["hyprctl", "monitors", "all", "-j"], True))
+    data = json.loads(value) if name != "primary" else {"name": value}
+    if name == "display-order":
+        enabled = [m for m in monitors if not m.get("disabled")]
+        order = data.get("order", [])
+        if len(order) != len(enabled) or set(order) != {m["name"] for m in enabled}:
+            raise ValueError("Order must include every enabled display exactly once")
+        rules, x = [], 0
+        for connector in order:
+            monitor = next(m for m in enabled if m["name"] == connector)
+            rules.append(monitor_rule(monitor, position=f"{x}x0"))
+            width = monitor["height"] if monitor.get("transform", 0) % 2 else monitor["width"]
+            x += round(width / monitor.get("scale", 1))
+        apply_monitor_rules(rules)
+        return
+    monitor = next((m for m in monitors if m["name"] == data.get("name")), None)
+    if not monitor or not re.fullmatch(r"[A-Za-z0-9_-]+", monitor["name"]):
+        raise ValueError("Unknown display")
+    connector = monitor["name"]
+    if name == "primary":
+        if monitor.get("disabled"):
+            raise ValueError("Enable the display first")
+        atomic_write(STATE / "primary-display", connector)
+    elif name == "display-ddc":
+        bus = data.get("bus")
+        if bus is not None and (type(bus) is not int or bus < 0 or bus > 9999):
+            raise ValueError("Invalid DDC bus")
+        path = config_directory() / "displays.json"
+        config = json.loads(path.read_text()) if path.exists() else {}
+        config.setdefault(connector, {})["ddcBus"] = bus
+        atomic_write(path, json.dumps(config, indent=2) + "\n")
+        ddc_brightness(ddc_bus(connector, display_config()), refresh=True)
+    elif name == "display":
+        if not isinstance(data.get("enabled"), bool):
+            raise ValueError("Expected display state")
+        if not data["enabled"] and len([m for m in monitors if not m.get("disabled")]) <= 1:
+            raise ValueError("Keep at least one display enabled")
+        # Disable only for this session so unplugging an external output cannot
+        # leave a laptop with its only attached display disabled at next login.
+        rule = monitor_rule(monitor, disabled=False) if data["enabled"] and monitor.get("width") else {"output": connector, "mode": "preferred", "scale": "auto", "position": "auto", "disabled": False}
+        if not data["enabled"]:
+            rule = {"output": connector, "disabled": True}
+        apply_monitor_rules([rule], persist=False)
+    elif name in ("display-mode", "display-scale"):
+        if monitor.get("disabled"):
+            raise ValueError("Enable the display first")
+        if name == "display-mode":
+            if data.get("mode") not in monitor.get("availableModes", []):
+                raise ValueError("Unsupported display mode")
+            mode = re.fullmatch(r"(\d+)x(\d+)@([\d.]+)(?:Hz)?", data["mode"])
+            if not mode:
+                raise ValueError("Unsupported display mode format")
+            monitor.update(width=int(mode[1]), height=int(mode[2]), refreshRate=float(mode[3]))
+        else:
+            scale = float(data.get("scale", 0))
+            if scale not in (1, 1.25, 1.5, 1.75, 2):
+                raise ValueError("Unsupported display scale")
+            monitor["scale"] = scale
+        rules, x = [], 0
+        for item in sorted((m for m in monitors if not m.get("disabled")), key=lambda m: m.get("x", 0)):
+            rules.append(monitor_rule(item, position=f"{x}x0"))
+            width = item["height"] if item.get("transform", 0) % 2 else item["width"]
+            x += round(width / item.get("scale", 1))
+        apply_monitor_rules(rules)
 
 
 def primary_monitor(monitors):
@@ -233,7 +397,7 @@ def battery_details(*, supply_root=Path("/sys/class/power_supply")):
     return {"batteries": packs}
 
 
-def snapshot():
+def snapshot(refresh_ddc=False):
     light = backlight()
     batteries = [p for p in Path("/sys/class/power_supply").glob("*") if read(p / "type") == "Battery" and read(p / "scope") != "Device"]
     battery = batteries[0] if batteries else None
@@ -253,16 +417,20 @@ def snapshot():
     estimate_available = status == "Charging" or status == "Discharging" and external_power is not True
     battery_info = (f"{minutes // 60}h {minutes % 60}m " + ("until charged" if status == "Charging" else "remaining")) if minutes and estimate_available else battery_status_text(status, external_power) if battery else ""
     if power > 0 and status == "Discharging": battery_info += f" · {power:.1f} W"
-    external = aliases.get(primary, {}).get("ddcBus")
+    external = ddc_bus(primary, aliases) if primary and not primary.startswith(("eDP", "LVDS")) else None
+    brightness_error = ""
     brightness = round(int(read(light / "brightness", "0")) / max(1, int(read(light / "max_brightness", "1"))) * 100) if light else 0
     can_brighten = bool(light) and (not primary or primary.startswith(("eDP", "LVDS")))
-    if external is not None and shutil.which("ddcutil"):
-        result = command(["ddcutil", "--bus", str(int(external)), "getvcp", "10", "--terse"])
-        match = re.search(r"C (\d+) (\d+)", result)
-        if match:
-            brightness = round(int(match[1]) / max(1, int(match[2])) * 100); can_brighten = True
+    if primary and not primary.startswith(("eDP", "LVDS")):
+        value, brightness_error = ddc_brightness(external, refresh=refresh_ddc)
+        can_brighten = value is not None
+        brightness = value or 0
+    for monitor in monitors:
+        monitor["ddcBus"] = ddc_bus(monitor["name"], aliases) if not monitor["name"].startswith(("eDP", "LVDS")) else None
+    monitors.sort(key=lambda m: (bool(m.get("disabled")), m.get("x", 0), m.get("y", 0)))
     return dict(
         hardware=hardware(), gpu=gpu_status(), primary=primary, brightnessAvailable=can_brighten,
+        brightnessError=brightness_error, ddcBuses=[int(p.name.removeprefix("i2c-")) for p in sorted(Path("/dev").glob("i2c-*"))],
         batteryPercent=int(read(battery / "capacity", "0")) if battery else 0,
         batteryStatus=status, batteryInfo=battery_info, externalPower=external_power,
         model=read("/sys/class/dmi/id/product_name", "Linux desktop"),
@@ -311,37 +479,20 @@ def action(name, value):
         command(["systemctl", "poweroff", "--when=cancel"], True, 60)
     elif name == "clean-thumbnails" and value == "confirm":
         clean_thumbnail_cache()
-    elif name in ("primary", "display", "display-mode", "display-scale"):
-        monitors = json.loads(command(["hyprctl", "monitors", "all", "-j"], True))
-        data = json.loads(value) if name != "primary" else {"name": value}
-        monitor = next((m for m in monitors if m["name"] == data.get("name")), None)
-        if not monitor or not re.fullmatch(r"[A-Za-z0-9_-]+", monitor["name"]): raise ValueError("Unknown display")
-        connector = monitor["name"]
-        if name == "primary":
-            if monitor.get("disabled"): raise ValueError("Enable the display first")
-            STATE.mkdir(parents=True, exist_ok=True); (STATE / "primary-display").write_text(connector)
-        elif name == "display":
-            if not isinstance(data.get("enabled"), bool): raise ValueError("Expected display state")
-            if not data["enabled"] and len([m for m in monitors if not m.get("disabled")]) <= 1: raise ValueError("Keep at least one display enabled")
-            command(["hyprctl", "keyword", "monitor", connector + (",preferred,auto,1" if data["enabled"] else ",disable")], True)
-        elif name == "display-mode":
-            if data.get("mode") not in monitor.get("availableModes", []): raise ValueError("Unsupported display mode")
-            command(["hyprctl", "keyword", "monitor", f"{connector},{data['mode']},{monitor.get('x', 0)}x{monitor.get('y', 0)},{monitor.get('scale', 1)}"], True)
-        else:
-            scale = float(data.get("scale", 0))
-            if scale not in (1, 1.25, 1.5, 1.75, 2): raise ValueError("Unsupported display scale")
-            command(["hyprctl", "keyword", "monitor", f"{connector},{monitor['width']}x{monitor['height']}@{monitor['refreshRate']},{monitor.get('x', 0)}x{monitor.get('y', 0)},{scale}"], True)
+    elif name in ("primary", "display", "display-mode", "display-scale", "display-order", "display-ddc"):
+        display_action(name, value)
     elif name == "brightness":
         percent = int(value)
         if not 5 <= percent <= 100:
             raise ValueError("Brightness must be between 5 and 100")
         monitors = json.loads(command(["hyprctl", "monitors", "all", "-j"]) or "[]") if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") else []
         primary = primary_monitor(monitors)
-        bus = display_config().get(primary, {}).get("ddcBus")
+        bus = ddc_bus(primary, display_config()) if primary and not primary.startswith(("eDP", "LVDS")) else None
         if bus is not None:
             command(["ddcutil", "--bus", str(int(bus)), "setvcp", "10", str(percent)], True)
+            (STATE / ("ddc-brightness-" + str(bus) + ".json")).unlink(missing_ok=True)
             return {"ok": True}
-        if primary and not primary.startswith(("eDP", "LVDS")): raise ValueError("Configure a DDC bus for this display")
+        if primary and not primary.startswith(("eDP", "LVDS")): raise ValueError("No DDC bus found. Choose one in Display settings.")
         light = backlight()
         if light is None:
             raise RuntimeError("No backlight device")
@@ -366,7 +517,7 @@ def action(name, value):
 if __name__ == "__main__":
     try:
         operation = sys.argv[1]
-        print(json.dumps(snapshot() if operation == "snapshot" else battery_details() if operation == "battery-details" else action(operation, sys.argv[2] if len(sys.argv) > 2 else "")))
+        print(json.dumps(snapshot(len(sys.argv) > 2 and sys.argv[2] == "refresh") if operation == "snapshot" else battery_details() if operation == "battery-details" else action(operation, sys.argv[2] if len(sys.argv) > 2 else "")))
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         print(json.dumps({"error": str(error)}))
         sys.exit(1)

@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from attention import nextcloud, weather
 from services.worker import serve
+from services import nextcloud as accounts
 
 
 CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "zephyrus-shell/attention.json"
@@ -24,7 +25,7 @@ def configuration():
     try:
         data = json.loads(CONFIG.read_text())
     except FileNotFoundError as error:
-        raise ValueError("Create attention.json to configure weather and Nextcloud.") from error
+        raise ValueError("Create attention.json to configure weather and calendar selection.") from error
     except (OSError, json.JSONDecodeError) as error:
         raise ValueError("attention.json could not be read. Check its JSON syntax.") from error
     if not isinstance(data, dict):
@@ -73,20 +74,24 @@ def handle(request):
     op = request["op"]
     if op == "weather":
         return weather.fetch(config.get("weather", {}), CACHE)
+    account = accounts.load_account()
+    options = config.get("calendar", config.get("nextcloud", {}))
+    if not isinstance(options, dict):
+        raise ValueError("Calendar selection must be an object in attention.json.")
+    cloud = {**(account or {}), **{key: options[key] for key in ("calendars", "task_lists") if key in options}}
     if op == "nextcloud":
-        cloud = config.get("nextcloud", {})
-        if not cloud:
+        if not account:
             return {"state": "unconfigured", "events": [], "tasks": [], "calendars": [], "task_count": 0}
-        password = Path(str(cloud.get("password_file", ""))).expanduser()
-        if not password.is_file():
+        try:
+            accounts.credential(cloud)
+        except accounts.CredentialMissing:
             return {"state": "needs_password", "events": [], "tasks": [], "calendars": [], "task_count": 0}
         return cloud_snapshot(cloud, request.get("start"), request.get("end"), request.get("refresh", False))
     if op == "complete_task":
-        nextcloud.Client(config.get("nextcloud", {})).complete_task(request.get("task", {}))
+        nextcloud.Client(cloud).complete_task(request.get("task", {}))
         CLOUD_CACHE.unlink(missing_ok=True)
         return {"completed": True}
     if op == "save_item":
-        cloud = config.get("nextcloud", {})
         result = nextcloud.Client(cloud).save_item(cloud, request.get("kind"), request.get("entry"))
         CLOUD_CACHE.unlink(missing_ok=True)
         return result

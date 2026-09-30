@@ -1,8 +1,32 @@
 import QtQuick
+import QtQuick.Window
+import Quickshell
+import Quickshell.Io
 import "../core"
+import "../widgets"
 
 Rectangle {
+    id: root
+    property url wallpaperSource: ""
     color: "#0b0c10"
+    FileView {
+        id: setting
+        readonly property string configuredRoot: Quickshell.env("XDG_CONFIG_HOME") || ""
+        path: (configuredRoot.startsWith("/") ? configuredRoot : Quickshell.env("HOME") + "/.config")
+            + "/zephyrus-shell/wallpaper.json"
+        preload: true
+        blockLoading: false
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            try {
+                const data = JSON.parse(text());
+                root.wallpaperSource = typeof data.image === "string" && data.image.startsWith("file:///") ? data.image : "";
+            } catch (error) { root.wallpaperSource = ""; }
+        }
+        onLoadFailed: root.wallpaperSource = ""
+    }
     Canvas {
         anchors.fill: parent
         onWidthChanged: requestPaint()
@@ -26,5 +50,11 @@ Rectangle {
                     if (x + (height - y) * 0.5 < width * 0.33) ctx.fillRect(x, y, 1, 1);
                 }
         }
+    }
+    CrossfadeImage {
+        objectName: "desktopWallpaperImage"
+        anchors.fill: parent
+        source: root.wallpaperSource
+        imageWidth: Math.ceil(root.width * Screen.devicePixelRatio)
     }
 }

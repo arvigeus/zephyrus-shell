@@ -53,7 +53,8 @@ ColumnLayout {
     }
 
     Component.onCompleted: refresh()
-    Connections { target: root.machine; function onSnapshotChanged() { root.refresh(); } }
+    Connections { target: root.machine; enabled: root.visible; function onSnapshotChanged() { root.refresh(); } }
+    onVisibleChanged: if (visible && loaded) refresh()
     Timer {
         interval: 5000; repeat: true; running: root.visible && root.loaded
         onTriggered: root.refresh()

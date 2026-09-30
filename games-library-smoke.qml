@@ -77,9 +77,9 @@ ShellRoot {
                     play.click();
                     step++;
                 } else if (step === 3) {
-                    if (games.notice !== "Steam launch started." || !screenshotReady) return;
-                    ShellState.close();
-                    require(!overlay.item, "Games overlay did not close");
+                    if (overlay.item || !screenshotReady) return;
+                    require(ShellState.panel === "" && !ShellState.runningPluginIds.includes("games"),
+                            "Steam launch did not close its module");
                     console.log("GAMES PASS: catalogue, details, ProtonDB identity, installed Steam Play action, overlay teardown");
                     Qt.quit();
                 }

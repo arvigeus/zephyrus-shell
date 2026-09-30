@@ -1,6 +1,6 @@
 # Zephyrus Shell
 
-A personal Quickshell desktop for Hyprland: three pills, two drawers, a quiet center.
+A personal Quickshell desktop for Hyprland: five pills, two drawers, a quiet center.
 Built for Quickshell 0.3.1 and Hyprland 0.56.2's Lua configuration.
 
 ## Try it
@@ -33,20 +33,23 @@ uses the configured weather and Nextcloud data. A private bus
 keeps its notification server separate from the existing desktop. Running apps and
 tray integration are exercised by the actual shell, not this component preview.
 
-To use the included floating-first Hyprland configuration from a TTY:
+Install the development session shim once, then select **Hyprland** at login:
 
 ```sh
-Hyprland -c "$HOME/Projects/zephyrus-shell/hyprland/hyprland.lua"
+python3 scripts/setup-session.py install
+python3 scripts/migrate-nextcloud.py
 ```
 
-The existing `~/.config/hypr/hyprland.lua` is not modified. The new configuration
-starts the shell and the installed Hyprland polkit agent automatically. For a normal
-login-manager session, back up your current configuration and source the absolute
-path to this project's `hyprland/hyprland.lua` with Lua's `dofile`.
+The shim loads the repository's separated Lua modules, so edits need no copying.
+Existing configuration is backed up and can be restored with
+`python3 scripts/setup-session.py teardown`. This machine's shim, credential
+migration are already prepared. The scrolling layout needs no plugins. See
+[session setup and live test checklist](docs/session.md) and
+[shared Nextcloud configuration](docs/nextcloud.md).
 
 ## What works
 
-- Three separate clickable pill regions; the empty top area passes pointer input through.
+- Separate pills for Spaces, running windows, the clock, the tray and Settings; empty lists hide, and gaps pass pointer input through.
 - Left and right overlay drawers; opening a panel closes the previous one. Escape closes it.
 - One drawer on one monitor at a time, with pills on every monitor.
 - Applications opens a desktop overlay below the pills, with favorites, a searchable app grid and category filters.
@@ -80,7 +83,7 @@ path to this project's `hyprland/hyprland.lua` with Lua's `dofile`.
 - GNOME-style Wi-Fi/Bluetooth split tiles, with device selection inside Control room.
 - Inline Wi-Fi passwords and Bluetooth pairing confirmation/PIN entry.
 - Laptop brightness through brightnessctl or logind, power profiles, battery status and charge limit.
-- Confirmed session actions; floating windows by default, optional tiling per window.
+- Confirmed session actions; native scrolling columns, with optional floating per window.
 - A static, procedurally drawn background. No wallpaper download or resident animation.
 
 The Settings drawer has saved profiles, expandable connectivity/audio/display controls and lazily loaded battery information,
@@ -100,16 +103,19 @@ a polkit agent, and Bluetooth/audio bindings. Your existing Kitty and Dolphin bi
 are retained. No external network or Bluetooth settings application is launched by
 the drawer. See [system setup](docs/setup.md) for optional packages and service setup.
 
-No screen locker is currently installed on this machine. This shell does **not**
-provide a lock screen; suspend is not a substitute for locking. Set up `hyprlock`
-and `hypridle` before relying on the session for unattended use. Weather and Nextcloud
-need the [attention configuration](docs/attention-design.md). Persistent notification
-history and local media-library scanning are future integrations. Notifications are retained only
-for the shell's lifetime, capped at 100. Wi-Fi supports saved profiles, open networks,
-and WPA/WPA2/WPA3 personal passwords. New enterprise/certificate profiles and hidden
-network creation are not yet implemented. Bluetooth discovery is user-triggered
-and stops after 30 seconds or when leaving its page. Pairing prompts require an
-explicit answer; the helper never becomes the system's default Bluetooth agent.
+The session uses hyprlock/hypridle for locking, idle blanking and locking before
+suspend. Super+L locks manually. Quickshell owns notifications; Hyprland and GTK
+portals provide sharing and file chooser integration. Power profile, brightness
+and GPU helpers remain optional. See [session behavior](docs/session.md).
+
+Weather and Nextcloud need the [attention configuration](docs/attention-design.md).
+Persistent notification history and local media-library scanning are future
+integrations. Notifications are retained only for the shell's lifetime, capped at
+100. Wi-Fi supports saved profiles, open networks, and WPA/WPA2/WPA3 personal
+passwords. New enterprise/certificate profiles and hidden network creation are not
+yet implemented. Bluetooth discovery is user-triggered and stops after 30 seconds
+or when leaving its page. Pairing prompts require an explicit answer; the helper
+never becomes the system's default Bluetooth agent.
 
 ## Daily shortcuts
 
@@ -121,10 +127,18 @@ explicit answer; the helper never becomes the system's default Bluetooth agent.
 | Escape (drawer focused) / Super + Escape | Close panel |
 | Super + Enter / E | Kitty / Dolphin |
 | Super + left / right drag | Move / resize a window |
+| Super + Left / Right | Focus previous / next scrolling column |
+| Super + mouse wheel | Scroll previous / next column |
 | Super + V | Toggle floating for the current window |
-| Super + Q | Close current window |
+| Super + Q / Alt + F4 | Close current window |
+| Super + M | Maximize/restore current window |
+| Super + L | Lock session |
 | Super + 1–9 | Workspace |
 | Super + Shift + 1–9 | Move window to workspace |
+
+The panel hides behind fullscreen applications and returns when fullscreen ends.
+Maximized windows keep the panel visible. Shell modules, including Movies and
+TV Series, also keep it visible above their content.
 
 ## Extend and customize
 

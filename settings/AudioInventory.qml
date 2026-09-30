@@ -7,6 +7,8 @@ QtObject {
     id: root
     property var snapshot: ({rules: [], devices: {}, errors: []})
     property string error: ""
+    property bool active: true
+    onActiveChanged: if (active) refresh()
     readonly property bool changingProfile: profileAction.running
     function describe(node) { return Names.describe(node, snapshot); }
     function refresh() { if (query.running) debounce.restart(); else query.running = true; }
@@ -28,7 +30,7 @@ QtObject {
     }
     property Process changes: Process {
         command: ["pactl", "subscribe"]
-        running: true
+        running: root.active
         stdout: SplitParser { onRead: line => { if (/ on (sink|source|card|server) #/.test(line)) root.debounce.restart(); } }
     }
 }

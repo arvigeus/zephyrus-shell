@@ -9,7 +9,7 @@ import "../core"
 import "../core/StatusIcons.js" as StatusIcons
 import "../widgets"
 
-Action {
+BarAction {
     id: root
     text: "Open Settings"
     ToolTip.visible: false

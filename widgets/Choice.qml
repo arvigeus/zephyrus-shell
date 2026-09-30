@@ -19,6 +19,9 @@ ComboBox {
         highlighted: root.highlightedIndex === index
     }
     popup: Popup {
+        parent: root
+        popupType: Popup.Item
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         y: root.height + 4; width: root.width; padding: 4
         implicitHeight: Math.min(contentItem.implicitHeight + 8, 240)
         background: Rectangle { radius: Theme.controlRadius; color: Theme.surface; border.color: Theme.border }

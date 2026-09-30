@@ -30,6 +30,7 @@ PanelWindow {
         width: root.drawerWidth; height: root.height
         side: root.side
         opened: root.opened
+        retainContent: root.side === "right"
         contentSource: root.contentSource
     }
 }

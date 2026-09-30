@@ -1,17 +1,14 @@
 """Small CalDAV reader for Nextcloud calendars and task lists."""
 
-import base64
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
 import re
 from uuid import uuid4
-from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urljoin, urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
 import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrulestr
+from services.nextcloud import DAVClient, NextcloudError
 
 
 DAV = "DAV:"
@@ -19,58 +16,10 @@ CAL = "urn:ietf:params:xml:ns:caldav"
 NS = {"d": DAV, "c": CAL}
 
 
-class NextcloudError(ValueError):
-    pass
-
-
-class SameOriginRedirect(HTTPRedirectHandler):
-    def __init__(self, origin):
-        self.origin = origin
-
-    def redirect_request(self, request, fp, code, msg, headers, newurl):
-        if urlsplit(newurl).netloc != self.origin:
-            raise NextcloudError("Nextcloud redirected to another host.")
-        return super().redirect_request(request, fp, code, msg, headers, newurl)
-
-
-class Client:
-    def __init__(self, config, *, opener=None):
-        self.base = str(config.get("url", "")).rstrip("/") + "/"
-        self.username = str(config.get("username", "")).strip()
-        if urlsplit(self.base).scheme != "https" or not self.username:
-            raise NextcloudError("Set an HTTPS Nextcloud URL and username in attention.json.")
-        password_path = Path(str(config.get("password_file", ""))).expanduser()
-        if not password_path.is_file():
-            raise NextcloudError("Save a Nextcloud app password in the configured password file.")
-        password = password_path.read_text().strip()
-        if not password:
-            raise NextcloudError("The Nextcloud app password file is empty.")
-        self.origin = urlsplit(self.base).netloc
-        self.home = urljoin(self.base, "remote.php/dav/calendars/" + quote(self.username, safe="") + "/")
-        self.auth = "Basic " + base64.b64encode((self.username + ":" + password).encode()).decode()
-        self.opener = opener or build_opener(SameOriginRedirect(self.origin))
-
-    def request(self, method, url, body=None, headers=None):
-        parsed = urlsplit(url)
-        if parsed.scheme != "https" or parsed.netloc != self.origin or not url.startswith(self.home):
-            raise NextcloudError("The Nextcloud calendar URL is outside the configured account.")
-        request = Request(url, data=body, method=method, headers={
-            "Authorization": self.auth,
-            "User-Agent": "ZephyrusShell/1.0",
-            "Accept": "application/xml, text/calendar",
-            **(headers or {}),
-        })
-        try:
-            with self.opener.open(request, timeout=18) as response:
-                return response.read(), response.headers
-        except HTTPError as error:
-            if error.code in (401, 403):
-                raise NextcloudError("Nextcloud rejected the app password or account access.") from error
-            if error.code == 412:
-                raise NextcloudError("The task changed on Nextcloud. Refresh and try again.") from error
-            raise NextcloudError("Nextcloud returned HTTP " + str(error.code) + ".") from error
-        except (URLError, OSError) as error:
-            raise NextcloudError("Nextcloud is unreachable. Check your connection.") from error
+class Client(DAVClient):
+    def __init__(self, config, *, opener=None, provider=None):
+        scope = "remote.php/dav/calendars/" + quote(config.get("username", ""), safe="") + "/"
+        super().__init__(config, scope=scope, opener=opener, provider=provider)
 
     def propfind(self):
         body = b'''<?xml version="1.0" encoding="utf-8"?>

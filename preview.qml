@@ -16,14 +16,22 @@ ShellRoot {
         Backdrop {
             id: canvas
             anchors.fill: parent
-            Action { z: 1; x: 14; y: 12; text: "Spaces"; iconName: "grid-vertical"; onClicked: ShellState.toggle("left") }
-            Action {
-                z: 1; anchors.horizontalCenter: parent.horizontalCenter; y: 12
-                text: Qt.formatDateTime(previewClock.date, "ddd, MMM d   ·   HH:mm") + (Attention.count ? "   • " + Attention.count : "")
-                onClicked: ShellState.toggle("center")
-                SystemClock { id: previewClock; precision: SystemClock.Minutes }
+            Row {
+                id: leftPills
+                z: 1; x: 14; y: Theme.pillVerticalPadding; spacing: 8
+                BarAction { id: spacesPill; text: "Spaces"; iconName: "grid-vertical"; showToolTip: false; onClicked: ShellState.toggle("left") }
+                RunningApps { window: window; maximumWidth: Math.max(0, clockPill.x - leftPills.x - spacesPill.width - 16) }
             }
-            StatusPill { z: 1; anchors.right: parent.right; anchors.rightMargin: 14; y: 12; onClicked: ShellState.toggle("right") }
+            ClockPill {
+                id: clockPill
+                z: 1; anchors.horizontalCenter: parent.horizontalCenter; y: Theme.pillVerticalPadding
+                onClicked: ShellState.toggle("center")
+            }
+            Row {
+                z: 1; anchors.right: parent.right; anchors.rightMargin: 14; y: Theme.pillVerticalPadding; spacing: 8
+                TrayPill { window: window; maximumWidth: Math.max(0, canvas.width - 14 - settingsPill.width - clockPill.x - clockPill.width - 16) }
+                StatusPill { id: settingsPill; onClicked: ShellState.toggle("right") }
+            }
             ModuleLoader {
                 id: modulePreview
                 x: 0; y: 0; width: parent.width; height: parent.height
@@ -54,6 +62,7 @@ ShellRoot {
                 id: right
                 z: 2; anchors.right: parent.right; y: 0; width: Math.min(490, canvas.width); height: parent.height
                 side: "right"
+                retainContent: true
                 opened: ShellState.panel === "right"
                 contentSource: Qt.resolvedUrl("drawers/ControlDrawer.qml")
             }
@@ -85,7 +94,7 @@ ShellRoot {
             }
             Loader {
                 id: centerPreview
-                anchors.horizontalCenter: parent.horizontalCenter; y: 72; width: Math.min(1240, canvas.width - 28); height: Math.min(canvas.width < 900 ? 700 : 600, canvas.height - 90)
+                anchors.horizontalCenter: parent.horizontalCenter; y: Theme.pillHeight + 6; width: Math.min(1240, canvas.width - 28); height: Math.min(canvas.width < 900 ? 700 : 600, canvas.height - Theme.pillHeight - 24)
                 active: ShellState.panel === "center"
                 sourceComponent: AttentionPanel {}
             }

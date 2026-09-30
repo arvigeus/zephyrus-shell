@@ -31,11 +31,11 @@ ColumnLayout {
             RowLayout {
                 required property var modelData
                 Layout.fillWidth: true
-                IconButton { iconName: modelData.disabled ? "monitor-off" : "monitor"; text: (modelData.disabled ? "Enable " : "Disable ") + modelData.label; enabled: !root.machine.busy; onClicked: root.machine.run("display", JSON.stringify({name: modelData.name, enabled: !!modelData.disabled})) }
+                IconButton { iconName: "monitor-off"; text: (modelData.disabled ? "Enable " : "Turn off ") + modelData.label; enabled: !root.machine.busy; highlighted: !!modelData.disabled; onClicked: root.machine.run("display", JSON.stringify({name: modelData.name, enabled: !!modelData.disabled})) }
                 Action { text: modelData.label; Layout.fillWidth: true; enabled: !modelData.disabled && !root.machine.busy; highlighted: modelData.name === root.machine.snapshot.primary; onClicked: root.machine.run("primary", modelData.name) }
             }
         }
-        Label { visible: !root.machine.snapshot.brightnessAvailable; text: "Brightness unavailable. External displays need a configured DDC bus."; color: Theme.muted; wrapMode: Text.Wrap; Layout.fillWidth: true }
+        Label { visible: !root.machine.snapshot.brightnessAvailable; text: root.machine.snapshot.brightnessError || "Brightness unavailable for this display."; color: Theme.muted; wrapMode: Text.Wrap; Layout.fillWidth: true }
         Action { text: "Display settings"; Layout.fillWidth: true; onClicked: root.openPage("display") }
     }
 }

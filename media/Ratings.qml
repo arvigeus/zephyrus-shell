@@ -5,6 +5,7 @@ import "../widgets" as W
 import "../core"
 Flow {
     id: root
+    property var host
     property var ratings: []
     property var title: ({})
     function page(r) { return RatingLinks.page(r, title); }
@@ -28,7 +29,7 @@ Flow {
             text: ratingButton.modelData.source + ": " + modelData.value
             implicitWidth: contentItem.implicitWidth + 8; implicitHeight: 32
             padding: 4
-            onClicked: Browser.open(root.page(modelData), root.title.kind === "tv" ? "series" : "movies")
+            onClicked: Browser.open(root.page(modelData), root.title.kind === "tv" ? "series" : "movies", "", root.host)
             contentItem: RowLayout {
             spacing: 6
             W.AppIcon { artwork: Qt.resolvedUrl("../assets/ratings/rating_" + root.icon(ratingButton.modelData) + (root.icon(ratingButton.modelData) === "mal" ? ".svg" : ".png")); Layout.preferredWidth: 32; Layout.preferredHeight: 24; Accessible.name: ratingButton.modelData.source }

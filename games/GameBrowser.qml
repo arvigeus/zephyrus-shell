@@ -255,7 +255,10 @@ Item {
         service.request("action", {gameId:selected.id,actionId:actionId}, (result, failure) => {
             if (generation !== selectionGeneration) return;
             if (failure) detailError = failure;
-            else if (result) notice = result.message || "Action started.";
+            else if (result) {
+                notice = result.message || "Action started.";
+                if (result.started && host) host.close();
+            }
         });
     }
 
@@ -649,7 +652,7 @@ Item {
                                 visible: !!root.selected.officialWebsite
                                 iconName: "globe"
                                 text: "Open official website"
-                                onClicked: Browser.open(root.selected.officialWebsite, "games")
+                                onClicked: Browser.open(root.selected.officialWebsite, "games", "", root.host)
                             }
                             Button {
                                 objectName: "protonDbButton"
@@ -674,7 +677,7 @@ Item {
                                     border.color: parent.activeFocus ? Theme.text : "transparent"
                                     border.width: parent.activeFocus ? 2 : 0
                                 }
-                                onClicked: if (root.compatibility.url) Browser.open(root.compatibility.url, "games")
+                                onClicked: if (root.compatibility.url) Browser.open(root.compatibility.url, "games", "", root.host)
                             }
                             BusyIndicator {
                                 visible: root.compatibilityLoading
@@ -694,7 +697,7 @@ Item {
                                 text: "Open local game files"
                                 onClicked: {
                                     const path = root.localFiles[0].path;
-                                    Quickshell.execDetached(["xdg-open", path.slice(0, path.lastIndexOf("/"))]);
+                                    External.launch(["xdg-open", path.slice(0, path.lastIndexOf("/"))], root.host);
                                 }
                             }
                             W.IconButton {
@@ -792,7 +795,7 @@ Item {
                                                 root.editingStore = storeButton.modelData.store;
                                                 Qt.callLater(() => storeId.forceActiveFocus());
                                             } else if (storeButton.mainAction.type === "buy" && storeButton.mainAction.url)
-                                                Browser.open(storeButton.mainAction.url, "games");
+                                                Browser.open(storeButton.mainAction.url, "games", "", root.host);
                                             else if (storeButton.mainAction.id) root.executeAction(storeButton.mainAction.id);
                                         }
                                     }
@@ -813,15 +816,18 @@ Item {
                                             border.color: parent.activeFocus ? Theme.text : "transparent"
                                             border.width: parent.activeFocus ? 2 : 0
                                         }
-                                        onClicked: storeOptions.popup()
+                                        onClicked: storeOptions.visible ? storeOptions.close() : storeOptions.open()
                                         Menu {
                                             id: storeOptions
+                                            popupType: Popup.Item
+                                            y: parent.height
+                                            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
                                             width: 210
                                             background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.controlRadius }
                                             MenuItem {
                                                 text: "Open store page"
                                                 visible: !!storeButton.modelData.storeUrl
-                                                onTriggered: Browser.open(storeButton.modelData.storeUrl, "games")
+                                                onTriggered: Browser.open(storeButton.modelData.storeUrl, "games", "", root.host)
                                             }
                                             MenuItem {
                                                 text: "Edit store link"

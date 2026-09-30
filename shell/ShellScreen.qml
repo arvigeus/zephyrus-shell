@@ -72,8 +72,6 @@ Scope {
         ModuleLoader {
             anchors.fill: parent
             screenName: root.screen.name
-            active: (root.screen.name === ShellState.pluginMonitor && !!ShellState.pluginId)
-                || ShellState.runningPluginIds.some(id => ShellState.runningPluginMonitors[id] === root.screen.name)
             readyToLoad: !leftDrawer.visible && !rightDrawer.visible
         }
     }

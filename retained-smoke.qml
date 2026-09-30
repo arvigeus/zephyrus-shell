@@ -9,13 +9,9 @@ ShellRoot {
         color: Theme.background
         ModuleLoader {
             id: overlay; anchors.fill: parent; screenName: "primary"
-            active: (ShellState.pluginMonitor === "primary" && !!ShellState.pluginId)
-                || ShellState.runningPluginIds.some(id => ShellState.runningPluginMonitors[id] === "primary")
         }
         ModuleLoader {
             id: secondary; width: 1; height: 1; visible: false; screenName: "secondary"
-            active: (ShellState.pluginMonitor === "secondary" && !!ShellState.pluginId)
-                || ShellState.runningPluginIds.some(id => ShellState.runningPluginMonitors[id] === "secondary")
         }
         Timer {
             interval: 80; running: true; repeat: true
@@ -78,10 +74,14 @@ ShellRoot {
                     ShellState.dismissPanel();
                     if (ShellState.monitor !== "secondary") { fail("Drawer returned Games to wrong monitor"); return; }
                     if (content("music") !== musicItem || content("radio", secondary) !== radioItem) { fail("Games stopped a player"); return; }
-                    ShellState.stopPlugin("music"); step++; ticks = 0;
+                    musicItem.host.requestKeepRunning("radio", false);
+                    if (!ShellState.retentionRequests.radio) { fail("Music host changed Radio retention"); return; }
+                    musicItem.host.close();
+                    if (ShellState.pluginId !== "games") { fail("Hidden Music host closed Games"); return; }
+                    step++; ticks = 0;
                 } else if (step === 6) {
                     if (content("music")) { fail("Closing Music did not release it"); return; }
-                    ShellState.close();
+                    content("games", secondary).host.close();
                     if (!secondary.item || content("radio", secondary) !== radioItem) { fail("Closing Games stopped Radio"); return; }
                     ShellState.stopPlugin("radio"); step++; ticks = 0;
                 } else if (step === 7) {
@@ -101,7 +101,7 @@ ShellRoot {
                     ShellState.showDesktop(); step++; ticks = 0;
                 } else if (step === 11) {
                     if (!content("games")) { fail("A general module could not request retention"); return; }
-                    ShellState.stopPlugin("games"); step++; ticks = 0;
+                    content("games").host.requestKeepRunning("games", false); step++; ticks = 0;
                 } else if (step === 12) {
                     if (overlay.item) return;
                     console.log("RETAINED PASS: drawer, Desktop, idle release, general retention, multi-monitor switching, reload, and explicit stop");

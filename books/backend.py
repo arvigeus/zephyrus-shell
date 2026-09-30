@@ -620,32 +620,6 @@ def browse_cache_key(query, filters, offset):
     return "browse:" + json.dumps([query_text, safe_filters, int(offset)], sort_keys=True, ensure_ascii=False)
 
 
-def write_response_line(response, write_lock, stream=None):
-    """Write one complete JSON-lines response even when worker threads race."""
-    stream = stream or sys.stdout
-    with write_lock:
-        stream.write(json.dumps(response, ensure_ascii=False) + "\n")
-        stream.flush()
-
-
-class GenerationGate:
-    """Drop superseded worker replies after newer requests arrive."""
-    def __init__(self, operations=None):
-        self.operations = set(operations or ())
-        self.latest = {}
-        self.lock = threading.Lock()
-
-    def begin(self, operation, request_id, discriminator=""):
-        with self.lock:
-            self.latest[(operation, discriminator)] = request_id
-
-    def current(self, operation, request_id, discriminator=""):
-        if operation not in self.operations:
-            return True
-        with self.lock:
-            return self.latest.get((operation, discriminator)) == request_id
-
-
 def main():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from services.worker import serve

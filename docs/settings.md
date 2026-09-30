@@ -49,6 +49,13 @@ Systems without a writable threshold can request polkit authorization via
 `pkexec tee` for the discovered battery threshold file. Permission or firmware
 errors appear in the drawer. Battery time and power use existing sysfs readings;
 hardware readings refresh on opening, actions, battery events or manual refresh.
+CPU/GPU temperatures come from
+`/sys/class/hwmon/*/temp*_input` in millidegrees Celsius and are rounded for display;
+they do not poll while the drawer stays open. The combined hardware cards prefer
+CPU package/control and GPU edge sensors and show the hottest matching device,
+rather than whichever sensor happens to enumerate first. Detailed sensor readings
+remain available on the hardware pages. Hover the card temperature for its sensor
+label and sampling rule.
 
 ## Displays
 

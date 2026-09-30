@@ -53,6 +53,20 @@ to include all task lists, or provide an array to filter them. Calendar and task
 list names are discovered from `/remote.php/dav/calendars/<username>/`.
 
 Weather refreshes every 15 minutes and keeps a saved forecast for offline use.
+The large reading shows current model conditions, with humidity, feels-like
+temperature and wind directly underneath. Beside it, six upcoming hours show local
+time, condition, temperature and precipitation probability; on narrow panels this
+list moves underneath.
+
+Daily icons and hover descriptions summarize the full local day's hourly forecast
+in `attention/weather.py`, independently of the six-hour list. Daylight hours define
+the prevailing sky; all hours contribute rain, snow and storm information. A sunny
+day can therefore say “Mostly sunny, with drizzle in the afternoon”; a rainy day
+can mention sunny or dry breaks. Brief thunderstorms, freezing rain and snow take
+priority in the description. These are deterministic summaries of modeled weather
+codes, not observations or precipitation-probability estimates. With fewer than 18
+valid hours or no daylight information, use the provider's daily condition instead.
+Saved older forecasts remain usable offline until a successful refresh.
 Nextcloud refreshes every 15 minutes while the panel is open. An in-memory snapshot
 avoids a new request when the panel is reopened soon after closing. A private cache under
 `$XDG_CACHE_HOME/zephyrus-shell/` makes repeat openings immediate; stale data is

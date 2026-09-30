@@ -28,9 +28,13 @@ in its module backend, so the shell only handles navigation and lifetime.
 | Background | `shell/Backdrop.qml` |
 | Shared module overlay and host contract | `shell/ModuleOverlay.qml` |
 | Panel selection | `core/ShellState.qml` |
-| Colors and type | `core/Theme.qml` |
+| Colors and type | `core/theme/Theme.qml`, with the `core/Theme.qml` compatibility facade |
 | Plugin registry | `core/Plugins.qml`, `scripts/plugins.py` |
 | Notification server | `core/Attention.qml` |
+| Weather/calendar in-memory snapshot | `core/AttentionData.qml` (passive cache); requests owned by `attention/AttentionPanel.qml` |
+| Owned worker transport and scheduling | `services/Worker.qml`, `services/worker.py` |
+| Shared public-response cache | `services/cache.py` |
+| Module-owned mpv IPC transport | `services/mpv.py`; players and playback state stay in Music/Radio |
 | Local account header and read-only profile dialog | `widgets/UserProfileButton.qml`, `widgets/UserProfilePanel.qml`, `scripts/user_profile.py` |
 | Reusable UI | `widgets/` |
 | Drawer framing, loader and composition | `drawers/` |
@@ -67,6 +71,59 @@ monitors. A retained module stays owned by the monitor where it opened; opening
 a drawer on another monitor does not recreate its player. Optional plugin
 services must not be core singletons.
 
+`ShellState` is the sole writer of module lifetime bookkeeping: running IDs,
+monitor ownership, retention, and pending navigation. Registry reload passes
+installed IDs to `ShellState.reconcilePlugins`; registry and visual components
+must not independently rewrite those maps. `ModuleLoader` gates overlays by
+monitor ownership; `ModuleOverlay` gates creation until drawers finish closing.
+Each module receives its own host, so a hidden module can close itself without
+closing the selected space. Cross-module navigation uses `host.openPlugin(id,
+payload)` and optional destination `handleOpen(payload)`; the host validates
+availability and delivers once, while the modules interpret the payload. See
+[the host contract](plugins.md).
+
+`services/` contains reusable infrastructure, not automatically resident services.
+`Worker.qml` owns a process and settles callbacks on response, timeout, or exit.
+`worker.py` bounds pending work, serializes mutation operations, and emits a reply
+even for superseded reads. Backend generation filtering does not cancel a read
+already in progress: views still guard selections and browse results against
+late replies. Module adapters define their operations, mutation lanes, provider
+rules, and errors. Shared mpv code owns only socket validation, framing, and
+cleanup; it neither starts players nor stores playback state.
+
+Catalogue reuse is at stable UI boundaries: theme, search, artwork, model
+reconciliation, scroll handling, and transport. Domain identity, pagination,
+favorites, stale-data fallback, and details stay with each catalogue backend.
+Books' Work/Edition relationships, Games' store/library matches, and Media's
+IMDb/TMDB aliases justify distinct persistence implementations. Do not replace
+them with a universal catalogue controller or database solely because they use
+similar rails and SQLite tables.
+
+Attention views bind to the passive `AttentionData` snapshot without assigning
+local copies. Panel loading flags, request generations, month selection, and
+editor state are transient UI state. The worker and refresh timers currently
+exist only while the panel is open. Before adding a second Nextcloud consumer,
+establish one integration owner for credentials, CalDAV requests, cache
+invalidation, and mutation completion under `attention/` or `services/`; views
+should subscribe to it rather than create another calendar/task cache. Choose
+its lifetime explicitly instead of making it resident through a plugin import.
+
+Configuration and secrets belong in `$XDG_CONFIG_HOME/zephyrus-shell`; persistent
+records belong in `$XDG_DATA_HOME/zephyrus-shell`; replaceable public responses
+belong in `$XDG_CACHE_HOME/zephyrus-shell`. Existing Music/Radio/App favorites in
+configuration and catalogue-specific database locations are compatibility paths;
+changing them requires a migration, not an incidental refactor. Player sockets
+use private per-module runtime directories, with a short temporary path fallback
+for Unix socket length limits. `Paths.file()` resolves repository resources, not
+user data. User-directory resolution remains separate from application XDG roots.
+
+Smoke harnesses must use the real module entry points, shared loader, and
+`ShellState` actions. Do not emulate lifetime by assigning loader activity or
+navigation fields directly. State-only checks run inside Quickshell because the
+core import includes its native bindings; ordinary Qt QML tests cover portable
+widgets. See [the architecture review](architecture-review.md) for deferred work
+and validation limits.
+
 Machine actions use argument arrays, never interpolated shell commands. Controls
 invoke an explicit allowlist. A Python snapshot process runs when controls open;
 it has no permanent polling loop. PipeWire and UPower use Quickshell's native bindings.
@@ -84,3 +141,9 @@ Hardware snapshots live in `core/HardwareSnapshot.qml`: a startup read warms the
 cache, and opening Settings or requesting refresh updates it without clearing
 previous readings. There is no polling timer. Profile selection closes the drawer
 and opens a separate profile surface after the exit animation.
+
+Sensor selection and weather interpretation belong to their Python data owners:
+`scripts/machine.py` chooses representative CPU/GPU sensors and
+`attention/weather.py` summarizes full local days from hourly conditions. QML
+formats these results and lays out the current, hourly and daily views; it does
+not choose sensors or infer daily weather independently.

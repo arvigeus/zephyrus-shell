@@ -124,16 +124,27 @@ def gpu_hardware():
     return cards
 
 
-def hardware():
+def temperature_summary(temperatures, kind):
+    """Prefer package/edge readings; the combined card shows the hottest matching device."""
+    drivers = r"k10temp|coretemp|zenpower" if kind == "cpu" else r"amdgpu|nouveau|nvidia"
+    candidates = [sensor for sensor in temperatures if re.fullmatch(drivers, sensor["driver"])]
+    if not candidates:
+        return None
+    preferred = r"Tctl|Tdie|Package.*" if kind == "cpu" else r"edge|GPU.*|temp1"
+    main = [sensor for sensor in candidates if re.fullmatch(preferred, sensor["label"], re.IGNORECASE)]
+    return max(main or candidates, key=lambda sensor: (sensor["value"], sensor["driver"], sensor["label"]))
+
+
+def hardware(*, hwmon_root=Path("/sys/class/hwmon")):
     mem = {line.split(":")[0]: int(line.split()[1]) for line in read("/proc/meminfo").splitlines() if len(line.split()) >= 2}
     total = mem.get("MemTotal", 0); used = total - mem.get("MemAvailable", total)
     temperatures = []
     fans = []
-    for hw in Path("/sys/class/hwmon").glob("*"):
-        for f in hw.glob("temp*_input"):
+    for hw in sorted(hwmon_root.glob("*")):
+        for f in sorted(hw.glob("temp*_input")):
             value = read(f)
             if value.lstrip("-").isdigit():
-                temperatures.append({"driver": read(hw / "name"), "label": read(f.with_name(f.name.replace("_input", "_label")), read(hw / "name")), "value": round(int(value) / 1000)})
+                temperatures.append({"driver": read(hw / "name"), "label": read(f.with_name(f.name.replace("_input", "_label")), f.name.removesuffix("_input")), "value": round(int(value) / 1000)})
         for f in hw.glob("fan*_input"):
             if read(f).isdigit(): fans.append({"label": read(hw / "name") + " " + f.stem, "value": read(f)})
     processor = next((line.split(":", 1)[1].strip() for line in read("/proc/cpuinfo").splitlines() if line.startswith("model name")), "Processor")
@@ -144,7 +155,9 @@ def hardware():
     return {"cpuName": processor, "cpuPercent": cpu_usage(), "gpuName": " + ".join(card["name"] for card in graphics) or "Graphics", "gpuPercent": max(gpu_loads) if gpu_loads else None,
             "memoryPercent": round(used / max(total, 1) * 100), "memoryUsed": round(used / 1048576, 1), "memoryTotal": round(total / 1048576, 1),
             "storagePercent": round((storage.total - storage.free) / max(storage.total, 1) * 100), "storageUsed": round((storage.total - storage.free) / 1073741824, 1), "storageTotal": round(storage.total / 1073741824, 1),
-            "temperatures": temperatures, "fans": fans, "load": read("/proc/loadavg").split(" ")[0], "boost": read("/sys/devices/system/cpu/cpufreq/boost")}
+            "temperatures": temperatures, "cpuTemperature": temperature_summary(temperatures, "cpu"),
+            "gpuTemperature": temperature_summary(temperatures, "gpu"),
+            "fans": fans, "load": read("/proc/loadavg").split(" ")[0], "boost": read("/sys/devices/system/cpu/cpufreq/boost")}
 
 
 def snapshot():

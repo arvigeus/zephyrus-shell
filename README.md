@@ -143,7 +143,7 @@ See [audio naming](docs/audio-names.md) for per-monitor/per-device JSON rules, a
 ```sh
 python3 -m unittest discover -s tests -v
 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software /usr/lib/qt6/bin/qmltestrunner -input tests/qml -import .
-node --test tests/audio-names.test.cjs
+node --test tests/*.test.cjs
 Hyprland --verify-config -c "$PWD/hyprland/hyprland.lua"
 bash scripts/check-preview.sh
 bash scripts/check-apps.sh
@@ -158,6 +158,8 @@ bash scripts/check-wayland.sh
 ```
 
 The preview check opens every panel and saves images under `tests/artifacts/`.
+Apps, catalogue, and module checks load real entry points. The retained check
+also tests `ShellState` transitions and host ownership inside Quickshell.
 The offscreen backend emits expected window-mask warnings. Actual layer-shell
 placement, focus, and multi-monitor behavior also need testing in Hyprland.
 

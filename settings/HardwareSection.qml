@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls as Controls
 import "../core"
 import "../widgets"
 
@@ -16,7 +17,7 @@ RowLayout {
                 id: card
                 required property string modelData
                 readonly property var gpu: root.machine.snapshot.gpu || ({modes: []})
-                readonly property var temperatures: (root.hw.temperatures || []).filter(t => modelData === "cpu" ? /k10temp|coretemp|zenpower/.test(t.driver) : /amdgpu|nouveau|nvidia/.test(t.driver))
+                readonly property var temperature: modelData === "cpu" ? root.hw.cpuTemperature : root.hw.gpuTemperature
                 readonly property bool usageAvailable: modelData === "cpu" ? root.hw.cpuPercent !== undefined : root.hw.gpuPercent !== null && root.hw.gpuPercent !== undefined
                 readonly property real usage: modelData === "cpu" ? root.hw.cpuPercent || 0 : root.hw.gpuPercent || 0
                 readonly property var modes: modelData === "cpu" ? [
@@ -60,7 +61,14 @@ RowLayout {
                     RowLayout {
                         Layout.fillWidth: true
                         Icon { name: "thermometer"; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
-                        Label { text: card.temperatures.length ? card.temperatures[0].value + "°C" : "Unavailable"; color: Theme.muted; font.pixelSize: 11 }
+                        Label {
+                            text: card.temperature ? card.temperature.value + "°C" : "Unavailable"
+                            color: Theme.muted; font.pixelSize: 11
+                            Controls.ToolTip.visible: temperatureHover.hovered
+                            Controls.ToolTip.text: (card.temperature ? card.temperature.driver + " · " + card.temperature.label + "\n" : "")
+                                + "Sampled on opening or refresh"
+                            HoverHandler { id: temperatureHover }
+                        }
                     }
                     UsageBar { Layout.fillWidth: true; percent: card.usage; available: card.usageAvailable }
                     Label { text: card.usageAvailable ? Math.round(card.usage) + "% used" : "Usage unavailable"; color: Theme.muted; font.pixelSize: 11 }

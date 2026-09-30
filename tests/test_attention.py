@@ -1,8 +1,10 @@
 import io
+import json
 import tempfile
 import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -27,7 +29,9 @@ class WeatherTests(unittest.TestCase):
             first_time = datetime(2026, 9, 29, 22, tzinfo=ZoneInfo("Asia/Ho_Chi_Minh")).timestamp()
             def opener(_request, timeout):
                 self.assertEqual(timeout, 15)
-                return io.BytesIO(__import__("json").dumps(payload).encode())
+                query = parse_qs(urlsplit(_request.full_url).query)
+                self.assertEqual(query["hourly"], ["temperature_2m,weather_code,is_day,precipitation_probability"])
+                return io.BytesIO(json.dumps(payload).encode())
             fresh = weather.fetch(location, cache, opener=opener, now=lambda: first_time)
             self.assertEqual((fresh["current"]["icon"], fresh["days"][0]["icon"]),
                              ("cloud-moon", "cloud-rain"))
@@ -38,6 +42,127 @@ class WeatherTests(unittest.TestCase):
                 raise OSError("offline")
             stale = weather.fetch(location, cache, opener=unavailable, now=lambda: first_time + weather.CACHE_AGE + 1)
             self.assertTrue(stale["stale"])
+            next_day = weather.fetch(location, cache, opener=unavailable, now=lambda: first_time + 24 * 60 * 60)
+            self.assertEqual(next_day["local_date"], "2026-09-30")
+
+    def hourly_payload(self):
+        return {
+            "current": {"time": "2026-09-30T17:15", "temperature_2m": 32.6,
+                        "apparent_temperature": 39.1, "relative_humidity_2m": 64,
+                        "wind_speed_10m": 11.9, "weather_code": 1, "is_day": 1},
+            "daily": {"time": [(date(2026, 9, 30) + timedelta(days=i)).isoformat() for i in range(7)],
+                      "weather_code": [51] * 7, "temperature_2m_max": [33] * 7,
+                      "temperature_2m_min": [27] * 7},
+            "hourly": {"time": [(datetime(2026, 9, 30, 16) + timedelta(hours=i)).isoformat(timespec="minutes") for i in range(32)],
+                       "temperature_2m": [31] * 32, "weather_code": [2] * 32,
+                       "is_day": [1, 1] + [0] * 30, "precipitation_probability": [0, 0, None] + [65] * 29},
+        }
+
+    def test_current_daily_and_hourly_have_distinct_conditions_and_local_times(self):
+        payload = self.hourly_payload()
+        result = weather.normalize(payload, {"name": "Ha Long"})
+        self.assertEqual(result["current"]["icon"], "sun")
+        self.assertEqual(result["days"][0]["icon"], "cloud-drizzle")
+        self.assertEqual(len(result["hours"]), 24)
+        self.assertEqual(result["hours"][0]["time"], "2026-09-30T18:00")
+        self.assertEqual(result["hours"][0]["icon"], "cloud-moon")
+        self.assertIsNone(result["hours"][0]["precipitation_probability"])
+        self.assertEqual(result["hours"][6]["time"], "2026-10-01T00:00")
+        payload["current"]["time"] = "2026-09-30T18:00"
+        self.assertEqual(weather.normalize(payload, {"name": "Ha Long"})["hours"][0]["time"], "2026-09-30T19:00")
+
+    def test_incomplete_hourly_data_is_not_silently_misaligned(self):
+        payload = self.hourly_payload()
+        payload["hourly"]["is_day"].pop()
+        with self.assertRaisesRegex(weather.WeatherError, "hourly"):
+            weather.normalize(payload, {"name": "Ha Long"})
+
+    def outlook(self, codes, *, daylight=range(6, 18)):
+        rows = [{"group": weather.condition_group(code), "hour": hour, "is_day": hour in daylight}
+                for hour, code in enumerate(codes)]
+        return weather.daily_outlook(rows, 61)
+
+    def test_sunny_day_with_short_drizzle_keeps_sunny_icon_and_mentions_timing(self):
+        codes = [0] * 24
+        codes[12:14] = [51, 51]
+        result = self.outlook(codes)
+        self.assertEqual(result["icon"], "sun")
+        self.assertEqual(result["description"], "Mostly sunny, with drizzle in the afternoon")
+
+    def test_rainy_day_mentions_sunny_breaks(self):
+        codes = [61] * 24
+        codes[14:17] = [0] * 3
+        result = self.outlook(codes)
+        self.assertEqual(result["icon"], "cloud-rain")
+        self.assertEqual(result["description"], "Rain for much of the day, with sunny breaks")
+
+    def test_cloudy_day_is_not_made_sunny_by_clear_nights(self):
+        codes = [0] * 24
+        codes[6:18] = [3] * 12
+        self.assertEqual(self.outlook(codes)["description"], "Mostly cloudy")
+        codes[:3] = [61] * 3
+        self.assertEqual(self.outlook(codes)["description"], "Mostly cloudy, with rain overnight")
+
+    def test_brief_storm_freezing_rain_and_snow_are_not_omitted(self):
+        for code, name in [(95, "thunderstorms"), (66, "freezing rain"), (71, "snow")]:
+            codes = [0] * 24
+            codes[19] = code
+            codes[12] = 51
+            self.assertIn(name + " in the evening", self.outlook(codes)["description"])
+
+    def test_mixed_cloud_fog_and_dry_breaks(self):
+        self.assertEqual(self.outlook([2] * 24)["description"], "A mix of sun and cloud")
+        self.assertEqual(self.outlook([45] * 24)["icon"], "cloud-fog")
+        self.assertEqual(self.outlook([45] * 3 + [0] * 21)["description"], "Mostly sunny, with fog overnight")
+        codes = [61] * 24
+        codes[10:14] = [3] * 4
+        self.assertEqual(self.outlook(codes)["description"], "Rain for much of the day, with dry breaks")
+
+    def test_multiple_secondary_conditions_are_preserved(self):
+        codes = [0] * 24
+        codes[8] = 66
+        codes[12] = 71
+        codes[19] = 95
+        summary = self.outlook(codes)["description"]
+        self.assertIn("freezing rain in the morning", summary)
+        self.assertIn("snow in the afternoon", summary)
+        self.assertIn("thunderstorms in the evening", summary)
+
+    def test_full_day_summaries_are_not_limited_to_next_24_hours(self):
+        payload = self.hourly_payload()
+        start = datetime(2026, 9, 30)
+        payload["hourly"] = {"time": [(start + timedelta(hours=i)).isoformat(timespec="minutes") for i in range(168)],
+                             "temperature_2m": [30] * 168, "weather_code": [0] * 168,
+                             "is_day": [int(6 <= i % 24 < 18) for i in range(168)],
+                             "precipitation_probability": [0] * 168}
+        payload["hourly"]["weather_code"][6 * 24:] = [61] * 24
+        result = weather.normalize(payload, {"name": "Ha Long"})
+        self.assertEqual(result["days"][0]["icon"], "sun")
+        self.assertEqual(result["days"][6]["icon"], "cloud-rain")
+        self.assertEqual(result["days"][6]["summary_source"], "hourly")
+        self.assertEqual(len(result["hours"]), 24)
+        self.assertEqual(self.outlook([0] * 8)["summary_source"], "daily")
+
+    def test_legacy_cache_refetches_hourly_data_but_survives_offline(self):
+        location = {"name": "Ha Long", "latitude": 20.95045, "longitude": 107.07336,
+                    "timezone": "Asia/Ho_Chi_Minh"}
+        payload = self.hourly_payload()
+        timestamp = datetime(2026, 9, 30, 17, 15, tzinfo=ZoneInfo(location["timezone"])).timestamp()
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "weather.json"
+            legacy = weather.normalize(payload, location)
+            del legacy["hours"]
+            cache.write_text(json.dumps({"key": [location["latitude"], location["longitude"], location["timezone"]],
+                                         "fetched_at": timestamp, "forecast": legacy}))
+            def offline(*_args, **_kwargs):
+                raise OSError("offline")
+            saved = weather.fetch(location, cache, opener=offline, now=lambda: timestamp + 1)
+            self.assertTrue(saved["stale"])
+            self.assertEqual(saved["current"], legacy["current"])
+            fresh = weather.fetch(location, cache, opener=lambda *_args, **_kwargs: io.BytesIO(json.dumps(payload).encode()),
+                                  now=lambda: timestamp + 2)
+            self.assertEqual(len(fresh["hours"]), 24)
+            self.assertFalse(fresh["stale"])
 
 
 class NextcloudTests(unittest.TestCase):

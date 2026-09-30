@@ -32,11 +32,23 @@ Your root is a QtQuick Item (ColumnLayout, Rectangle, FocusScope, etc.). Declare
 `property var host`. The shell assigns it after creating the component:
 
 - `host.apiVersion`: currently 1.
-- `host.close()`: closes the desktop overlay and destroys the plugin.
-- `host.back()`: destroys the plugin and returns to the space list.
+- `host.close()`: destroys this plugin, including while retained behind another space.
+- `host.back()`: destroys this plugin and returns to the space list when selected;
+  a hidden plugin stops without changing the foreground space.
 - `host.requestKeepRunning(id, enabled)`: retain this module while hidden, or
   release it when background work ends. Pass the module's manifest ID.
+- `host.openPlugin(id, payload)`: open an installed module; returns false if the
+  destination is unavailable. The optional payload is opaque to the shell.
+- Optional `function handleOpen(payload)`: receives the latest navigation payload
+  once the destination is loaded, has its host, and is selected. Selecting another
+  space, Desktop, or closing cancels an undelivered payload. Normal activation
+  without a payload does not call this function.
 - Optional `function activate()`: called after host injection; focus your search field here.
+
+The host is scoped to the module instance. Retention requests for another ID are
+ignored. Keep feature-specific destination choices and payload validation inside
+the participating modules; the shell must not interpret title, store, or provider
+records. A destination without `handleOpen` simply opens normally.
 
 The Loader sizes the root to the available desktop overlay area below the top pills. Import `../../widgets`
 and `../../core` for shared controls and theme tokens. The included Apps plugin

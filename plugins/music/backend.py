@@ -9,7 +9,6 @@ import os
 import re
 import shutil
 import signal
-import socket
 import subprocess
 import sys
 import tempfile
@@ -25,6 +24,7 @@ from functools import lru_cache
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.cache import JsonCache
+from services.mpv import MpvIpc
 from media.local import LocalLibrary, safe_name, xdg_dir
 from scripts.open_browser import browser_argv
 
@@ -1415,18 +1415,7 @@ def resolve_track(track, providers=None, local_first=True):
     raise MusicError("No configured playback provider found a confident match for this song.")
 
 
-def player_socket_dir():
-    runtime_root = Path(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir())
-    user_id = str(os.getuid() if hasattr(os, "getuid") else os.getpid())
-    directory = runtime_root / ("zs-music-" + user_id)
-    if len(os.fsencode(str(directory / ("mpv-" + "a" * 16 + ".sock")))) >= 100:
-        directory = Path(tempfile.gettempdir()) / ("zs-music-" + user_id)
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    try:
-        directory.chmod(0o700)
-    except OSError:
-        pass
-    return directory
+player_ipc = MpvIpc("music")
 
 
 def start_player(args):
@@ -1437,7 +1426,7 @@ def start_player(args):
     if not mpv:
         raise MusicError("Install mpv to play music.")
     resolved = resolve_track(track)
-    ipc_path = str(player_socket_dir() / ("mpv-" + uuid.uuid4().hex[:16] + ".sock"))
+    ipc_path = str(player_ipc.directory() / ("mpv-" + uuid.uuid4().hex[:16] + ".sock"))
     stream_url = resolved["url"]
     title = str(track.get("title") or "Music").replace("\n", " ").strip()
     provider_headers_value = resolved.get("headers") or {}
@@ -1470,73 +1459,14 @@ def start_player(args):
     return {"command": command, "ipcPath": ipc_path}
 
 
-def valid_socket(value):
-    path = Path(str(value or ""))
-    try:
-        expected_dir = player_socket_dir().resolve()
-        if path.parent.resolve() != expected_dir or not re.fullmatch(r"mpv-[a-f0-9]{16}\.sock", path.name):
-            return None
-    except OSError:
-        return None
-    return path
-
-
-def ipc_request(path, command):
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(0.4)
-    try:
-        client.connect(str(path))
-        client.sendall((json.dumps({"command": command, "request_id": 1}) + "\n").encode("utf-8"))
-        response = bytearray()
-        while len(response) < 65536 and b"\n" not in response:
-            chunk = client.recv(4096)
-            if not chunk:
-                break
-            response.extend(chunk)
-        line = bytes(response).split(b"\n", 1)[0]
-        if not line:
-            return None
-        reply = json.loads(line.decode("utf-8"))
-        if reply.get("error") != "success":
-            return None
-        return reply.get("data")
-    except (OSError, ValueError, TypeError):
-        return None
-    finally:
-        client.close()
-
-
-def ipc_send(path, command):
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(0.4)
-    try:
-        client.connect(str(path))
-        client.sendall((json.dumps({"command": command, "request_id": 1}) + "\n").encode("utf-8"))
-        response = bytearray()
-        while len(response) < 65536 and b"\n" not in response:
-            chunk = client.recv(4096)
-            if not chunk:
-                break
-            response.extend(chunk)
-        line = bytes(response).split(b"\n", 1)[0]
-        if not line:
-            return False
-        reply = json.loads(line.decode("utf-8"))
-        return reply.get("error") == "success"
-    except (OSError, ValueError, TypeError):
-        return False
-    finally:
-        client.close()
-
-
 def player_state(args):
-    path = valid_socket(args.get("ipcPath"))
+    path = player_ipc.validate(args.get("ipcPath"))
     if not path:
         return {"position": 0, "duration": 0, "paused": True, "volume": 0}
-    position = ipc_request(path, ["get_property", "time-pos"])
-    duration = ipc_request(path, ["get_property", "duration"])
-    paused = ipc_request(path, ["get_property", "pause"])
-    volume = ipc_request(path, ["get_property", "volume"])
+    position = player_ipc.property(path, "time-pos")
+    duration = player_ipc.property(path, "duration")
+    paused = player_ipc.property(path, "pause")
+    volume = player_ipc.property(path, "volume")
     return {
         "position": float(position or 0),
         "duration": float(duration or 0),
@@ -1546,7 +1476,7 @@ def player_state(args):
 
 
 def player_command(args):
-    path = valid_socket(args.get("ipcPath"))
+    path = player_ipc.validate(args.get("ipcPath"))
     if not path:
         return {"sent": False}
     action = str(args.get("action") or "")
@@ -1560,17 +1490,11 @@ def player_command(args):
         command = ["set_property", "volume", min(100, max(0, float(args.get("value") or 0)))]
     else:
         raise MusicError("Unknown player command.")
-    return {"sent": ipc_send(path, command)}
+    return {"sent": player_ipc.send(path, command)}
 
 
 def cleanup_player(args):
-    path = valid_socket(args.get("ipcPath"))
-    if path:
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
-    return {"cleaned": bool(path)}
+    return {"cleaned": player_ipc.cleanup(args.get("ipcPath"))}
 
 
 def favorite_path():

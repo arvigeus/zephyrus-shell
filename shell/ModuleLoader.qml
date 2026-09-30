@@ -5,6 +5,6 @@ Loader {
     id: root
     property bool readyToLoad: true
     property string screenName: ""
-    active: !!ShellState.pluginId || ShellState.runningPluginIds.length > 0
+    active: ShellState.runningPluginIds.some(id => ShellState.runningPluginMonitors[id] === screenName)
     sourceComponent: ModuleOverlay { readyToLoad: root.readyToLoad; screenName: root.screenName }
 }

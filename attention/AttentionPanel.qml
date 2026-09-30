@@ -7,13 +7,14 @@ import "../widgets"
 
 Rectangle {
     id: root
-    property var forecast: AttentionData.forecast
-    property var cloud: AttentionData.cloud || ({state: "loading", events: [], tasks: [], calendars: []})
-    property string weatherError: AttentionData.weatherError
-    property string cloudError: AttentionData.cloudError
+    readonly property var forecast: AttentionData.forecast
+    readonly property var cloud: AttentionData.cloud || ({state: "loading", events: [], tasks: [], calendars: []})
+    readonly property string weatherError: AttentionData.weatherError
+    readonly property string cloudError: AttentionData.cloudError
     property bool weatherLoading: false
     property bool cloudLoading: false
     property int cloudGeneration: 0
+    property int weatherGeneration: 0
     property string compactPage: "calendar"
     readonly property bool compactLayout: width < 990
     color: Theme.background
@@ -36,6 +37,8 @@ Rectangle {
             const now = Date.now();
             const today = Qt.formatDate(clock.date, "yyyy-MM-dd");
             if (!AttentionData.weatherCheckedAt || now - AttentionData.weatherCheckedAt >= 15 * 60 * 1000
+                    || (root.forecast && (!Array.isArray(root.forecast.hours)
+                        || root.forecast.days.some(day => !day.summary_source)))
                     || (root.forecast && root.forecast.days && root.forecast.days[0].date !== today))
                 root.refreshWeather();
             if (!AttentionData.cloudCheckedAt || AttentionData.cloudMonth !== root.monthKey()
@@ -46,14 +49,14 @@ Rectangle {
 
     function monthKey() { return Qt.formatDate(calendarPane.month, "yyyy-MM"); }
     function refreshWeather() {
+        const generation = ++weatherGeneration;
         weatherLoading = true;
         service.request("weather", {}, (result, error) => {
+            if (generation !== weatherGeneration) return;
             weatherLoading = false;
-            weatherError = error;
             AttentionData.weatherError = error;
             AttentionData.weatherCheckedAt = Date.now();
             if (result) {
-                forecast = result;
                 AttentionData.forecast = result;
             }
         });
@@ -67,12 +70,10 @@ Rectangle {
         service.request("nextcloud", {start: start, end: end, refresh: !!force}, (result, error) => {
             if (generation !== cloudGeneration) return;
             cloudLoading = false;
-            cloudError = error;
             AttentionData.cloudError = error;
             AttentionData.cloudCheckedAt = Date.now();
-            AttentionData.cloudMonth = Qt.formatDate(month, "yyyy-MM");
             if (result) {
-                cloud = result;
+                AttentionData.cloudMonth = Qt.formatDate(month, "yyyy-MM");
                 AttentionData.cloud = result;
                 if (Qt.formatDate(calendarPane.month, "yyyy-MM") !== Qt.formatDate(month, "yyyy-MM")) {
                     Qt.callLater(() => root.refreshCloud());
@@ -84,7 +85,7 @@ Rectangle {
     }
     function completeTask(task) {
         service.request("complete_task", {task: {href: task.href, etag: task.etag}}, (result, error) => {
-            if (error) cloudError = error;
+            if (error) AttentionData.cloudError = error;
             else refreshCloud(true);
         });
     }

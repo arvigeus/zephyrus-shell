@@ -8,6 +8,7 @@ Item {
     property bool readyToLoad: true
     property string screenName: ""
     property var currentModule: null
+    property string currentModuleId: ""
     property bool currentLoadFailed: false
     readonly property var entry: Plugins.find(ShellState.pluginId)
     // Modules may tune backdrop opacity and decode width; defaults preserve prior behavior.
@@ -29,9 +30,6 @@ Item {
         Qt.callLater(root.syncCurrentModule);
     }
     function syncCurrentModule() {
-        if (ShellState.pendingMediaTitle && ShellState.pluginId &&
-                ShellState.pluginId !== (ShellState.pendingMediaTitle.kind === "movie" ? "movies" : "series"))
-            ShellState.pendingMediaTitle = null;
         let item = null;
         let failed = !root.entry && !!ShellState.pluginId;
         if (ShellState.pluginId && ShellState.runningPluginIds.includes(ShellState.pluginId)) {
@@ -45,18 +43,17 @@ Item {
             }
         }
         currentModule = item;
+        currentModuleId = item ? ShellState.pluginId : "";
         currentLoadFailed = failed;
-        if (item && ShellState.pendingMediaTitle) Qt.callLater(root.deliverMediaTitle);
+        if (item && ShellState.pendingPluginOpen) Qt.callLater(root.deliverPluginOpen);
         if (ShellState.panel === "module" && item) Qt.callLater(root.restoreModuleFocus);
     }
-    function deliverMediaTitle() {
-        const title = ShellState.pendingMediaTitle;
-        if (!title || !currentModule || ShellState.panel !== "module" ||
-                ShellState.pluginId !== (title.kind === "movie" ? "movies" : "series") ||
-                currentModule.kind !== title.kind ||
-                typeof currentModule.openTitle !== "function") return;
-        ShellState.pendingMediaTitle = null;
-        currentModule.openTitle(title);
+    function deliverPluginOpen() {
+        const request = ShellState.pendingPluginOpen;
+        if (!request || !currentModule || ShellState.panel !== "module" ||
+                request.id !== ShellState.pluginId || request.id !== currentModuleId) return;
+        ShellState.pendingPluginOpen = null;
+        if (typeof currentModule.handleOpen === "function") currentModule.handleOpen(request.payload);
     }
     function restoreModuleFocus() {
         if (ShellState.panel !== "module" || !currentModule) return;
@@ -67,8 +64,12 @@ Item {
     Connections {
         target: ShellState
         function onPanelChanged() {
-            if (ShellState.panel === "module") Qt.callLater(root.restoreModuleFocus);
+            if (ShellState.panel === "module") {
+                Qt.callLater(root.deliverPluginOpen);
+                Qt.callLater(root.restoreModuleFocus);
+            }
         }
+        function onPendingPluginOpenChanged() { Qt.callLater(root.deliverPluginOpen); }
         function onPluginIdChanged() {
             Qt.callLater(root.syncCurrentModule);
         }
@@ -117,6 +118,26 @@ Item {
             readonly property int loadStatus: retainedLoader.status
             objectName: "retained-" + pluginId
             anchors.fill: parent
+            // Each live module gets a host scoped to its own lifetime, including while hidden.
+            Component {
+                id: hostFactory
+                QtObject {
+                    readonly property int apiVersion: 1
+                    function close() { ShellState.stopPlugin(retained.pluginId); }
+                    function back() {
+                        if (ShellState.pluginId === retained.pluginId) ShellState.backToSpaces();
+                        else ShellState.stopPlugin(retained.pluginId);
+                    }
+                    function requestKeepRunning(pluginId, enabled) {
+                        if (pluginId === retained.pluginId) ShellState.requestKeepRunning(pluginId, enabled);
+                    }
+                    function openPlugin(pluginId, payload) {
+                        if (!Plugins.find(pluginId)) return false;
+                        ShellState.openPlugin(pluginId, payload);
+                        return true;
+                    }
+                }
+            }
             Loader {
                 id: retainedLoader
                 objectName: ShellState.pluginId === retained.pluginId ? "moduleContent" : "inactiveModuleContent"
@@ -136,7 +157,7 @@ Item {
                 onActiveChanged: if (!active) loadedOnce = false
                 onLoaded: {
                     loadedOnce = true;
-                    item.host = host;
+                    item.host = hostFactory.createObject(item);
                     root.syncCurrentModule();
                 }
                 onStatusChanged: Qt.callLater(root.syncCurrentModule)
@@ -151,20 +172,5 @@ Item {
         text: "This space could not load. Close it with Escape, then reload spaces."
         color: Theme.danger
         width: Math.min(500, parent.width - 56); wrapMode: Text.Wrap
-    }
-    QtObject {
-        id: host
-        readonly property int apiVersion: 1
-        function close() { ShellState.close(); }
-        function back() { ShellState.backToSpaces(); }
-        function requestKeepRunning(pluginId, enabled) { ShellState.requestKeepRunning(pluginId, enabled); }
-        function openMediaTitle(title) {
-            if (!title || !title.id || !["movie","tv"].includes(title.kind)) return false;
-            const pluginId = title.kind === "movie" ? "movies" : "series";
-            if (!Plugins.find(pluginId)) return false;
-            ShellState.pendingMediaTitle = title;
-            ShellState.openPlugin(pluginId);
-            return true;
-        }
     }
 }

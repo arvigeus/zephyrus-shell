@@ -1,5 +1,24 @@
 # Verification on this machine
 
+Architecture review, 2026-09-30: 262 Python tests and 27 portable QML tests passed,
+as did both Node suites, Hyprland configuration parsing, all eight README smoke
+scripts, and the offline performance budgets. The retained check now includes six
+state-transition cases against the production ShellState singleton. The preview
+produced twelve captures; Applications and Attention captures were inspected.
+The current Wayland desktop harness passed, but live Hyprland input, physical
+multi-monitor/hotplug, player playback, and hardware/GPU/power behavior were not
+validated in this review. See [architecture review](architecture-review.md).
+
+Weather/hardware follow-up, 2026-09-30: the CPU/GPU source was read directly from
+this machine's hwmon sensors; the card selector now prefers package/edge readings.
+The full Python suite (275 tests), portable QML suite (32 tests), both Node suites,
+preview, retained lifecycle, current Wayland panel smoke and performance budgets
+passed. The weather layout was captured and inspected using the production panel
+and configured Open-Meteo data. This verifies reads and rendering, not sensor
+calibration, thermal behavior under controlled load or live Hyprland input.
+
+## Earlier baseline
+
 Environment: Arch Linux, Quickshell 0.3.1, Qt 6.11.2, Hyprland 0.56.2,
 ROG Zephyrus G14 GA402RK. Existing desktop session: KDE Wayland.
 

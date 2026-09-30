@@ -6,13 +6,33 @@ import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from services.cache import JsonCache
 from services.worker import serve
+from services.mpv import MpvIpc
 
 
 class WorkerTests(unittest.TestCase):
+    def test_concurrent_replies_are_complete_lines(self):
+        class InterleavingStream:
+            def __init__(self):
+                self.parts = []
+            def write(self, value):
+                midpoint = len(value) // 2
+                self.parts.append(value[:midpoint])
+                time.sleep(0.001)
+                self.parts.append(value[midpoint:])
+            def flush(self):
+                pass
+        output = InterleavingStream()
+        requests = [{'id': index, 'op': 'read'} for index in range(24)]
+        serve(lambda r: 'x' * 4000, workers=8,
+              stream=io.StringIO('\n'.join(map(json.dumps, requests))), output=output)
+        replies = [json.loads(line) for line in ''.join(output.parts).splitlines()]
+        self.assertEqual(len(replies), 24)
+        self.assertEqual({r['id'] for r in replies}, set(range(24)))
+
     def test_control_lane_remains_responsive_and_mutations_keep_order(self):
         slow_started = threading.Event()
         control_finished = threading.Event()
@@ -92,3 +112,63 @@ class CacheTests(unittest.TestCase):
                 cache.put(key, key)
             self.assertIsNone(cache.get('a', 60))
             self.assertEqual(cache.get('c', 60), 'c')
+
+
+class PlayerIpcTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.environment = patch.dict('os.environ', {'XDG_RUNTIME_DIR': self.temporary.name})
+        self.environment.start()
+        self.addCleanup(self.environment.stop)
+        self.music = MpvIpc('music')
+        self.path = self.music.directory() / ('mpv-' + 'a' * 16 + '.sock')
+
+    def test_namespace_validation_and_cleanup_stay_owned(self):
+        radio = MpvIpc('radio')
+        self.path.touch()
+        self.assertIsNone(radio.validate(self.path))
+        self.assertFalse(radio.cleanup(self.path))
+        self.assertTrue(self.path.exists())
+        self.assertIsNone(self.music.validate(self.path.parent / 'arbitrary.sock'))
+        self.assertTrue(self.music.cleanup(self.path))
+        self.assertFalse(self.path.exists())
+
+    def test_long_runtime_path_falls_back_to_private_short_directory(self):
+        with patch.dict('os.environ', {'XDG_RUNTIME_DIR': '/tmp/' + 'long' * 30}), \
+             patch('services.mpv.tempfile.gettempdir', return_value=self.temporary.name):
+            self.assertEqual(self.music.directory().parent, Path(self.temporary.name))
+        self.assertEqual(self.music.directory().stat().st_mode & 0o777, 0o700)
+
+    def test_fragmented_reply_skips_events_and_preserves_false_values(self):
+        client = Mock()
+        client.recv.side_effect = [b'{"event":"idle"}\n{"request_id":1,',
+                                   b'"error":"success","data":false}\n']
+        with patch('services.mpv.socket.socket', return_value=client):
+            self.assertIs(self.music.property(self.path, 'pause'), False)
+        command = json.loads(client.sendall.call_args.args[0])
+        self.assertEqual(command, {'request_id': 1, 'command': ['get_property', 'pause']})
+        client.close.assert_called_once()
+
+    def test_failures_settle_without_exposing_transport_errors(self):
+        for reply in (b'[]\n', b'invalid\n', b'', b'{"request_id":1,"error":"failure"}\n',
+                      b'x' * 65536):
+            client = Mock()
+            chunks = [reply[index:index + 4096] for index in range(0, len(reply), 4096)]
+            client.recv.side_effect = chunks + [b'']
+            with self.subTest(reply=reply[:40]), patch('services.mpv.socket.socket', return_value=client):
+                self.assertFalse(self.music.send(self.path, ['cycle', 'pause']))
+                client.close.assert_called_once()
+
+    def test_modules_use_shared_transport_with_separate_players(self):
+        from plugins.music import backend as music
+        from plugins.radio import backend as radio
+        for ipc in (music.player_ipc, radio.player_ipc):
+            self.assertIsInstance(ipc, MpvIpc)
+        with patch.object(music.player_ipc, 'send', return_value=True) as send:
+            self.assertEqual(music.player_command({'ipcPath': str(self.path), 'action': 'volume', 'value': 140}),
+                             {'sent': True})
+            send.assert_called_once_with(self.path, ['set_property', 'volume', 100])
+        with patch.object(radio.player_ipc, 'property') as read:
+            self.assertEqual(radio.read_now_playing({'ipcPath': str(self.path)}), {'title': ''})
+            read.assert_not_called()

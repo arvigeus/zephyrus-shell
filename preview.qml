@@ -25,6 +25,7 @@ ShellRoot {
             }
             StatusPill { z: 1; anchors.right: parent.right; anchors.rightMargin: 14; y: 12; onClicked: ShellState.toggle("right") }
             ModuleLoader {
+                id: modulePreview
                 x: 0; y: 0; width: parent.width; height: parent.height
                 readyToLoad: !left.showing && !right.showing
             }
@@ -92,8 +93,12 @@ ShellRoot {
         Timer {
             property int step: 0
             property int attentionWait: 0
+            property int appsWait: 0
             interval: 1200; repeat: true; running: Quickshell.env("DRAWER_SHELL_CAPTURE") === "1"
             onTriggered: {
+                if (step === 2 && appsWait++ < 15 && (!modulePreview.item
+                        || !modulePreview.item.currentModule || !modulePreview.item.currentModule.catalogReady))
+                    return;
                 if (step === 4 && centerPreview.item && attentionWait++ < 15
                         && ((centerPreview.item.forecast === null && centerPreview.item.weatherError === "")
                             || (centerPreview.item.cloud.state === "loading" && centerPreview.item.cloudError === "")))
@@ -104,8 +109,9 @@ ShellRoot {
                     console.log("CAPTURE", target, result.saveToFile(target));
                     step++;
                     if (step === panels.length) { stop(); finish.start(); return; }
-                    ShellState.panel = panels[step];
-                    ShellState.pluginId = step === 2 ? "apps" : "";
+                    if (step === 2) ShellState.openPlugin("apps");
+                    else if (step === 3) { ShellState.close(); ShellState.toggle("right"); }
+                    else ShellState.panel = panels[step];
                     if (step >= 5) Qt.callLater(() => { if (right.item) {
                         right.item.page = ["", "", "display", "cpu", "gpu", "system", ""][step - 5];
                         right.item.wifiExpanded = step === 5;

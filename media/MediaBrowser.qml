@@ -222,6 +222,9 @@ Item {
         linkedTitleId = title.id;
         if (needsBrowse) browse(false, true);
     }
+    function handleOpen(payload) {
+        if (payload && payload.title) openTitle(payload.title);
+    }
     function openRelated(row) {
         if (!row || !row.malId) return;
         const request = ++relatedGeneration;
@@ -232,7 +235,9 @@ Item {
             relatedLoading = false;
             if (failure) { detailError = failure; return; }
             if (title.kind === kind) openTitle(title);
-            else if (!host || !host.openMediaTitle(title)) detailError = "The matching media module is unavailable.";
+            else if (!host || !["movie", "tv"].includes(title.kind) ||
+                     !host.openPlugin(title.kind === "movie" ? "movies" : "series", {title: title}))
+                detailError = "The matching media module is unavailable.";
         });
     }
     function openCollections(refresh) {

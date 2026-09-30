@@ -8,7 +8,6 @@ import shutil
 import socket
 import sys
 import threading
-import tempfile
 import uuid
 from functools import lru_cache
 from itertools import product
@@ -16,14 +15,16 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, quote, urlsplit
 from urllib.request import Request, urlopen
-from concurrent.futures import ThreadPoolExecutor
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from services.mpv import MpvIpc
 
 
 PAGE_SIZE = 100
 USER_AGENT = "ZephyrusShell/1.0 (Radio module)"
 browse_sessions = {}
 genre_variants = {}
-output_lock = threading.Lock()
 browse_lock = threading.Lock()
 FAVICON_MAX_BYTES = 1024 * 1024
 
@@ -298,7 +299,7 @@ def play(args):
     ipc_path = ""
     if mpv:
         try:
-            ipc_path = str(metadata_socket_dir() / ("mpv-" + uuid.uuid4().hex[:16] + ".sock"))
+            ipc_path = str(player_ipc.directory() / ("mpv-" + uuid.uuid4().hex[:16] + ".sock"))
         except OSError:
             pass
         command = [mpv, "--no-video", "--really-quiet"]
@@ -312,59 +313,7 @@ def play(args):
     return {"url": stream_url, "command": command, "ipcPath": ipc_path}
 
 
-def metadata_socket_dir():
-    runtime_root = Path(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir())
-    user_id = str(os.getuid() if hasattr(os, "getuid") else os.getpid())
-    directory = runtime_root / ("zs-radio-" + user_id)
-    probe_path = directory / ("mpv-" + ("a" * 16) + ".sock")
-    if len(os.fsencode(str(probe_path))) >= 100:
-        directory = Path(tempfile.gettempdir()) / ("zs-radio-" + user_id)
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    try:
-        directory.chmod(0o700)
-    except OSError:
-        pass
-    return directory
-
-
-def valid_metadata_socket(args):
-    value = str(args.get("ipcPath") or "").strip()
-    if not value:
-        return None
-    path = Path(value)
-    try:
-        expected_dir = metadata_socket_dir().resolve()
-        if path.parent.resolve() != expected_dir or not re.fullmatch(r"mpv-[a-f0-9]{16}\.sock", path.name):
-            return None
-    except OSError:
-        return None
-    return path
-
-
-def ipc_property(ipc_path, property_name):
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(0.35)
-    try:
-        client.connect(str(ipc_path))
-        request = json.dumps({"command": ["get_property", property_name], "request_id": 1}) + "\n"
-        client.sendall(request.encode("utf-8"))
-        response = bytearray()
-        while len(response) < 65536 and b"\n" not in response:
-            chunk = client.recv(4096)
-            if not chunk:
-                break
-            response.extend(chunk)
-        line = bytes(response).split(b"\n", 1)[0]
-        if not line:
-            return None
-        reply = json.loads(line.decode("utf-8"))
-        if reply.get("error") != "success":
-            return None
-        return reply.get("data")
-    except (OSError, ValueError, TypeError):
-        return None
-    finally:
-        client.close()
+player_ipc = MpvIpc("radio", timeout=0.35)
 
 
 def metadata_title(metadata):
@@ -389,25 +338,19 @@ def metadata_title(metadata):
 
 
 def read_now_playing(args):
-    ipc_path = valid_metadata_socket(args)
+    ipc_path = player_ipc.validate(args.get("ipcPath"))
     if not ipc_path:
         return {"title": ""}
-    title = metadata_title(ipc_property(ipc_path, "metadata"))
+    title = metadata_title(player_ipc.property(ipc_path, "metadata"))
     if not title:
-        media_title = ipc_property(ipc_path, "media-title")
+        media_title = player_ipc.property(ipc_path, "media-title")
         if isinstance(media_title, str):
             title = media_title.strip()
     return {"title": title}
 
 
 def cleanup_metadata(args):
-    ipc_path = valid_metadata_socket(args)
-    if ipc_path:
-        try:
-            ipc_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-    return {"cleaned": bool(ipc_path)}
+    return {"cleaned": player_ipc.cleanup(args.get("ipcPath"))}
 
 
 def favorite_path():
@@ -527,21 +470,7 @@ def handle(request):
     raise RadioError("Unknown Radio operation.")
 
 
-def emit(response):
-    with output_lock:
-        print(json.dumps(response, ensure_ascii=False), flush=True)
-
-
-def run_request(request):
-    try:
-        response = {"id": request.get("id"), "result": handle(request)}
-    except Exception as error:
-        response = {"id": request.get("id"), "error": str(error)}
-    emit(response)
-
-
 def main():
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from services.worker import serve
     serve(handle, errors=(RadioError,), background=("favicon",), latest=("browse", "play"), controls=("metadata", "metadata-cleanup", "favorites-save", "favorites-load"))
 

@@ -19,15 +19,7 @@ QtObject {
                     const result = JSON.parse(text);
                     root.entries = result.entries;
                     root.errors = result.errors;
-                    if (ShellState.pluginId && !root.find(ShellState.pluginId)) ShellState.backToSpaces();
-                    ShellState.runningPluginIds = ShellState.runningPluginIds.filter(id => !!root.find(id));
-                    const owners = {};
-                    for (const id of ShellState.runningPluginIds) owners[id] = ShellState.runningPluginMonitors[id];
-                    ShellState.runningPluginMonitors = owners;
-                    const requests = {};
-                    for (const id of ShellState.runningPluginIds)
-                        if (ShellState.retentionRequests[id]) requests[id] = true;
-                    ShellState.retentionRequests = requests;
+                    ShellState.reconcilePlugins(root.entries.map(entry => entry.id));
                 }
                 catch (error) { root.errors = ["Cannot read plugin registry: " + error]; }
             }

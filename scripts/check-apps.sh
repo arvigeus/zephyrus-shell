@@ -8,4 +8,5 @@ for phase in write read; do
     APPS_TEST_PHASE="$phase" timeout 15s dbus-run-session quickshell -p "$PWD/apps-smoke.qml" --no-color > "$apps_test_config/$phase.log" 2>&1 || { cat "$apps_test_config/$phase.log"; exit 1; }
     cat "$apps_test_config/$phase.log"
     rg -q "APPS PASS $phase" "$apps_test_config/$phase.log"
+    if rg -q 'ReferenceError|TypeError|Cannot assign|Binding loop|APPS FAIL|ERROR qml:' "$apps_test_config/$phase.log"; then exit 1; fi
 done

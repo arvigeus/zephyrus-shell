@@ -2,7 +2,6 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
-import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -247,48 +246,6 @@ class BooksBackendTests(unittest.TestCase):
         self.assertEqual(edition["pages"], 312)
         self.assertEqual(edition["isbn"], ["9780000000001", "0000000000"])
         self.assertNotIn("authors", edition)
-
-    def test_generation_gate_drops_late_results_for_superseded_operations(self):
-        gate = books.GenerationGate({"browse", "details", "save"})
-        gate.begin("browse", 1)
-        self.assertTrue(gate.current("browse", 1))
-        gate.begin("browse", 2)
-        self.assertFalse(gate.current("browse", 1))
-        self.assertTrue(gate.current("browse", 2))
-        self.assertTrue(gate.current("untracked", 1))
-        gate.begin("save", 3, "OL100W")
-        gate.begin("save", 4, "OL101W")
-        gate.begin("save", 5, "OL100W")
-        self.assertFalse(gate.current("save", 3, "OL100W"))
-        self.assertTrue(gate.current("save", 4, "OL101W"))
-        self.assertTrue(gate.current("save", 5, "OL100W"))
-
-    def test_concurrent_worker_responses_remain_separate_json_lines(self):
-        class InterleavingStream:
-            def __init__(self):
-                self.parts = []
-
-            def write(self, value):
-                midpoint = len(value) // 2
-                self.parts.append(value[:midpoint])
-                time.sleep(0.001)
-                self.parts.append(value[midpoint:])
-
-            def flush(self):
-                pass
-
-        stream = InterleavingStream()
-        lock = threading.Lock()
-        responses = [{"id": index, "result": "x" * 4000} for index in range(24)]
-        workers = [threading.Thread(target=books.write_response_line, args=(response, lock, stream)) for response in responses]
-        for worker in workers:
-            worker.start()
-        for worker in workers:
-            worker.join()
-
-        lines = "".join(stream.parts).splitlines()
-        self.assertEqual(len(lines), len(responses))
-        self.assertEqual({json.loads(line)["id"] for line in lines}, set(range(len(responses))))
 
     def test_provider_errors_are_concise_and_do_not_echo_response_body(self):
         with patch.object(books.urllib.request, "urlopen", side_effect=HTTPError(

@@ -31,7 +31,7 @@ ColumnLayout {
             RowLayout {
                 required property var modelData
                 Layout.fillWidth: true
-                IconButton { iconName: "monitor-off"; text: (modelData.disabled ? "Enable " : "Turn off ") + modelData.label; enabled: !root.machine.busy; highlighted: !!modelData.disabled; onClicked: root.machine.run("display", JSON.stringify({name: modelData.name, enabled: !!modelData.disabled})) }
+                IconButton { iconName: modelData.disabled ? "monitor-off" : "monitor"; text: (modelData.disabled ? "Enable " : "Turn off ") + modelData.label; enabled: !root.machine.busy && (modelData.disabled || (root.machine.snapshot.monitors || []).filter(m => !m.disabled).length > 1); highlighted: !!modelData.disabled; onClicked: root.machine.run("display", JSON.stringify({name: modelData.name, enabled: !!modelData.disabled})) }
                 Action { text: modelData.label; Layout.fillWidth: true; enabled: !modelData.disabled && !root.machine.busy; highlighted: modelData.name === root.machine.snapshot.primary; onClicked: root.machine.run("primary", modelData.name) }
             }
         }

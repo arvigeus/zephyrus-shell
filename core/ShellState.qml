@@ -42,6 +42,18 @@ QtObject {
         if (pluginId && !retentionRequests[pluginId]) stopPlugin(pluginId);
         pluginId = ""; pluginMonitor = ""; panel = "";
     }
+    function reconcileScreens(names) {
+        // During output replacement there may briefly be no screen. Wait for
+        // a real destination before moving ownership or closing any surface.
+        if (!names.length) return;
+        const fallback = names.includes(monitor) ? monitor : names[0];
+        const owners = Object.assign({}, runningPluginMonitors);
+        for (const id of runningPluginIds)
+            if (!names.includes(owners[id])) owners[id] = fallback;
+        runningPluginMonitors = owners;
+        if (!names.includes(monitor)) monitor = fallback;
+        if (pluginId) pluginMonitor = owners[pluginId];
+    }
     function stopPlugin(id) {
         if (pendingPluginOpen && pendingPluginOpen.id === id) pendingPluginOpen = null;
         runningPluginIds = runningPluginIds.filter(value => value !== id);

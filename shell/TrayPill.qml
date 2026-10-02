@@ -23,18 +23,10 @@ Item {
             spacing: 6
             Repeater {
                 model: SystemTray.items
-                BarAction {
-                    id: trayButton
+                TrayButton {
                     required property var modelData
-                    width: Theme.pillControlHeight
-                    text: modelData.title || modelData.id
-                    contentItem: Image { source: trayButton.modelData.icon; sourceSize.width: 22; sourceSize.height: 22; fillMode: Image.PreserveAspectFit }
-                    onClicked: { if (modelData.onlyMenu) openMenu(); else modelData.activate(); }
-                    function openMenu() {
-                        const point = mapToItem(root.window.contentItem, 0, height);
-                        if (modelData.hasMenu) modelData.display(root.window, point.x, point.y);
-                    }
-                    TapHandler { acceptedButtons: Qt.RightButton; onTapped: trayButton.openMenu() }
+                    trayItem: modelData
+                    barWindow: root.window
                 }
             }
         }

@@ -1,5 +1,28 @@
 # Verification on this machine
 
+Bar input and Spaces search, 2026-10-02: 51 portable QML checks, 20 Attention
+Python tests, nine tray checks, six Spaces/clock checks, preview rendering and
+Hyprland configuration verification passed. An isolated compositor with a
+headless output and native virtual input verified both Win keys, immediate
+search typing, Escape, Super+Space chord suppression, and preserving Super mouse
+dragging. Production RunningApps and TrayButton accepted right-clicks after their
+hover tooltips appeared. The search, window tooltip and resulting context menu
+were captured and visually inspected. Today's indicator tests cover due tasks,
+completed/future tasks, multi-day events, notifications and date rollover. No
+calendar writes ran; temporary windows and the compositor were closed.
+
+Packaging and focus follow-up, 2026-10-02: all 342 Python tests, 51 portable
+QML checks and three JavaScript checks passed, together with Media, Modules,
+retained lifecycle, Settings, Applications and real-cliphist desktop smoke checks.
+An isolated Hyprland compositor using the production appearance and bindings
+confirmed that hovering an inactive window-list button for 1.4 seconds leaves
+keyboard focus unchanged. Wheel input scrolled an inactive native window by
+320 pixels while the other window retained keyboard focus; clicking then focused
+the hovered window. Both Win keys, search typing, tooltip right-clicks and Super
+mouse dragging passed again. A native capture confirmed light task, calendar and
+bell artwork. Dotfiles consumes public Git HEAD directly and records the commit
+actually packaged, with no local session patch.
+
 Popup dismissal follow-up, 2026-10-01: Attention now uses a native popup anchored
 to its clock pill's bar, with a Hyprland focus grab activated after the popup's
 surface exists. Native virtual pointer and keyboard input in an isolated headless

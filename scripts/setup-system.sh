@@ -9,7 +9,7 @@ Usage: scripts/setup-system.sh [--with-optional-controls] [--enable-services]
 
 Options:
   --with-optional-controls  Compatibility flag; display and power helpers are installed by default.
-  --enable-services         Enable and start network, Bluetooth and power-profile services.
+  --enable-services         Enable and start network and Bluetooth services.
   -h, --help                Show this help.
 EOF
 }
@@ -37,7 +37,7 @@ packages=(
     brightnessctl
     ddcutil
     i2c-tools
-    power-profiles-daemon
+    uwsm
     pciutils
     xdg-desktop-portal
     xdg-desktop-portal-hyprland
@@ -60,6 +60,7 @@ packages=(
     bluez
     upower
     hyprpolkitagent
+    switcheroo-control
 )
 
 if ! command -v sudo >/dev/null 2>&1; then
@@ -68,6 +69,7 @@ if ! command -v sudo >/dev/null 2>&1; then
 fi
 
 sudo pacman -S --needed "${packages[@]}"
+sudo bash "$(dirname -- "${BASH_SOURCE[0]}")/install-controls.sh"
 
 # ddcutil ships modules-load/udev rules on Arch; ensure the current boot is
 # ready too. Group membership provides stable access across suspend/resume.
@@ -82,10 +84,9 @@ sudo udevadm trigger --subsystem-match=i2c-dev
 
 if [[ "$enable_services" == true ]]; then
     sudo systemctl enable --now NetworkManager.service bluetooth.service
-    sudo systemctl enable --now power-profiles-daemon.service
 else
     printf '\nServices were not changed. Enable the services used by the controls you want:\n'
-    printf '  sudo systemctl enable --now NetworkManager.service bluetooth.service power-profiles-daemon.service\n'
+    printf '  sudo systemctl enable --now NetworkManager.service bluetooth.service\n'
 fi
 
 cat <<'EOF'
@@ -99,5 +100,5 @@ monitors' own menus; Settings detects their connector's bus automatically.
 
 See docs/session.md for locking, portals, teardown and the live test checklist.
 
-Cardwire is an optional GPU switching helper and is not installed by this script.
+Power controls use an already active asusd or power-profiles-daemon. Do not enable competing profile owners. GPU selection uses switcheroo-control.
 EOF

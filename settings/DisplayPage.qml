@@ -43,7 +43,7 @@ ScrollArea {
                 RowLayout {
                     Layout.fillWidth: true
                     Heading { text: modelData.label; Layout.fillWidth: true; elide: Text.ElideRight }
-                    IconButton { iconName: "monitor-off"; text: modelData.disabled ? "Enable display" : "Turn off display"; highlighted: !!modelData.disabled; enabled: !root.machine.busy && (modelData.disabled || root.enabledMonitors.length > 1); onClicked: root.machine.run("display", JSON.stringify({name: modelData.name, enabled: !!modelData.disabled})) }
+                    IconButton { iconName: modelData.disabled ? "monitor-off" : "monitor"; text: modelData.disabled ? "Enable display" : "Turn off display"; highlighted: !!modelData.disabled; enabled: !root.machine.busy && (modelData.disabled || root.enabledMonitors.length > 1); onClicked: root.machine.run("display", JSON.stringify({name: modelData.name, enabled: !!modelData.disabled})) }
                 }
                 Label { text: modelData.name + (modelData.disabled ? " · Disabled for this session" : " · " + modelData.width + " × " + modelData.height + " · " + Math.round(modelData.refreshRate) + " Hz"); color: Theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
                 Action { text: modelData.name === root.machine.snapshot.primary ? "Brightness display" : "Use for brightness"; iconName: "sun"; highlighted: modelData.name === root.machine.snapshot.primary; Layout.fillWidth: true; enabled: !modelData.disabled && !root.machine.busy; onClicked: root.machine.run("primary", modelData.name) }

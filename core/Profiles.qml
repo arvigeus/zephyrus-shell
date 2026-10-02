@@ -46,7 +46,7 @@ QtObject {
                     const result = JSON.parse(text); root.error = result.error || "";
                     if (result.data) {
                         root.data = result.data; root.loaded = true;
-                        if (root.operation === "select") {
+                        if (root.operation === "select" && !root.error) {
                             const settings = root.data.profiles.find(p => p.name === root.data.active).settings;
                             if (typeof settings.wifi === "boolean" && Networking.wifiHardwareEnabled) Networking.wifiEnabled = settings.wifi;
                             if (typeof settings.bluetooth === "boolean" && Bluetooth.defaultAdapter) Bluetooth.defaultAdapter.enabled = settings.bluetooth;

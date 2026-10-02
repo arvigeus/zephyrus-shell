@@ -3,7 +3,8 @@ hl.config({
     general = { layout = "scrolling" },
     scrolling = {
         column_width = 0.5,
-        fullscreen_on_one_column = true,
+        -- Explicit column widths also apply when the workspace has one window.
+        fullscreen_on_one_column = false,
         focus_fit_method = 1,
         follow_focus = true,
         direction = "right",

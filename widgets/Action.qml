@@ -7,6 +7,7 @@ Button {
     id: root
     property string iconName: ""
     property bool destructive: false
+    property real cornerRadius: Theme.controlRadius
     property color idleColor: "transparent"
     property int textAlignment: Text.AlignHCenter
     implicitHeight: 42
@@ -30,7 +31,7 @@ Button {
         }
     }
     background: Rectangle {
-        radius: Theme.controlRadius
+        radius: root.cornerRadius
         color: root.down ? Theme.raised : root.highlighted ? Theme.accentSurface : root.hovered ? Theme.surface : root.idleColor
         border.color: root.activeFocus ? Theme.accent : "transparent"
         border.width: root.activeFocus ? 2 : 1

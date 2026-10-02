@@ -8,6 +8,14 @@ PanelWindow {
     required property string side
     required property url contentSource
     property bool opened: false
+    property bool searching: false
+    property string initialQuery: ""
+    onOpenedChanged: {
+        if (opened) {
+            searching = false; initialQuery = "";
+            if (side === "left") Qt.callLater(() => { if (opened && slide.item) slide.item.forceActiveFocus(); });
+        }
+    }
     visible: slide.showing
     anchors { top: true; bottom: true; left: true; right: true }
     readonly property real drawerWidth: Math.min(side === "right" ? 490 : 390, width)
@@ -20,7 +28,7 @@ PanelWindow {
     MouseArea {
         x: root.side === "left" ? root.drawerWidth : 0
         width: root.width - root.drawerWidth; height: root.height
-        enabled: root.opened
+        enabled: root.opened && !root.searching
         acceptedButtons: Qt.AllButtons
         onClicked: ShellState.dismissPanel()
     }
@@ -32,5 +40,19 @@ PanelWindow {
         opened: root.opened
         retainContent: root.side === "right"
         contentSource: root.contentSource
+    }
+    Connections {
+        target: root.side === "left" ? slide.item : null
+        ignoreUnknownSignals: true
+        function onSearchRequested(query) {
+            root.initialQuery = query;
+            root.searching = true;
+        }
+    }
+    Loader {
+        anchors.fill: parent
+        active: root.searching && slide.showing
+        enabled: root.opened
+        sourceComponent: SpaceSearch { initialQuery: root.initialQuery }
     }
 }

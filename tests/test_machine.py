@@ -46,6 +46,19 @@ class TemperatureTests(unittest.TestCase):
             self.assertEqual(second["cpuTemperature"]["value"], 58)
             self.assertIsNone(first["gpuTemperature"])
 
+    def test_suspended_gpu_sensors_are_skipped_until_the_device_is_active(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sensor = Path(directory) / "hwmon0"
+            (sensor / "device/power").mkdir(parents=True)
+            (sensor / "name").write_text("amdgpu")
+            (sensor / "temp1_input").write_text("72500")
+            status = sensor / "device/power/runtime_status"
+            status.write_text("suspended")
+            with patch.object(machine, "gpu_hardware", return_value=[]), patch.object(machine, "cpu_usage", return_value=0):
+                self.assertEqual(machine.hardware(hwmon_root=Path(directory))["temperatures"], [])
+                status.write_text("active")
+                self.assertEqual(machine.hardware(hwmon_root=Path(directory))["gpuTemperature"]["value"], 72)
+
     def test_combined_gpu_card_prefers_hottest_edge_over_memory_or_junction(self):
         sensors = [{"driver": "amdgpu", "label": label, "value": value}
                    for label, value in [("mem", 82), ("junction", 91), ("edge", 53), ("edge", 49)]]
@@ -213,6 +226,43 @@ class DisplayTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "at least one"):
                 machine.action("display", json.dumps({"name": "eDP-2", "enabled": False}))
         self.assertEqual(command.call_count, 1)
+
+    def test_unplugging_external_recovers_disabled_internal_without_saving_rules(self):
+        self.monitors = [dict(self.monitors[0], disabled=True), {"name": "FALLBACK", "disabled": False}]
+        with patch.dict(machine.os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": "test"}), \
+             patch.object(machine, "command", side_effect=self.command) as command:
+            machine.recover_displays()
+        self.assertEqual(command.call_count, 3)
+        self.assertIn('output = "eDP-2"', command.call_args_list[1].args[0][2])
+        self.assertIn('disabled = false', command.call_args_list[1].args[0][2])
+        self.assertIn('monitor = "eDP-2"', command.call_args_list[2].args[0][2])
+        self.assertFalse((self.root / "zephyrus-shell/display-settings.lua").exists())
+
+    def test_display_recovery_preserves_working_external_only_setup(self):
+        self.monitors[0]["disabled"] = True
+        with patch.dict(machine.os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": "test"}), \
+             patch.object(machine, "command", side_effect=self.command) as command:
+            machine.recover_displays()
+        self.assertEqual(command.call_count, 1)
+
+    def test_display_recovery_wakes_sole_internal_dpms_panel(self):
+        self.monitors = [dict(self.monitors[0], dpmsStatus=False)]
+        with patch.dict(machine.os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": "test"}), \
+             patch.object(machine, "command", side_effect=self.command) as command:
+            machine.recover_displays()
+        self.assertEqual(command.call_count, 2)
+        self.assertIn('hl.dsp.dpms', command.call_args.args[0][2])
+
+    def test_display_recovery_handles_no_outputs_and_no_compositor(self):
+        self.monitors = []
+        with patch.dict(machine.os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": "test"}), \
+             patch.object(machine, "command", side_effect=self.command) as command:
+            machine.recover_displays()
+        self.assertEqual(command.call_count, 1)
+        with patch.dict(machine.os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": ""}), \
+             patch.object(machine, "command") as command:
+            machine.recover_displays()
+        command.assert_not_called()
 
     def test_rejects_duplicate_order_and_unlisted_mode(self):
         import json

@@ -12,7 +12,10 @@ hl.config({
     },
     -- Focusing a running-app button must leave the pointer on the pill bar.
     cursor = { no_warps = true },
-    input = { follow_mouse = 0, touchpad = { natural_scroll = true, tap_to_click = true } },
+    -- Route pointer/scroll input to the hovered window; keyboard focus changes
+    -- only when it is clicked, including transitions between tiled/floating.
+    input = { follow_mouse = 2, float_switch_override_focus = 0,
+        touchpad = { natural_scroll = true, tap_to_click = true } },
     misc = { disable_hyprland_logo = true, force_default_wallpaper = 0,
         key_press_enables_dpms = true, mouse_move_enables_dpms = true },
     animations = { enabled = true },

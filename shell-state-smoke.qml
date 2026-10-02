@@ -16,7 +16,8 @@ ShellRoot {
                                    test_hidden_release_preserves_foreground,
                                    test_navigation_is_opaque_and_cancelled_on_desktop,
                                    test_registry_removal_releases_all_owned_state,
-                                   test_back_destroys_even_retained_module]) {
+                                   test_back_destroys_even_retained_module,
+                                   test_removed_monitor_moves_module_ownership]) {
                     init(); test(); cleanup();
                 }
                 console.log("STATE PASS: lifetime, owner, opaque navigation, cancellation, registry removal");
@@ -91,5 +92,20 @@ ShellRoot {
         compare(ShellState.panel, "left");
         compare(ShellState.runningPluginIds, []);
         compare(ShellState.pendingPluginOpen, null);
+    }
+    function test_removed_monitor_moves_module_ownership() {
+        ShellState.openPlugin("player");
+        ShellState.requestKeepRunning("player", true);
+        ShellState.monitor = "secondary";
+        ShellState.openPlugin("other");
+        ShellState.reconcileScreens([]);
+        compare(ShellState.pluginMonitor, "secondary");
+        ShellState.reconcileScreens(["primary"]);
+        compare(ShellState.monitor, "primary");
+        compare(ShellState.pluginMonitor, "primary");
+        compare(ShellState.runningPluginMonitors, {player: "primary", other: "primary"});
+        compare(ShellState.retentionRequests.player, true);
+        ShellState.showDesktop();
+        compare(ShellState.runningPluginIds, ["player"]);
     }
 }

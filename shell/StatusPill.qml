@@ -20,7 +20,8 @@ BarAction {
         microphoneEnabled ? "Microphone enabled" : "",
         batteryPresent ? batteryDescription : "",
         powerMode ? "Power mode " + powerMode.replace(/-/g, " ") : "Power mode unavailable",
-        gpuMode ? "GPU mode " + gpuMode : "GPU mode unavailable"
+        KeepAwake.active ? (KeepAwake.mode === "screen" ? "Keep screen on" : "Keep awake") : "",
+        "GPU selection per application"
     ].filter(Boolean).join("; ")
 
     readonly property var wifiDevices: Networking.devices.values.filter(device => device.type === DeviceType.Wifi)
@@ -69,6 +70,7 @@ BarAction {
         PillStatusIcon { visible: root.microphoneEnabled; name: "mic"; description: "Microphone enabled" }
         PillStatusIcon { visible: root.batteryPresent; name: StatusIcons.batteryIcon(root.batteryPercent, root.battery.state === UPowerDeviceState.Charging); description: root.batteryDescription }
         PillStatusIcon { name: StatusIcons.profileIcon(root.powerMode); description: root.powerMode ? "Power mode: " + root.powerMode.replace(/-/g, " ") : "Power mode unavailable" }
-        PillStatusIcon { name: StatusIcons.gpuIcon(root.gpuMode); description: root.gpuMode ? "GPU mode: " + root.gpuMode : "GPU mode unavailable" }
+        PillStatusIcon { visible: KeepAwake.active; name: KeepAwake.mode === "screen" ? "eye" : "coffee"; description: KeepAwake.mode === "screen" ? "Keep screen on" : "Keep awake" }
+        PillStatusIcon { name: "gpu"; description: "GPU selection: per application. Choose a GPU in Applications; firmware modes are in ROG Control Center." }
     }
 }

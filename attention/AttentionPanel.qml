@@ -63,6 +63,10 @@ Rectangle {
             if (result) {
                 AttentionData.cloudMonth = Qt.formatDate(month, "yyyy-MM");
                 AttentionData.cloud = result;
+                if (Qt.formatDate(month, "yyyy-MM") === Qt.formatDate(clock.date, "yyyy-MM")) {
+                    AttentionData.todayCloud = result;
+                    AttentionData.todayCloudMonth = Qt.formatDate(month, "yyyy-MM");
+                }
                 if (Qt.formatDate(calendarPane.month, "yyyy-MM") !== Qt.formatDate(month, "yyyy-MM")) {
                     Qt.callLater(() => root.refreshCloud());
                     return;
@@ -74,7 +78,10 @@ Rectangle {
     function completeTask(task) {
         service.request("complete_task", {task: {href: task.href, etag: task.etag}}, (result, error) => {
             if (error) AttentionData.cloudError = error;
-            else refreshCloud(true);
+            else {
+                refreshCloud(true);
+                if (monthKey() !== Qt.formatDate(clock.date, "yyyy-MM")) AttentionData.refreshToday();
+            }
         });
     }
     function saveEntry(kind, entry) {
@@ -87,6 +94,7 @@ Rectangle {
             }
             editor.opened = false;
             refreshCloud(true);
+            if (monthKey() !== Qt.formatDate(clock.date, "yyyy-MM")) AttentionData.refreshToday();
         });
     }
     Timer { interval: 15 * 60 * 1000; repeat: true; running: true; onTriggered: root.refreshWeather() }

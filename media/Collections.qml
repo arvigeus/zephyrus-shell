@@ -17,7 +17,7 @@ W.ScrollArea {
     ColumnLayout {
         width: parent.width
         spacing: 18
-        BusyIndicator { visible: root.loading; running: visible; Layout.alignment: Qt.AlignHCenter }
+        W.BusySpinner { visible: root.loading; running: visible; Layout.alignment: Qt.AlignHCenter }
         W.Label { visible: !!root.error; text: root.error; color: Theme.danger; wrapMode: Text.Wrap; Layout.fillWidth: true }
         W.Label {
             visible: root.loaded && !root.loading && !root.error && !root.sections.length

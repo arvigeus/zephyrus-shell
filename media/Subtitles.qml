@@ -190,7 +190,7 @@ ColumnLayout {
             onActivated: index => root.path = root.files[index].path
             Accessible.name: "Local video"
         }
-        BusyIndicator { running: root.loading || root.searching || root.moreLoading || root.changing; visible: running; Layout.preferredWidth: 28; Layout.preferredHeight: 28 }
+        W.BusySpinner { running: root.loading || root.searching || root.moreLoading || root.changing; visible: running; Layout.preferredWidth: 28; Layout.preferredHeight: 28 }
         W.Action { iconName: "refresh-cw"; text: "Refresh"; enabled: !!root.path && !root.loading; onClicked: root.refresh() }
     }
     W.Label { visible: !!root.error; text: root.error; color: Theme.danger; Layout.fillWidth: true; wrapMode: Text.Wrap }
@@ -325,7 +325,7 @@ ColumnLayout {
                     }
                 }
             }
-            BusyIndicator { visible: root.moreLoading; running: visible; Layout.alignment: Qt.AlignHCenter; Layout.preferredWidth: 28; Layout.preferredHeight: 28 }
+            W.BusySpinner { visible: root.moreLoading; running: visible; Layout.alignment: Qt.AlignHCenter; Layout.preferredWidth: 28; Layout.preferredHeight: 28 }
         }
     }
 }

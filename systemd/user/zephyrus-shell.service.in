@@ -1,0 +1,15 @@
+[Unit]
+Description=Zephyrus Shell
+PartOf=graphical-session.target
+After=graphical-session.target
+ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
+
+[Service]
+ExecStartPre=/usr/bin/python3 "@ROOT@/scripts/prepare-lock.py"
+ExecStart=/usr/bin/quickshell -n -p "@ROOT@"
+Restart=on-failure
+RestartSec=3
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target

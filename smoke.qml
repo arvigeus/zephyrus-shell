@@ -1,3 +1,4 @@
+//@ pragma UseQApplication
 // Integration harness: only run on a private D-Bus session (scripts/check-wayland.sh).
 import QtQuick
 import Quickshell
@@ -6,9 +7,11 @@ import "core"
 import "shell"
 
 ShellRoot {
+    id: root
+    property ModuleLoader modules: ModuleLoader { screenName: "*"; readyToLoad: false; anchors.fill: parent }
     Variants {
         model: Quickshell.screens
-        ShellScreen { required property var modelData; screen: modelData }
+        ShellScreen { required property var modelData; screen: modelData; sharedModules: root.modules }
     }
     Process {
         id: notification

@@ -83,7 +83,6 @@ Item {
     property bool gridMode: false
     property int providerIndex: 0
     property int trailerIndex: 0
-    property string audioMode: "sub"
     property bool artworkReady: false
     readonly property var trailers: selected.trailers || []
     readonly property var cast: selected.cast || []
@@ -331,7 +330,7 @@ Item {
         const generation = selectionGeneration;
         playLoading = true;
         detailError = "";
-        service.request("play", {title:selected,online:!!online,provider:providerIndex,mode:audioMode,season:episode ? episode.season : null,episode:episode ? episode.number : null}, (result, failure) => {
+        service.request("play", {title:selected,online:!!online,provider:providerIndex,season:episode ? episode.season : null,episode:episode ? episode.number : null}, (result, failure) => {
             if (generation !== selectionGeneration) return;
             playLoading = false;
             if (failure) detailError = failure;
@@ -455,7 +454,7 @@ Item {
             }
             Item {
                 Layout.minimumWidth: 28; Layout.maximumWidth: 28; Layout.preferredHeight: 28
-                BusyIndicator { anchors.fill: parent; running: root.loading; visible: running }
+                W.BusySpinner { anchors.fill: parent; running: root.loading; visible: running }
             }
             W.IconButton { objectName: "searchButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; highlighted: root.searchOpen; iconName: "search"; text: "Search " + (root.kind === "tv" ? "TV series" : "movies"); onClicked: { root.searchOpen = !root.searchOpen; if (root.searchOpen) search.forceActiveFocus(); else search.text = ""; } }
             W.IconButton { objectName: "filtersButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; iconName: "sliders-horizontal"; text: "Filters"; enabled: !root.favorites && !root.localMode; highlighted: root.filtersOpen; onClicked: root.filtersOpen = !root.filtersOpen }
@@ -523,11 +522,10 @@ Item {
                             else { root.providerIndex = index - (root.localFiles.length ? 1 : 0); root.play(null, true); }
                         }
                     }
-                    W.Choice { visible: root.animeMode; width: 85; model: ["Sub","Dub"]; onActivated: root.audioMode = currentIndex === 1 ? "dub" : "sub"; Accessible.name: "Anime audio" }
                     SplitButton { visible: root.trailers.length > 0; text: root.trailers.length === 1 ? "Trailer" : "Trailers"; options: root.trailers.map(t => t.title); currentIndex: root.trailerIndex; onTriggered: index => { root.trailerIndex=index; if (root.trailers[index]) Browser.open(root.trailers[index].url, root.kind === "tv" ? "series" : "movies", "", root.host); } }
                     W.IconButton { iconName: root.personal.favorite ? "star-filled" : "star"; text: root.personal.favorite ? "Remove favorite" : "Add favorite"; onClicked: root.save({favorite:!root.personal.favorite}) }
                     W.IconButton { iconName: "refresh-cw"; text: "Refresh title"; onClicked: root.refreshTitle() }
-                    BusyIndicator { objectName: "titleLoadingIndicator"; running: root.titleLoading; visible: running; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
+                    W.BusySpinner { objectName: "titleLoadingIndicator"; running: root.titleLoading; visible: running; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
                     W.HoldDelete { visible: root.kind === "movie" && root.localFiles.length > 0; torrent: root.localFiles.length > 0 && root.localFiles[0].torrent; onActivated: root.deleteLocal(root.localFiles[0].path) }
                 }
                 Flow {
@@ -654,7 +652,7 @@ Item {
                         width: filmography.width; spacing: 12; bottomPadding: 16
                         W.Label { width: parent.width; text: root.personDetails.name || ""; font.pixelSize: 22; font.bold: true; wrapMode: Text.Wrap }
                         W.Label { width: parent.width; text: root.personDetails.biography || ""; wrapMode: Text.Wrap }
-                        BusyIndicator { visible: root.extraLoading; running: visible }
+                        W.BusySpinner { visible: root.extraLoading; running: visible }
                         Flow {
                             width: parent.width; spacing: 4
                             Repeater { model: root.personRoles; W.Action { required property string modelData; text: modelData; highlighted: root.personRole === modelData; onClicked: { root.personRole=modelData; filmography.positionViewAtBeginning(); } } }
@@ -696,7 +694,7 @@ Item {
                         }
                         footer: Column {
                             width: episodeView.width
-                            BusyIndicator { visible: root.episodeLoading; running: visible }
+                            W.BusySpinner { visible: root.episodeLoading; running: visible }
                             W.Label { visible: !root.episodeLoading && !root.episodes.length; text: "No episodes available yet."; color: Theme.muted }
                             W.Action { visible: !!root.episodeNext; text: "More episodes"; enabled: !root.episodeLoading; onClicked: root.loadEpisodes(true) }
                         }

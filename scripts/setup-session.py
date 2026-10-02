@@ -29,11 +29,22 @@ def install(config, state, root=ROOT):
         config / "hypr/hypridle.conf": root / "hyprland/hypridle.conf",
         config / "xdg-desktop-portal/hyprland-portals.conf": root / "hyprland/portals.conf",
     }
+    # Use systemd's native service restart and session cleanup. Escape systemd
+    # specifiers and quoted ExecStart arguments for arbitrary checkout paths.
+    unit_root = str(root).replace("%", "%%").replace("\\", "\\\\").replace('"', '\\"')
+    if "\n" in unit_root or "\r" in unit_root:
+        raise ValueError("Checkout path must not contain a newline")
+    user_units = config / "systemd/user"
+    files[user_units / "zephyrus-shell.service"] = (ROOT / "systemd/user/zephyrus-shell.service.in").read_text().replace("@ROOT@", unit_root)
+    for unit in ("hypridle", "hyprpolkitagent"):
+        files[user_units / (unit + ".service.d/zephyrus.conf")] = ROOT / "systemd/user/hyprland-only.conf"
+        files[user_units / ("graphical-session.target.wants/" + unit + ".service")] = Path("/usr/lib/systemd/user") / (unit + ".service")
+    files[user_units / "graphical-session.target.wants/zephyrus-shell.service"] = Path("../zephyrus-shell.service")
     if manifest.exists():
         existing = json.loads(manifest.read_text())
-        if existing["root"] == str(root) and all(fingerprint(Path(entry["path"])) == entry["installed"] for entry in existing["files"]):
+        if existing["root"] == str(root) and {entry["path"] for entry in existing["files"]} == {str(path) for path in files} and all(fingerprint(Path(entry["path"])) == entry["installed"] for entry in existing["files"]):
             return
-        raise ValueError("A development setup already exists or was edited; teardown it before reinstalling.")
+        raise ValueError("A development setup already exists, needs migration, or was edited; teardown it before reinstalling.")
     for path in files:
         backup = path.with_name(path.name + ".before-zephyrus")
         if backup.exists() or backup.is_symlink() or (path.exists() and not path.is_file() and not path.is_symlink()):

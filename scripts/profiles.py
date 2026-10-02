@@ -36,8 +36,9 @@ def run(name, value):
             if key in ("profile", "brightness", "gpu", "chargeLimit"):
                 try: machine.action(key, str(setting))
                 except Exception as error: errors.append(f"{key}: {error}")
-        data["active"] = value
-        save(data)
+        if not errors:
+            data["active"] = value
+            save(data)
         return dict(data=data, error="; ".join(errors))
     if name == "edit":
         changes = json.loads(value)

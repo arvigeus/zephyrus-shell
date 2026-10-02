@@ -13,7 +13,10 @@ ShellRoot {
             id: safeMachine
             property var snapshot: ({hyprland: true})
             property bool busy: false
-            function run(name, value) { test.executions++; test.lastAction = name; }
+            function run(name, value) {
+                test.executions++; test.lastAction = name; test.lastValue = value === undefined ? "" : String(value);
+                if (name === "cpu-boost") snapshot = {hardware:{boost:value === "on" ? "1" : "0", boostControlError:""}};
+            }
         }
         Item {
             id: canvas
@@ -36,6 +39,7 @@ ShellRoot {
             property int activations: 0
             property int executions: 0
             property string lastAction: ""
+            property string lastValue: ""
             property double checked: 0
             function fail(message) { console.error("SETTINGS FAIL", message); stop(); Qt.quit(); }
             function find(item, name) {
@@ -47,6 +51,7 @@ ShellRoot {
                 if (++ticks > 130) { fail("Timeout at step " + step); return; }
                 if (!drawer.item || HardwareSnapshot.busy || !Profiles.loaded || Profiles.busy) return;
                 if (step === 0) {
+                    if (!HardwareSnapshot.checkedAt || HardwareSnapshot.events.running || HardwareSnapshot.refreshPending) return;
                     saved = drawer.item;
                     checked = HardwareSnapshot.checkedAt;
                     button = find(saved, "session-action-poweroff");
@@ -82,10 +87,33 @@ ShellRoot {
                 } else if (step === 3 && ticks > 4) {
                     canvas.grabToImage(result => {
                         if (!result.saveToFile(Paths.file("tests/artifacts/settings-displays.png"))) { fail("Capture failed"); return; }
-                        console.log("SETTINGS PASS: retained real drawer, fresh snapshot reuse, hidden hold cancellation, display page and shared weather");
-                        Qt.quit();
+                        saved.page = "cpu";
+                        safeMachine.snapshot = {hardware:{boost:"1", boostControlError:""}};
+                        test.step = 5; test.ticks = 0; test.start();
                     });
                     stop();
+                } else if (step === 5) {
+                    const details = find(saved, "hardware-details");
+                    if (!details) return;
+                    details.machine = safeMachine;
+                    step = 6; ticks = 0;
+                } else if (step === 6 && ticks > 1) {
+                    const toggle = find(saved, "cpu-boost-toggle");
+                    if (!toggle || !toggle.enabled || toggle.text !== "Disable CPU boost") { fail("Boost control did not use kernel state"); return; }
+                    toggle.clicked();
+                    if (lastAction !== "cpu-boost" || lastValue !== "off") { fail("Boost toggle did not disable boost"); return; }
+                    step = 7; ticks = 0;
+                } else if (step === 7 && ticks > 1) {
+                    const toggle = find(saved, "cpu-boost-toggle");
+                    if (toggle.text !== "Enable CPU boost") { fail("Boost state did not refresh after action"); return; }
+                    toggle.clicked();
+                    if (lastValue !== "on") { fail("Boost toggle did not enable boost"); return; }
+                    safeMachine.snapshot = {hardware:{boost:"1", boostControlError:"Install helper"}};
+                    step = 8; ticks = 0;
+                } else if (step === 8 && ticks > 1) {
+                    if (find(saved, "cpu-boost-toggle").enabled) { fail("Boost control enabled without installed helper"); return; }
+                    console.log("SETTINGS PASS: retained drawer, snapshot reuse, hidden hold cancellation, displays, weather, state-driven CPU boost toggle");
+                    stop(); Qt.quit();
                 }
             }
         }

@@ -441,6 +441,20 @@ class MediaTests(unittest.TestCase):
         init=self.backend.handle({'op':'init','kind':'tv'})
         self.assertEqual(init['animeProviders'],['Fixture source'])
         self.assertNotIn('fixture-key',json.dumps(init))
+
+    def test_anime_audio_is_owned_by_the_selected_provider(self):
+        source={'name':'Example (Dub)','strategy':'mal_embed','audio_mode':'dub'}
+        self.configure({'player':['mpv'],'anime_sources':[source]})
+        with patch.object(anime_sources,'resolve',return_value={'url':'https://example.org/stream',
+                          'referer':'https://example.org/','subtitle':''}) as resolve, \
+             patch.object(m.shutil,'which',return_value='/usr/bin/mpv'):
+            self.backend.handle({'op':'play','title':{'id':'mal:1','malId':1,'kind':'movie'},
+                                 'provider':0,'mode':'sub'})
+        self.assertEqual(resolve.call_args.args[-1],'dub')
+        self.assertEqual(self.backend.handle({'op':'init','kind':'movie'})['animeProviders'],['Example (Dub)'])
+        self.configure({'anime_sources':[dict(source,audio_mode='invalid')]})
+        with self.assertRaises(m.MediaError):
+            self.backend.handle({'op':'init','kind':'movie'})
     def test_tmdb_pagination_continues_same_provider(self):
         self.configure({'tmdb_key':'test-secret'})
         def api(url,params):

@@ -344,6 +344,8 @@ class Backend:
             if (not isinstance(source,dict) or not isinstance(source.get('name'),str) or not source['name'].strip()
                     or source.get('strategy') not in ('mal_embed','search_embed')):
                 raise MediaError('Each anime source needs a name and supported strategy.')
+            if source.get('audio_mode','sub') not in ('sub','dub'):
+                raise MediaError('Anime source audio_mode must be sub or dub.')
         return config
     def playback_providers(self,kind):
         key='series_url' if kind=='tv' else 'movie_url'
@@ -935,7 +937,7 @@ class Backend:
                         or Path(player[0]).name!='mpv' or not shutil.which(player[0])):
                     raise MediaError('Anime streams require mpv in the player setting.')
                 try:
-                    stream=anime_sources.resolve(sources[index],t,r.get('episode') or 1,r.get('mode','sub'))
+                    stream=anime_sources.resolve(sources[index],t,r.get('episode') or 1,sources[index].get('audio_mode','sub'))
                 except anime_sources.SourceError as error:
                     raise MediaError(str(error)) from None
                 command=player+['--referrer='+stream['referer']]

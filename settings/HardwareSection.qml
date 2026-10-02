@@ -24,11 +24,7 @@ RowLayout {
                     {value: "power-saver", label: "Power saver", icon: "leaf"},
                     {value: "balanced", label: "Balanced", icon: "scale"},
                     {value: "performance", label: "Performance", icon: "rocket"}
-                ] : [
-                    {value: "integrated", label: "Integrated", icon: "square-dot"},
-                    {value: "hybrid", label: "Hybrid", icon: "squares-exclude"},
-                    {value: "smart", label: "Smart", icon: "square-sparkles"}
-                ]
+                ] : []
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1
                 Layout.minimumHeight: 190

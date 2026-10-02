@@ -14,10 +14,20 @@ import profiles
 
 
 class SettingsTests(unittest.TestCase):
-    def test_cardwire_discovers_supported_modes(self):
-        with patch.object(machine.shutil, 'which', return_value='/usr/bin/cardwire'), patch.object(machine, 'command', return_value='Current Mode: Hybrid\nAvailable Mode: integrated, hybrid, smart'):
-            self.assertEqual(machine.gpu_status()['modes'], ['integrated', 'hybrid', 'smart'])
-            self.assertEqual(machine.gpu_status()['mode'], 'hybrid')
+    def test_gpu_controls_do_not_require_or_activate_a_policy_daemon(self):
+        with patch.object(machine, 'command') as command:
+            self.assertEqual(machine.gpu_status()['modes'], [])
+            command.assert_not_called()
+
+    def test_asus_profile_uses_the_existing_owner(self):
+        def output(args, *unused):
+            return {'systemctl': 'active', 'list': 'Quiet\nBalanced\nPerformance',
+                    'get': 'Active profile: Quiet'}.get(args[-1], '') if args[0] != 'systemctl' else 'active'
+        with patch.object(machine.shutil, 'which', return_value='/usr/bin/asusctl'), patch.object(machine, 'command', side_effect=output) as command:
+            self.assertEqual(machine.power_status()['profile'], 'power-saver')
+            machine.action('profile', 'balanced')
+            self.assertIn(unittest.mock.call(['asusctl', 'profile', 'set', 'Balanced'], True), command.call_args_list)
+            self.assertFalse(any(c.args[0][0] == 'powerprofilesctl' for c in command.call_args_list))
 
     def test_gpu_rejects_unsupported_modes(self):
         with patch.object(machine, 'gpu_status', return_value={'modes': ['hybrid']}), patch.object(machine, 'command') as command:
@@ -90,4 +100,4 @@ class SettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.object(profiles, 'FILE', Path(directory) / 'profiles.json'), patch.object(machine, 'action', side_effect=RuntimeError('Unavailable')):
             result = profiles.run('select', 'Quiet')
             self.assertIn('Unavailable', result['error'])
-            self.assertEqual(result['data']['active'], 'Quiet')
+            self.assertEqual(result['data']['active'], 'Balanced')

@@ -33,7 +33,7 @@ uses the configured weather and Nextcloud data. A private bus
 keeps its notification server separate from the existing desktop. Running apps and
 tray integration are exercised by the actual shell, not this component preview.
 
-Install the development session shim once, then select **Hyprland** at login:
+Install the development session shim once, then select **Hyprland (uwsm-managed)** at login:
 
 ```sh
 python3 scripts/setup-session.py install
@@ -76,9 +76,12 @@ migration are already prepared. The scrolling layout needs no plugins. See
 - Terminal opens the user's shell in an embedded Qt Quick terminal surface. Closing the
   module ends that shell session. It uses the packaged QMLTermWidget component.
 - Spaces opens the module drawer over the current view. Desktop reveals the Hyprland session; Music and Radio can keep playing there until closed.
+- Tap Win to open Spaces, then type to search installed applications and space names.
+  Up/Down selects a result and Enter opens it; Escape closes the drawer/search.
 - Running-window activation and tray activation/context menus beside the left pill.
 - Live clock, weather, navigable Nextcloud calendar, task lists, notifications,
   actions, dismissal, toast, and do-not-disturb. Attention has Priority and All views.
+  The clock pill indicates today's tasks and events plus pending notifications.
 - Separate named audio output and microphone selection, level and mute controls.
 - GNOME-style Wi-Fi/Bluetooth split tiles, with device selection inside Control room.
 - Inline Wi-Fi passwords and Bluetooth pairing confirmation/PIN entry.
@@ -87,7 +90,7 @@ migration are already prepared. The scrolling layout needs no plugins. See
 - A static, procedurally drawn background. No wallpaper download or resident animation.
 
 The Settings drawer has saved profiles, expandable connectivity/audio/display controls and lazily loaded battery information,
-CPU/GPU and System cards, and Cardwire GPU switching. Hardware controls are enabled only
+CPU/GPU and System cards, and ASUS power profiles. Hardware controls are enabled only
 when their backend is available. See [settings configuration](docs/settings.md)
 for profiles, battery health and automation, display aliases, DDC brightness and limitations.
 Networking, Bluetooth, audio and battery automation use service events. Hardware
@@ -166,9 +169,14 @@ bash scripts/check-books.sh
 bash scripts/check-games.sh
 bash scripts/check-modules.sh
 bash scripts/check-retained.sh
+bash scripts/check-tray.sh
+bash scripts/check-spaces.sh
+bash scripts/check-desktop.sh
 python3 scripts/check-performance.py
 # Briefly opens the actual panels on your current Wayland desktop:
 bash scripts/check-wayland.sh
+# Exercises native controls against its own temporary window:
+bash scripts/check-windows.sh
 ```
 
 The preview check opens every panel and saves images under `tests/artifacts/`.

@@ -1,5 +1,6 @@
 pragma Singleton
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 import Quickshell.Services.UPower
@@ -31,7 +32,24 @@ QtObject {
     property Connections monitorChanges: Connections {
         target: Hyprland
         function onRawEvent(event) {
-            if (["monitoraddedv2", "monitorremoved", "configreloaded"].includes(event.name)) root.requestRefresh();
+            if (["monitoraddedv2", "monitorremoved", "configreloaded"].includes(event.name)) displayEvents.restart();
+        }
+    }
+    property Timer displayEvents: Timer { interval: 350; onTriggered: {
+        if (displayRecovery.running) root.recoveryPending = true;
+        else displayRecovery.running = true;
+    } }
+    property bool recoveryPending: false
+    property Process displayRecovery: Process {
+        command: ["python3", Paths.file("scripts/machine.py"), "recover-displays"]
+        running: !!Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE")
+        stdout: StdioCollector { onStreamFinished: {
+            try { const result = JSON.parse(text); if (result.error) root.error = result.error; }
+            catch (error) { root.error = "Could not recover displays: " + error; }
+        } }
+        onExited: {
+            root.requestRefresh();
+            if (root.recoveryPending) { root.recoveryPending = false; displayEvents.restart(); }
         }
     }
     property Process query: Process {

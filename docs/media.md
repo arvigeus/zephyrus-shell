@@ -106,6 +106,9 @@ Replace the example provider with your service's URL:
   placeholders retains NexFlix's `/title/{imdbId}/` convention.
 - `anime_sources`: optional named source adapters for Anime playback. Keep source
   endpoints, matching patterns, and decoder keys in your private `media.json`.
+  Each source sets `audio_mode` to `sub` (the default) or `dub`. Duplicate an
+  adapter with names such as `Example (Sub)` and `Example (Dub)` to offer both
+  versions in the Watch online provider menu. There is no separate audio selector.
   The supported strategies are `mal_embed` (an `embed_url` with `{malId}`,
   `{episode}`, and `{mode}`) and `search_embed` (a title search followed by
   episode and server lookups). Both use `blob_pattern` and `xor_key` to resolve a

@@ -1,6 +1,6 @@
 # Development Hyprland session
 
-The ordinary **Hyprland** login-manager entry uses `start-hyprland` and the
+The **Hyprland (uwsm-managed)** login-manager entry uses UWSM and the
 generated `~/.config/hypr/hyprland.lua` shim. The installed entry already exists
 on this machine. Use it for the first live test; log out of Plasma first.
 The repository remains the source of configuration and QML edits.
@@ -38,8 +38,8 @@ login-manager desktop entry or your old `hyprland.conf`.
 ## Native scrolling desktop
 
 `windows.lua` selects Hyprland's built-in scrolling layout. New ordinary windows
-join horizontal columns at half the monitor's usable width; a single column
-fills the work area. Focusing a column brings it into view. Dialogs keep native
+join horizontal columns at half the monitor's usable width. Explicit widths also
+apply to a single column; it no longer automatically fills the work area. Focusing a column brings it into view. Dialogs keep native
 floating behavior, and Super+V can toggle floating for an individual window.
 No plugin or custom window controls are required. The earlier hyprbars prototype
 has been disabled (`hyprpm disable hyprbars`); its cached installation may remain,
@@ -89,36 +89,76 @@ Activating a running-app button focuses its window without moving the pointer;
 automatic focus cursor warps are disabled. Unknown icons stay blank. Desktop
 entries may use theme names or absolute image paths.
 
+Clicking a window button reveals the desktop and focuses that app. Hovering its
+bar button only shows the title tooltip. Pointer focus follows the actual window
+under the mouse, so an inactive window can receive scroll input while keyboard
+focus stays on the active window; clicking changes keyboard focus.
+Modules with active retention requests continue in the
+background; other modules close. Right-click offers Close, Mute/Unmute
+when PipeWire identifies an audio stream, 25%/50%/75%/Full width, Float/Tile,
+and a destination Monitor when another output is active. Scrolling sizes affect
+the selected column; floating sizes use the display's usable area. Audio mute
+can affect multiple windows sharing the same application process or audio ID.
+Tray buttons forward primary activation on left-click, the application's menu
+on right-click, secondary activation on middle-click, and wheel events.
+Menu-only items open their menu on left-click. Tray actions reveal the desktop
+before handing input to the application. Native tray menus require the entry
+point's `UseQApplication` pragma; changes to this mode require restarting the
+shell. Missing tray theme icons fall back to the installed application's icon.
+Window and tray hover tooltips have no input region, so context menus remain
+available while the tooltip is visible.
+
+Tap either Win key to toggle Spaces on the focused monitor. Super+Space also
+toggles it. Typing opens a centered local search of installed applications and
+module names; Up/Down selects a result, Enter launches or opens it, and Escape
+closes the drawer. Searches do not load modules or start provider workers.
+The center pill separates date, time, weather and attention indicators with dots.
+Tasks due today, events spanning today and pending notifications have separate
+Lucide icons. A shared, cached calendar snapshot refreshes every 15 minutes even
+when Attention is closed; browsing another month does not change today's icons.
+
+Print selects a screenshot area, Super+Print selects a window, and Shift+Print
+captures the active output. Captures go to XDG Pictures/Screenshots and the
+clipboard. The Settings drawer also exposes Screenshot and Clipboard actions;
+Super+Shift+V opens the native searchable Clipboard space. The dotfiles desktop
+package supplies Hyprshot, cliphist, wl-clipboard and session-owned history
+watchers; development checkouts show setup guidance when helpers are missing.
+
+Hyprland transfers workspaces and windows when an output disappears or is
+disabled. The shell checks topology changes and re-enables a connected internal
+panel if no usable output remains, including waking its DPMS state. Working
+external-only setups stay external-only. Module ownership follows a surviving
+screen without recreating retained workers or players.
+
 ## Session ownership
 
-`environment.lua` sets Wayland/Hyprland identity. `session.lua` starts one owned
-Python supervisor. It imports the actual display and desktop environment into
-the user manager and D-Bus activation before starting services. It starts
-PipeWire/WirePlumber, the installed Hyprland polkit agent, and restarts portals
-with the Hyprland/GTK routing file. GTK supplies file choosing; Hyprland supplies
-screen sharing and screenshots. Dolphin may use its own Qt chooser; portal
-consumers use the routing above.
+Choose **Hyprland (uwsm-managed)** at login. UWSM imports the compositor
+variables, starts `graphical-session.target`, handles XDG autostart, and cleans
+up services and environment on logout or compositor failure. `session.lua`
+calls `uwsm finalize`; there is no Python session supervisor.
 
-The supervisor runs Quickshell and hypridle, restarts a failed child after three
-seconds, and watches the compositor's event socket. Normal logout and compositor
-failure terminate the owned process groups, stop portals and the polkit agent
-if this session started it, and clear display/desktop variables in the user
-manager. Audio services are shared user services and remain available.
-This setup assumes one graphical desktop session for this Unix user at a time.
-The UWSM-managed login entry is not the validated development path.
+Setup installs a standard `zephyrus-shell.service` and enables the distribution's
+`hypridle.service` and `hyprpolkitagent.service`. All are bound to the graphical
+session; Hyprland environment conditions prevent them starting under Plasma.
+Systemd restarts a failed shell. PipeWire uses its packaged socket activation;
+portals use their packaged D-Bus activation and the Hyprland/GTK routing file.
+GTK provides file choosing, and Hyprland screen sharing and screenshots.
 
-Quickshell owns `org.freedesktop.Notifications`; no dunst, mako or KDE notification
-server is autostarted. Preview tests use private buses. Nothing requires Plasma
-to be running; Kitty and Dolphin are applications, not session providers.
-NetworkManager, Bluetooth and power profiles need their services enabled.
-Brightness/DDC helpers, hyprlock and hypridle are installed by default;
-unavailable hardware disables the corresponding controls. GPU switching stays
-optional.
+After setup or teardown run `systemctl --user daemon-reload`. For migration from
+the old setup, teardown and reinstall the development shim, then log out and
+choose the UWSM entry. Do not start a second shell in the current session.
 
-Session output is in `$XDG_STATE_HOME/zephyrus-shell/session.log` (normally
-`~/.local/state/zephyrus-shell/session.log`), with the preceding run in
-`session.previous.log`. Also inspect `journalctl --user -b` for portal/polkit
-failures and `hyprctl configerrors` for compositor configuration.
+Quickshell owns notifications. Power controls call an already active `asusd`
+on ASUS machines, or an already active PPD elsewhere. Setup does not install or
+enable a second power policy daemon. ASUS firmware owns AC/battery profile
+transitions unless you explicitly configure Zephyrus automatic assignments.
+Performance is a firmware profile, not a promise of a safe temperature ceiling.
+GPU selection uses switcheroo-control per application; ROG Control Center owns
+supported firmware mode changes. Settings skips suspended GPU sensors to avoid
+waking a dGPU for monitoring.
+
+Read logs with `journalctl --user -b -u zephyrus-shell -u hypridle` and inspect
+`hyprctl configerrors`. Test a login/logout cycle before relying on cleanup.
 
 ## Lock and idle
 
@@ -168,7 +208,7 @@ These are initial idle timings to tune later.
 - With another monitor, test pills/drawers, moving/resizing/maximizing windows,
   mixed scales, hotplug and locking on all outputs.
 - Log out and log back in; check that there is one shell/idle agent and no orphan
-  supervisor or stale window-control configuration.
+  shell services or stale window-control configuration.
 
 References: [native scrolling layout](https://wiki.hypr.land/Configuring/Layouts/Scrolling-Layout/),
 [hypridle lock/suspend handling](https://wiki.hypr.land/Hypr-Ecosystem/hypridle/),

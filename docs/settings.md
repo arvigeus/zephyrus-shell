@@ -6,7 +6,9 @@ edit, the working copy lives in `$XDG_STATE_HOME/zephyrus-shell/profiles.json`
 (default `~/.local/state/zephyrus-shell/profiles.json`). Edit that copy to add or
 rename profiles, then restart the shell. Only keys included in a profile apply:
 `wifi` and `bluetooth` (booleans), `profile` (power-saver/balanced/performance),
-`brightness` (5–100), `chargeLimit` (50–100), and `gpu` (a supported Cardwire mode).
+`brightness` (5–100), and `chargeLimit` (50–100 on supported ASUS hardware).
+Old saved `gpu` values report an error; use standard application GPU selection.
+A failed hardware action leaves the active profile unchanged and reports the error.
 Audio routing, volume and display topology are independent of profiles.
 
 Battery expansion loads a read-only information card for each laptop battery:
@@ -58,7 +60,8 @@ microphone, battery, CPU power profile, and GPU mode as icons with individual
 tooltips. The battery tooltip uses live UPower charge, time, and power readings.
 Speaker icons distinguish mute, zero, low, and high volume. Brightness and
 battery icons also change with their levels; charging takes precedence over the
-battery level icon.
+battery level icon. Active Keep awake and Keep screen on modes also appear in
+the right pill with their coffee and eye icons.
 
 Battery fill indicates current charge. The vertical handle sets the charge limit
 between 50% and 100%; hover or drag shows its value, and arrow keys also work.
@@ -77,12 +80,15 @@ label and sampling rule.
 ## Displays
 
 Under Hyprland, expanding brightness lists connected displays. The icon enables
-or disables a display; its name selects the shell's primary brightness target.
+or disables a display; enabled displays use the monitor icon and disabled
+displays use monitor-off. Its name selects the shell's primary brightness target.
 The last enabled display cannot be disabled. Hyprland does not have a global
 primary-monitor concept. This preference is stored in XDG state. Resolution,
 refresh rate, and scale are available in Display settings and apply to the current
 Hyprland session. Enabling a disabled display restores its preferred mode at
-automatic position and scale 1.
+automatic position and scale when no previous geometry is available. Disconnecting
+the last external display re-enables the internal panel if necessary, while
+Hyprland transfers the removed display's workspaces and apps to an enabled output.
 
 `config/displays.json` maps connector names to aliases and optional DDC buses:
 
@@ -99,16 +105,32 @@ brightness slider. Built-in brightness uses brightnessctl or logind.
 
 ## Hardware
 
-GPU modes are discovered with `cardwire get` and applied with `cardwire set MODE`.
-See [Cardwire](https://github.com/OpenGamingCollective/cardwire) for installation
-and daemon setup. Laptop modes are Integrated, Hybrid and Smart; desktop modes
-may differ. The shell shows only modes reported by the installed daemon. It does
-not implement a dedicated-only mode or change Cardwire's independent automation
-settings; configure those to avoid conflicting with shell battery profiles.
+GPU selection belongs to switcheroo-control and the application's desktop entry.
+Applications exposes a GPU picker on hover/focus and in its right-click menu.
+Each explicit launch queries the active service again and uses its discovered
+device identity for that process only. On Mesa, Vulkan sees only the selected
+device. Existing application instances must be closed first; a single-instance
+app may otherwise forward the request to its existing process. Launching Steam
+with a GPU choice affects newly started games in that Steam process, not an
+already running Steam client. No session-wide environment is changed.
+Supported firmware GPU mode changes are available in ROG Control Center and
+may require a reboot. The shell does not install a GPU-blocking daemon or force
+one GPU globally. It skips sensors on suspended GPUs so monitoring does not
+wake them.
 
-CPU choices use power-profiles-daemon's power profiles, not raw CPU governors.
-Detail pages display kernel temperature/fan sensors, load average and boost state.
-Fan curves, boost changes and TDP controls remain in the existing ASUS setup.
+CPU choices call the already active `asusd` on ASUS hardware: Power saver maps
+to Quiet, Balanced to Balanced, and Performance to Performance. Elsewhere an
+already active power-profiles-daemon is supported. The shell does not activate
+a second profile owner. ASUS owns AC/battery transitions unless explicit shell
+automatic assignments are configured. Performance does not impose a thermal
+ceiling; fan/PPT experiments belong in the firmware tools and need measurement.
+The CPU detail page includes a boost toggle when the kernel exposes the standard
+global CPUFreq switch. It uses a root-owned, one-shot helper with polkit
+administrator authentication, not a tuning daemon or passwordless sudo. Boost
+changes last for the current boot and are not saved in shell profiles. Refresh
+readings after firmware/profile changes to confirm the actual state. Disabling
+boost may reduce heat and CPU performance; it does not impose a temperature
+ceiling or limit dGPU power. Fan curves and PPT controls remain in ASUS tooling.
 CPU, GPU, and System cards share one row. The CPU and GPU cards show the device
 name, temperature, usage, and available mode buttons. System shows memory and
 root filesystem usage. The colored bars mark 0–60% green, 60–85% yellow, and

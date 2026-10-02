@@ -10,10 +10,28 @@ import "../attention"
 Scope {
     id: root
     required property var screen
-    Component.onCompleted: {
-        if (!ShellState.monitor && screen === Quickshell.screens[0]) ShellState.monitor = screen.name;
+    readonly property string screenName: screen ? screen.name : ""
+    readonly property real screenWidth: screen ? screen.width : 0
+    readonly property real screenHeight: screen ? screen.height : 0
+    property var sharedModules: null
+    function syncModuleSurface() {
+        if (!sharedModules || !screen || screenName !== ShellState.pluginMonitor) return;
+        sharedModules.parent = moduleWindow.contentItem;
+        sharedModules.readyToLoad = !leftDrawer.visible && !rightDrawer.visible;
     }
-    readonly property bool selected: ShellState.monitor === screen.name || (!Quickshell.screens.some(s => s.name === ShellState.monitor) && screen === Quickshell.screens[0])
+    Component.onCompleted: {
+        if (!ShellState.monitor && screen && screen === Quickshell.screens[0]) ShellState.monitor = screenName;
+        syncModuleSurface();
+    }
+    Component.onDestruction: {
+        if (sharedModules && sharedModules.parent === moduleWindow.contentItem) sharedModules.parent = null;
+    }
+    Connections {
+        target: ShellState
+        function onPluginMonitorChanged() { root.syncModuleSurface(); }
+        function onPanelChanged() { Qt.callLater(root.syncModuleSurface); }
+    }
+    readonly property bool selected: !!screen && (ShellState.monitor === screenName || (!Quickshell.screens.some(s => s.name === ShellState.monitor) && screen === Quickshell.screens[0]))
     PanelWindow {
         screen: root.screen
         anchors { top: true; bottom: true; left: true; right: true }
@@ -38,13 +56,13 @@ Scope {
         WlrLayershell.namespace: "zephyrus-shell-bar"
         // Hyprland restricts pointer input to exclusive-focus surfaces. Keep the
         // bar in that set alongside the module, whose hit region starts below it.
-        WlrLayershell.keyboardFocus: root.screen.name === ShellState.pluginMonitor && (ShellState.panel === "module" || (root.selected && ShellState.panel === "center"))
+        WlrLayershell.keyboardFocus: root.screenName === ShellState.pluginMonitor && (ShellState.panel === "module" || (root.selected && ShellState.panel === "center"))
             ? WlrKeyboardFocus.Exclusive
             : root.selected && ShellState.panel === "center" ? WlrKeyboardFocus.OnDemand
             : WlrKeyboardFocus.None
         Shortcut {
             sequence: "Escape"
-            enabled: (root.screen.name === ShellState.pluginMonitor && ShellState.panel === "module") || (root.selected && ShellState.panel === "center")
+            enabled: (root.screenName === ShellState.pluginMonitor && ShellState.panel === "module") || (root.selected && ShellState.panel === "center")
             onActivated: {
                 if (ShellState.panel === "center") {
                     if (attentionContent.item) attentionContent.item.dismiss();
@@ -63,7 +81,7 @@ Scope {
         Row {
             id: left
             x: 14; y: Theme.pillVerticalPadding; spacing: 8
-            BarAction { id: spaces; text: "Spaces"; iconName: "grid-vertical"; showToolTip: false; highlighted: root.selected && ShellState.panel === "left"; onClicked: ShellState.toggle("left", root.screen.name) }
+            BarAction { id: spaces; text: "Spaces"; iconName: "grid-vertical"; showToolTip: false; highlighted: root.selected && ShellState.panel === "left"; onClicked: ShellState.toggle("left", root.screenName) }
             RunningApps { id: runningApps; maximumWidth: Math.max(0, center.x - left.x - spaces.width - 2 * left.spacing); window: bar }
         }
         ClockPill {
@@ -71,7 +89,7 @@ Scope {
             anchors.horizontalCenter: parent.horizontalCenter
             y: Theme.pillVerticalPadding
             highlighted: root.selected && ShellState.panel === "center"
-            onClicked: ShellState.toggle("center", root.screen.name)
+            onClicked: ShellState.toggle("center", root.screenName)
         }
         Row {
             anchors.right: parent.right; anchors.rightMargin: 14; y: Theme.pillVerticalPadding
@@ -80,14 +98,14 @@ Scope {
             StatusPill {
                 id: right
                 highlighted: root.selected && ShellState.panel === "right"
-                onClicked: ShellState.toggle("right", root.screen.name)
+                onClicked: ShellState.toggle("right", root.screenName)
             }
         }
     }
     PanelWindow {
         id: moduleWindow
         screen: root.screen
-        visible: root.screen.name === ShellState.pluginMonitor && !!ShellState.pluginId
+        visible: root.screenName === ShellState.pluginMonitor && !!ShellState.pluginId
         anchors { top: true; bottom: true; left: true; right: true }
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
@@ -100,7 +118,9 @@ Scope {
         mask: Region { x: 0; y: Theme.pillHeight; width: moduleWindow.width; height: Math.max(0, moduleWindow.height - y) }
         ModuleLoader {
             anchors.fill: parent
-            screenName: root.screen.name
+            enabled: !root.sharedModules
+            visible: !root.sharedModules
+            screenName: root.sharedModules ? "__shared__" : root.screenName
             readyToLoad: !leftDrawer.visible && !rightDrawer.visible
         }
     }
@@ -109,6 +129,7 @@ Scope {
         screen: root.screen
         side: "left"
         opened: root.selected && ShellState.panel === "left"
+        onVisibleChanged: root.syncModuleSurface()
         contentSource: Qt.resolvedUrl("../drawers/LibraryDrawer.qml")
     }
     DrawerWindow {
@@ -116,12 +137,13 @@ Scope {
         screen: root.screen
         side: "right"
         opened: root.selected && ShellState.panel === "right"
+        onVisibleChanged: root.syncModuleSurface()
         contentSource: Qt.resolvedUrl("../drawers/ControlDrawer.qml")
     }
     PanelWindow {
         screen: root.screen
         visible: root.selected && ShellState.panel === "profile" && !leftDrawer.visible && !rightDrawer.visible
-        implicitWidth: Math.min(380, root.screen.width - 32); implicitHeight: 320
+        implicitWidth: Math.min(380, root.screenWidth - 32); implicitHeight: 320
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         WlrLayershell.layer: WlrLayer.Overlay
@@ -135,8 +157,8 @@ Scope {
         anchor.window: bar
         anchor.rect.x: (bar.width - width) / 2
         anchor.rect.y: Theme.pillHeight + 6
-        implicitWidth: Math.min(1240, root.screen.width - 28)
-        implicitHeight: Math.min(root.screen.width < 900 ? 700 : 600, root.screen.height - Theme.pillHeight - 24)
+        implicitWidth: Math.min(1240, root.screenWidth - 28)
+        implicitHeight: Math.min(root.screenWidth < 900 ? 700 : 600, root.screenHeight - Theme.pillHeight - 24)
         color: "transparent"
         // Wait for the popup surface before whitelisting it alongside the bar.
         onWindowConnected: Qt.callLater(() => { if (visible) attentionGrab.active = true; })
@@ -162,7 +184,7 @@ Scope {
         Action {
             anchors.fill: parent
             text: Attention.toast
-            onClicked: { Attention.toast = ""; ShellState.toggle("center", root.screen.name); }
+            onClicked: { Attention.toast = ""; ShellState.toggle("center", root.screenName); }
         }
     }
 }

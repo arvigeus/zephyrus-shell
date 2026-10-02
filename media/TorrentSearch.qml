@@ -273,13 +273,13 @@ ColumnLayout {
         Layout.fillWidth: true; spacing: 8
         W.SearchField { id: searchField; Layout.fillWidth: true; text: root.query; placeholderText: "Search qBittorrent…"; onTextChanged: root.query = text; onAccepted: root.find() }
         W.Action { iconName: "search"; text: "Search"; enabled: !!root.query.trim(); onClicked: root.find() }
-        BusyIndicator { running: root.searching; visible: running; Layout.preferredWidth: 26; Layout.preferredHeight: 26 }
+        W.BusySpinner { running: root.searching; visible: running; Layout.preferredWidth: 26; Layout.preferredHeight: 26 }
     }
     W.Label { visible: !!root.error; Layout.fillWidth: true; text: root.error; color: Theme.danger; wrapMode: Text.Wrap }
     RowLayout {
         visible: root.canStartQbittorrent || root.startLoading || root.launchPending
         W.Action { iconName: "power"; text: root.startLoading || root.launchPending ? "Starting qBittorrent…" : "Start qBittorrent"; enabled: root.canStartQbittorrent && !root.startLoading && !root.launchPending; onClicked: root.startQbittorrent() }
-        BusyIndicator { running: root.startLoading || root.launchPending; visible: running; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
+        W.BusySpinner { running: root.startLoading || root.launchPending; visible: running; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
     }
     W.Label { visible: !!root.info; Layout.fillWidth: true; text: root.info; color: Theme.muted; wrapMode: Text.Wrap }
     ListView {
@@ -293,7 +293,7 @@ ColumnLayout {
         onHeightChanged: root.maybeLoadMore()
         W.WheelScroll { view: resultList }
         ScrollBar.vertical: ScrollBar {}
-        footer: BusyIndicator {
+        footer: W.BusySpinner {
             width: resultList.width; height: root.moreLoading ? 36 : 0
             running: root.moreLoading; visible: running
         }
@@ -318,7 +318,7 @@ ColumnLayout {
     }
     W.Action { visible: !!root.inspectRow.url; iconName: "arrow-left"; text: "Back to results"; onClicked: { root.inspectRow = ({}); root.inspectFiles = []; root.selectedFiles = []; } }
     W.Label { visible: !!root.inspectRow.url; Layout.fillWidth: true; text: root.inspectFiles.length ? "Choose audio files to download." : "Loading torrent file list…"; color: Theme.muted }
-    BusyIndicator { visible: !!root.inspectRow.url && !root.inspectFiles.length; running: visible }
+    W.BusySpinner { visible: !!root.inspectRow.url && !root.inspectFiles.length; running: visible }
     ListView {
         id: inspectList
         visible: !!root.inspectRow.url && root.inspectFiles.length > 0
@@ -409,6 +409,6 @@ ColumnLayout {
             W.Label { id: fileName; Layout.fillWidth: true; text: modelData.path + (modelData.tags && modelData.tags.title ? " · " + modelData.tags.title + " — " + modelData.tags.artist : ""); wrapMode: Text.Wrap }
             W.Action { text: "Import"; onClicked: root.importFile(modelData) }
         }
-        BusyIndicator { anchors.centerIn: parent; running: root.reviewLoading; visible: running }
+        W.BusySpinner { anchors.centerIn: parent; running: root.reviewLoading; visible: running }
     }
 }

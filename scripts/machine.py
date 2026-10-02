@@ -31,6 +31,7 @@ def backlight():
 
 
 ROOT = Path(__file__).resolve().parents[1]
+CPU_BOOST_HELPER = Path("/usr/lib/zephyrus-shell/cpu-boost")
 STATE = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "zephyrus-shell"
 
 
@@ -208,16 +209,49 @@ def primary_monitor(monitors):
     return next((m for m in enabled if m["name"] == preferred), next((m for m in enabled if m.get("focused")), enabled[0] if enabled else {})).get("name", "")
 
 
+def recover_displays():
+    """Recover a laptop output after a topology change, never during idle polling.
+
+    Hyprland moves windows/workspaces when it removes an output. Enabling a real
+    output also recovers workspaces parked on its temporary fallback monitor.
+    """
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return
+    monitors = json.loads(command(["hyprctl", "monitors", "all", "-j"], True))
+    real = [m for m in monitors if m["name"] != "FALLBACK"]
+    enabled = [m for m in real if not m.get("disabled")]
+    if not enabled:
+        internal = next((m for m in real if m["name"].startswith(("eDP", "LVDS", "DSI"))), None)
+        destination = internal or next(iter(real), None)
+        if destination:
+            apply_monitor_rules([{"output": destination["name"], "mode": "preferred", "scale": "auto",
+                                  "position": "auto", "disabled": False}], persist=False)
+            enabled = [destination]
+    # A disabled output and DPMS blanking are different states. Wake the sole
+    # internal panel if the external screen has disappeared while it was blank.
+    if len(enabled) == 1 and enabled[0]["name"].startswith(("eDP", "LVDS", "DSI")):
+        command(["hyprctl", "dispatch", 'hl.dsp.dpms({ action = "enable", monitor = '
+                 + json.dumps(enabled[0]["name"]) + ' })'], True)
+
+
+def power_status():
+    # Avoid D-Bus activation of a competing power daemon on ASUS machines.
+    if shutil.which("asusctl") and command(["systemctl", "is-active", "asusd.service"]) == "active":
+        available = command(["asusctl", "profile", "list"]).splitlines()
+        result = command(["asusctl", "profile", "get"])
+        active = re.search(r"Active profile:\s*(\w+)", result)
+        mapping = {"Quiet": "power-saver", "Balanced": "balanced", "Performance": "performance"}
+        return {"backend": "asusd", "profile": mapping.get(active[1], "") if active else "",
+                "profiles": [mapping[v] for v in available if v in mapping]}
+    if shutil.which("powerprofilesctl") and command(["systemctl", "is-active", "power-profiles-daemon.service"]) == "active":
+        available = command(["powerprofilesctl", "list"])
+        return {"backend": "ppd", "profile": command(["powerprofilesctl", "get"]),
+                "profiles": [v for v in ("power-saver", "balanced", "performance") if v + ":" in available]}
+    return {"backend": "", "profile": "", "profiles": []}
+
+
 def gpu_status():
-    if not shutil.which("cardwire"):
-        return {"mode": "", "modes": [], "error": "Install Cardwire and start cardwired to manage GPU modes."}
-    try:
-        result = command(["cardwire", "get"], True)
-        current = re.search(r"Current Mode:\s*(\w+)", result, re.I)
-        available = re.search(r"Available Mode:\s*([^\n]+)", result, re.I)
-        return {"mode": current[1].lower() if current else "", "modes": [v.strip().lower() for v in available[1].split(",")] if available else [], "error": ""}
-    except (OSError, subprocess.SubprocessError, RuntimeError) as error:
-        return {"mode": "", "modes": [], "error": str(error)}
+    return {"mode": "", "modes": [], "error": "Applications select GPUs through switcheroo-control. Use ROG Control Center for supported firmware GPU modes; changes may require a reboot."}
 
 
 def scheduled_shutdown():
@@ -284,7 +318,7 @@ def gpu_hardware():
             name = f"AMD Radeon RX {series[1]}000 series" if series else name.split(" [", 1)[0]
         else:
             name = re.sub(r"\s*\[[^]]+\]", "", name).strip()
-        busy = read(device / "gpu_busy_percent")
+        busy = read(device / "gpu_busy_percent") if read(device / "power/runtime_status") != "suspended" else ""
         cards.append({"name": name, "usage": min(100, max(0, int(busy))) if busy.isdigit() else None})
     return cards
 
@@ -300,12 +334,30 @@ def temperature_summary(temperatures, kind):
     return max(main or candidates, key=lambda sensor: (sensor["value"], sensor["driver"], sensor["label"]))
 
 
+def boost_control_error():
+    if read("/sys/devices/system/cpu/cpufreq/boost") not in ("0", "1"):
+        return "This kernel does not expose a CPU boost switch."
+    try:
+        for path in (CPU_BOOST_HELPER, CPU_BOOST_HELPER.parent):
+            info = path.stat()
+            if info.st_uid != 0 or info.st_mode & 0o022:
+                return "Reinstall the CPU boost helper with administrator ownership."
+        if not os.access(CPU_BOOST_HELPER, os.X_OK):
+            raise FileNotFoundError()
+    except OSError:
+        return "Install CPU boost control with sudo bash scripts/install-controls.sh."
+    return ""
+
+
 def hardware(*, hwmon_root=Path("/sys/class/hwmon")):
     mem = {line.split(":")[0]: int(line.split()[1]) for line in read("/proc/meminfo").splitlines() if len(line.split()) >= 2}
     total = mem.get("MemTotal", 0); used = total - mem.get("MemAvailable", total)
     temperatures = []
     fans = []
     for hw in sorted(hwmon_root.glob("*")):
+        # Reading amdgpu sensors can wake a suspended dGPU.
+        if read(hw / "device/power/runtime_status") == "suspended":
+            continue
         for f in sorted(hw.glob("temp*_input")):
             value = read(f)
             if value.lstrip("-").isdigit():
@@ -322,7 +374,7 @@ def hardware(*, hwmon_root=Path("/sys/class/hwmon")):
             "storagePercent": round((storage.total - storage.free) / max(storage.total, 1) * 100), "storageUsed": round((storage.total - storage.free) / 1073741824, 1), "storageTotal": round(storage.total / 1073741824, 1),
             "temperatures": temperatures, "cpuTemperature": temperature_summary(temperatures, "cpu"),
             "gpuTemperature": temperature_summary(temperatures, "gpu"),
-            "fans": fans, "load": read("/proc/loadavg").split(" ")[0], "boost": read("/sys/devices/system/cpu/cpufreq/boost")}
+            "fans": fans, "load": read("/proc/loadavg").split(" ")[0], "boost": read("/sys/devices/system/cpu/cpufreq/boost"), "boostControlError": boost_control_error()}
 
 
 def external_power_online(supply_root=Path("/sys/class/power_supply")):
@@ -401,7 +453,7 @@ def snapshot(refresh_ddc=False):
     light = backlight()
     batteries = [p for p in Path("/sys/class/power_supply").glob("*") if read(p / "type") == "Battery" and read(p / "scope") != "Device"]
     battery = batteries[0] if batteries else None
-    profiles = command(["powerprofilesctl", "list"]) if shutil.which("powerprofilesctl") else ""
+    power_policy = power_status()
     monitors = json.loads(command(["hyprctl", "monitors", "all", "-j"]) or "[]") if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") else []
     aliases = display_config()
     for monitor in monitors:
@@ -443,8 +495,8 @@ def snapshot(refresh_ddc=False):
         network=command(["nmcli", "-t", "-f", "NAME", "connection", "show", "--active"]) if shutil.which("nmcli") else "",
         networkEditor=bool(shutil.which("nm-connection-editor")),
         bluetoothEditor=bool(shutil.which("blueman-manager") or shutil.which("systemsettings")),
-        profile=command(["powerprofilesctl", "get"]) if profiles else "",
-        profiles=[p for p in ["power-saver", "balanced", "performance"] if p + ":" in profiles],
+        profile=power_policy["profile"], profiles=power_policy["profiles"],
+        powerBackend=power_policy["backend"],
         scheduledShutdown=scheduled_shutdown(),
         asus=bool(shutil.which("asusctl")),
         hyprland=bool(os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")),
@@ -456,21 +508,29 @@ def action(name, value):
     if name == "wifi" and value in ("on", "off"):
         command(["nmcli", "radio", "wifi", value], True)
     elif name == "profile" and value in ("power-saver", "balanced", "performance"):
-        command(["powerprofilesctl", "set", value], True)
+        policy = power_status()
+        if value not in policy["profiles"]:
+            raise ValueError("Power profile is unavailable")
+        if policy["backend"] == "asusd":
+            command(["asusctl", "profile", "set", {"power-saver": "Quiet", "balanced": "Balanced", "performance": "Performance"}[value]], True)
+        else:
+            command(["powerprofilesctl", "set", value], True)
     elif name == "gpu":
-        if value not in ("integrated", "hybrid", "smart", "manual") or value not in gpu_status()["modes"]:
-            raise ValueError("GPU mode is not supported on this machine")
-        command(["cardwire", "set", value], True)
+        raise ValueError("Use the application's GPU selection or ROG Control Center")
+    elif name == "cpu-boost" and value in ("on", "off"):
+        error = boost_control_error()
+        if error:
+            raise ValueError(error)
+        command(["pkexec", str(CPU_BOOST_HELPER), "1" if value == "on" else "0"], True, 120)
     elif name == "chargeLimit":
         percent = int(value)
         if not 50 <= percent <= 100: raise ValueError("Charge limit must be between 50 and 100")
         battery = next((p for p in Path("/sys/class/power_supply").glob("*") if read(p / "type") == "Battery" and (p / "charge_control_end_threshold").exists()), None)
         if battery is None: raise ValueError("Charge limit is unavailable")
-        target = battery / "charge_control_end_threshold"
-        if os.access(target, os.W_OK): target.write_text(str(percent))
+        if power_status()["backend"] == "asusd":
+            command(["asusctl", "battery", "limit", str(percent)], True)
         else:
-            result = subprocess.run(["pkexec", "tee", str(target)], input=str(percent), capture_output=True, text=True, timeout=60)
-            if result.returncode: raise RuntimeError(result.stderr.strip() or "Charge limit authorization was cancelled")
+            raise ValueError("Use your system's battery charge-limit settings")
     elif name == "schedule-poweroff":
         if value not in ("15", "30", "60", "90", "120", "180", "240", "300"):
             raise ValueError("Unsupported shutdown delay")
@@ -479,6 +539,8 @@ def action(name, value):
         command(["systemctl", "poweroff", "--when=cancel"], True, 60)
     elif name == "clean-thumbnails" and value == "confirm":
         clean_thumbnail_cache()
+    elif name == "recover-displays":
+        recover_displays()
     elif name in ("primary", "display", "display-mode", "display-scale", "display-order", "display-ddc"):
         display_action(name, value)
     elif name == "brightness":
@@ -508,7 +570,8 @@ def action(name, value):
     elif name in ("suspend", "reboot", "poweroff"):
         command(["systemctl", name], True)
     elif name == "logout" and os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
-        command(["hyprctl", "dispatch", "hl.dsp.exit()"], True)
+        managed = subprocess.run(["uwsm", "check", "is-active"], capture_output=True, timeout=5).returncode == 0
+        command(["uwsm", "stop"] if managed else ["hyprctl", "dispatch", "hl.dsp.exit()"], True)
     else:
         raise ValueError("Unsupported action or value")
     return {"ok": True}

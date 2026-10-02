@@ -104,7 +104,7 @@ Item {
         anchors.centerIn: parent
         spacing: 12
         visible: !!ShellState.pluginId && !root.currentModule && !root.currentLoadFailed
-        BusyIndicator { anchors.horizontalCenter: parent.horizontalCenter; running: parent.visible }
+        BusySpinner { anchors.horizontalCenter: parent.horizontalCenter; running: parent.visible }
         Label { text: "Loading " + (root.entry ? root.entry.name : "space") + "…"; color: Theme.muted }
     }
     ListModel { id: retainedRegistry }
@@ -146,7 +146,7 @@ Item {
                 anchors.margins: Theme.moduleMargin
                 anchors.topMargin: Theme.moduleTopMargin
                 active: ShellState.runningPluginIds.includes(retained.pluginId)
-                    && ShellState.runningPluginMonitors[retained.pluginId] === root.screenName
+                    && (root.screenName === "*" || ShellState.runningPluginMonitors[retained.pluginId] === root.screenName)
                     && (root.readyToLoad || loadedOnce)
                 asynchronous: true
                 visible: status === Loader.Ready && ShellState.pluginId === retained.pluginId

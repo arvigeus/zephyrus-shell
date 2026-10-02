@@ -20,7 +20,8 @@ RowLayout {
         text: root.text; iconName: root.iconName
         Accessible.description: root.busy ? "Opening player" : ""
         onClicked: root.triggered(root.currentIndex)
-        BusyIndicator {
+        W.BusySpinner {
+            color: Theme.accentText
             anchors.centerIn: parent
             width: 24; height: 24
             visible: root.busy; running: visible; z: 1

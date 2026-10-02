@@ -15,6 +15,7 @@ Item {
     property bool dropAfter: false
     property real dropPosition: 0
     property point dragPoint: Qt.point(0, 0)
+    WindowMenu { id: windowMenu; barWindow: root.window }
 
     function beginDrag(window) {
         draggedWindow = window;
@@ -99,7 +100,14 @@ Item {
                     property bool dragged: false
                     opacity: root.draggedWindow === modelData ? 0.5 : 1
                     onPressed: dragged = false
-                    onClicked: if (!dragged) modelData.activate()
+                    onClicked: if (!dragged) WindowList.activate(modelData)
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: {
+                            windowButton.dismissToolTip();
+                            windowMenu.openFor(windowButton.modelData, windowButton);
+                        }
+                    }
                     ReorderDrag {
                         enabled: WindowList.canDrag(windowButton.modelData)
                         onDragStarted: position => {

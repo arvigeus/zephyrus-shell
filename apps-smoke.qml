@@ -32,9 +32,16 @@ ShellRoot {
                     step++;
                 } else if (step === 1) {
                     const loader = find(overlay.item, "moduleContent");
-                    if (!loader || !loader.item || !loader.item.catalogReady) return;
+                    if (!loader || !loader.item || !loader.item.catalogReady || !loader.item.gpuChoicesReady) return;
                     apps = loader.item;
                     require(apps.applications.length > 0, "No fixture applications");
+                    apps.gpuChoices = [{id:"test-integrated", name:"Integrated"}, {id:"test-discrete", name:"Discrete"}];
+                    const picker = find(apps, "app-gpu-picker-0");
+                    if (!picker) return;
+                    picker.clicked();
+                    require(picker.menuOpen, "GPU picker did not open");
+                    picker.clicked();
+                    require(!picker.menuOpen, "Second click reopened GPU picker");
                     const id = apps.applications[0].id;
                     if (Quickshell.env("APPS_TEST_PHASE") === "write") {
                         require(apps.category === "", "Empty favorites should default to all applications");
@@ -50,7 +57,7 @@ ShellRoot {
                     }
                     ShellState.close();
                     require(overlay.item === null, "Overlay was retained after close");
-                    console.log("APPS PASS", Quickshell.env("APPS_TEST_PHASE"), "loading gate, favorites, destruction");
+                    console.log("APPS PASS", Quickshell.env("APPS_TEST_PHASE"), "loading gate, favorites, GPU picker toggle, destruction");
                     Qt.quit();
                 }
             }

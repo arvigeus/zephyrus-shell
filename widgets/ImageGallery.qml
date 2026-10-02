@@ -75,7 +75,7 @@ Popup {
                     height: root.zoomed ? Math.max(pan.height, implicitHeight) : pan.height
                 }
             }
-            BusyIndicator { anchors.centerIn: parent; running: fullImage.status === Image.Loading }
+            BusySpinner { anchors.centerIn: parent; running: fullImage.status === Image.Loading }
             W.Label { anchors.centerIn: parent; visible: fullImage.status === Image.Error; text: "This image could not load."; color: Theme.muted }
             W.IconButton { anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; visible: root.images.length > 1; iconName: "chevron-left"; text: "Previous image"; highlighted: true; onClicked: root.step(-1) }
             W.IconButton { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; visible: root.images.length > 1; iconName: "chevron-right"; text: "Next image"; highlighted: true; onClicked: root.step(1) }

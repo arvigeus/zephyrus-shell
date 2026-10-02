@@ -1,8 +1,4 @@
-local directory = debug.getinfo(1, "S").source:sub(2):match("(.*/)")
-local function quote(value)
-    return "'" .. value:gsub("'", "'\\''") .. "'"
-end
--- A single owned supervisor imports the environment and ends with this compositor.
+-- UWSM imports the compositor environment and owns graphical-session.target.
 hl.on("hyprland.start", function()
-    hl.exec_cmd("python3 " .. quote(directory .. "../scripts/session.py"))
+    hl.exec_cmd("uwsm finalize HYPRLAND_INSTANCE_SIGNATURE ZEPHYRUS_LOCK_WALLPAPER QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME TERMINAL")
 end)

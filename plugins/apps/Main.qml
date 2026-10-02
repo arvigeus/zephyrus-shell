@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import Quickshell
 import "../../core"
 import "../../widgets"
+import "../../services"
 
 ColumnLayout {
     id: root
@@ -12,6 +13,19 @@ ColumnLayout {
     property string category: ""
     property bool catalogReady: false
     property var favoriteIds: []
+    property var gpuChoices: []
+    property bool gpuChoicesReady: false
+    property string launchError: ""
+    property bool launching: false
+    Worker {
+        id: gpuWorker
+        backend: "plugins/apps/backend.py"
+        serviceName: "Applications"
+        onReady: request("gpus", {}, (result, error) => {
+            root.gpuChoices = result ? result.gpus : [];
+            root.gpuChoicesReady = true;
+        })
+    }
     Settings {
         id: preferences
         location: "file://" + (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/zephyrus-shell/applications.ini"
@@ -43,6 +57,15 @@ ColumnLayout {
     readonly property var matches: applications.filter(app => (!category || (category === "favorites" ? (search.text.trim() ? true : isFavorite(app.id)) : (app.categories || []).includes(category))) && (app.name + " " + app.genericName + " " + (app.keywords || []).join(" ")).toLowerCase().includes(search.text.trim().toLowerCase()))
     function activate() { search.forceActiveFocus(); }
     function launch(app) { app.execute(); if (host) host.close(); }
+    function launchOnGpu(app, gpu) {
+        if (launching) return;
+        launching = true; launchError = "";
+        gpuWorker.request("launch", {gpu: gpu.id, command: app.command, directory: app.workingDirectory, terminal: app.runInTerminal}, (result, error) => {
+            root.launching = false;
+            root.launchError = error;
+            if (result && result.ok && root.host) root.host.close();
+        });
+    }
     spacing: 16
     SearchField {
         id: search
@@ -67,6 +90,7 @@ ColumnLayout {
         }
     }
     Label { visible: root.catalogReady; text: root.matches.length + (root.matches.length === 1 ? " application" : " applications"); color: Theme.muted }
+    Label { visible: !!root.launchError; text: root.launchError; color: Theme.danger; Layout.fillWidth: true; wrapMode: Text.Wrap }
     GridView {
         id: apps
         Layout.fillWidth: true; Layout.fillHeight: true
@@ -107,7 +131,38 @@ ColumnLayout {
                 text: (root.isFavorite(appButton.modelData.id) ? "Remove " : "Add ") + appButton.modelData.name + (root.isFavorite(appButton.modelData.id) ? " from favorites" : " to favorites")
                 onClicked: root.toggleFavorite(appButton.modelData.id)
             }
+            IconButton {
+                anchors.top: parent.top; anchors.left: parent.left
+                objectName: "app-gpu-picker-" + appButton.index
+                readonly property bool menuOpen: gpuMenu.visible
+                width: 32; height: 32; implicitWidth: 32; implicitHeight: 32
+                visible: root.gpuChoices.length > 1
+                opacity: appButton.hovered || hovered || activeFocus || appButton.activeFocus || gpuMenu.visible ? 1 : 0
+                iconName: "gpu"; iconSize: 18
+                text: "Choose GPU for " + appButton.modelData.name
+                onClicked: gpuMenu.visible ? gpuMenu.close() : gpuMenu.open()
+            }
             onClicked: root.launch(modelData)
+            TapHandler {
+                acceptedButtons: Qt.RightButton
+                onTapped: gpuMenu.visible ? gpuMenu.close() : gpuMenu.open()
+            }
+            Keys.onMenuPressed: gpuMenu.visible ? gpuMenu.close() : gpuMenu.open()
+            Menu {
+                id: gpuMenu
+                popupType: Popup.Item
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+                MenuItem { text: "Launch normally"; enabled: !root.launching; onTriggered: root.launch(appButton.modelData) }
+                Repeater {
+                    model: root.gpuChoices.length > 1 ? root.gpuChoices : []
+                    MenuItem {
+                        required property var modelData
+                        text: "Launch on " + modelData.name
+                        enabled: !root.launching
+                        onTriggered: root.launchOnGpu(appButton.modelData, modelData)
+                    }
+                }
+            }
         }
         Keys.onReturnPressed: { if (currentItem) root.launch(currentItem.modelData); }
         Keys.onEnterPressed: { if (currentItem) root.launch(currentItem.modelData); }

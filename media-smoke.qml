@@ -66,6 +66,7 @@ ShellRoot {
                     require(media.nextPage === "fixture:2", "Pagination unavailable");
                     media.artworkLoading=true;
                     require(!media.detailLoading && media.titleLoading && find(media,"titleLoadingIndicator").running,"Indicator stopped before artwork finished");
+                    require(find(media,"titleLoadingIndicator").color.toString() === Theme.text.toString(),"Loading indicator lost dark-background contrast");
                     media.artworkLoading=false;
                     ShellState.toggle("right");
                     require(ShellState.pluginId === "movies", "Settings discarded module");

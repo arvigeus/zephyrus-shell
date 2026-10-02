@@ -82,7 +82,7 @@ ColumnLayout {
         Layout.fillWidth: true
         W.SearchField { id: pathField; Layout.fillWidth: true; placeholderText: "Optional folder or file"; onAccepted: root.scan() }
         W.Action { iconName: "file-search-corner"; text: "Scan"; enabled: !root.scanning; onClicked: root.scan() }
-        BusyIndicator { running: root.scanning; visible: running; Layout.preferredWidth: 26; Layout.preferredHeight: 26 }
+        W.BusySpinner { running: root.scanning; visible: running; Layout.preferredWidth: 26; Layout.preferredHeight: 26 }
     }
     W.Label { visible: !!root.error; Layout.fillWidth: true; text: root.error; color: Theme.danger; wrapMode: Text.Wrap }
     W.Label { visible: !!root.info; Layout.fillWidth: true; text: root.info; color: Theme.muted; wrapMode: Text.Wrap }
@@ -95,7 +95,7 @@ ColumnLayout {
         visible: !!root.current.token; Layout.fillWidth: true
         W.SearchField { id: lookup; Layout.fillWidth: true; placeholderText: "Find catalogue title"; onAccepted: root.findMatches() }
         W.IconButton { iconName: "search"; text: "Search catalogue"; onClicked: root.findMatches() }
-        BusyIndicator { running: root.matching; visible: running; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
+        W.BusySpinner { running: root.matching; visible: running; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
         W.SearchField { id: seasonField; visible: root.kind === "tv"; Layout.preferredWidth: 80; placeholderText: "Season"; validator: IntValidator { bottom: 0; top: 99 } }
         W.SearchField { id: episodeField; visible: root.kind === "tv"; Layout.preferredWidth: 80; placeholderText: "Episode"; validator: IntValidator { bottom: 1; top: 999 } }
         W.SearchField { id: dateField; visible: root.kind === "music"; Layout.preferredWidth: 150; placeholderText: "YYYY-MM-DD" }

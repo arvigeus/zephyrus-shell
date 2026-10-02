@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Hyprland
+import Quickshell.Services.Pipewire
 import "windows"
 
 QtObject {
@@ -16,6 +17,92 @@ QtObject {
 
     function clientFor(window) {
         return Hyprland.toplevels.values.find(client => client.wayland === window);
+    }
+    readonly property var monitors: Hyprland.monitors.values.filter(m => m.name !== "FALLBACK" && !m.lastIpcObject.disabled)
+    readonly property var audioStreams: Pipewire.nodes.values.filter(node => node.isStream && node.isSink && !!node.audio)
+    property PwObjectTracker streamTracker: PwObjectTracker { objects: root.audioStreams }
+
+    function audioFor(window) {
+        const client = clientFor(window);
+        const pid = client ? Number(client.lastIpcObject.pid) : 0;
+        // Use compositor/process identity, never a fuzzy title match. Application
+        // IDs cover players whose audio is owned by a separate child process.
+        return audioStreams.filter(node => {
+            const props = node.properties;
+            return (pid > 0 && Number(props["application.process.id"]) === pid)
+                || (!!window.appId && props["application.id"] === window.appId);
+        });
+    }
+    function toggleMuted(window) {
+        const streams = audioFor(window);
+        const mute = !streams.every(node => node.audio.muted);
+        for (const node of streams) node.audio.muted = mute;
+    }
+    function activate(window) {
+        if (!window || !windows.includes(window)) return;
+        ShellState.showDesktop();
+        pendingActivation = {window: window, action: ""};
+        activation.restart();
+    }
+    property var pendingActivation: null
+    // Give the hidden module surface time to commit its keyboard-focus release,
+    // including after a monitor removal/reparent. A callLater can run before it.
+    property Timer activation: Timer {
+        interval: 50
+        onTriggered: {
+            const request = root.pendingActivation;
+            root.pendingActivation = null;
+            if (!request || !root.windows.includes(request.window)) return;
+            const address = root.selector(request.window);
+            if (root.connected && Hyprland.usingLua && address) {
+                Hyprland.dispatch("function() local w = hl.get_window(" + address
+                    + "); if not w or not w.mapped then return end; hl.dispatch(hl.dsp.focus({window = w})); "
+                    + request.action + " end");
+            } else request.window.activate();
+            root.refresh.restart();
+        }
+    }
+    function selector(window) {
+        const client = clientFor(window);
+        if (!client || !/^(0x)?[0-9a-f]+$/i.test(client.address)) return "";
+        return JSON.stringify("address:0x" + client.address.replace(/^0x/i, ""));
+    }
+    function dispatchFor(window, action) {
+        const address = selector(window);
+        if (!connected || !Hyprland.usingLua || !address) return false;
+        pendingActivation = {window: window, action: action};
+        activation.restart();
+        return true;
+    }
+    function toggleFloating(window) {
+        activate(window);
+        return dispatchFor(window, 'hl.dispatch(hl.dsp.window.float({window = w, action = "toggle"}))');
+    }
+    function moveToMonitor(window, name) {
+        if (!monitors.some(m => m.name === name) || !/^[A-Za-z0-9_-]+$/.test(name)) return false;
+        activate(window);
+        return dispatchFor(window, 'hl.dispatch(hl.dsp.window.move({window = w, monitor = '
+            + JSON.stringify(name) + ', follow = true}))');
+    }
+    function setWidth(window, fraction) {
+        if (![0.25, 0.5, 0.75, 1].includes(fraction)) return false;
+        const client = clientFor(window);
+        const monitor = client ? monitors.find(m => m.id === client.lastIpcObject.monitor) : null;
+        if (!monitor) return false;
+        const info = monitor.lastIpcObject;
+        const scale = info.scale || 1;
+        const rotated = (info.transform || 0) % 2;
+        const reserved = info.reserved || [0, 0, 0, 0];
+        const width = Math.max(1, Math.round(((rotated ? info.height : info.width) / scale - reserved[0] - reserved[2]) * fraction));
+        const height = Math.max(1, Math.round((rotated ? info.width : info.height) / scale - reserved[1] - reserved[3]));
+        activate(window);
+        return dispatchFor(window,
+            'local active = hl.get_active_window(); if not active or active.address ~= w.address then return end; '
+            + 'hl.dispatch(hl.dsp.window.fullscreen({window = w, action = "unset", layout_aware = false})); '
+            + 'if not w.floating and w.workspace.tiled_layout == "scrolling" then '
+            + 'hl.dispatch(hl.dsp.layout("colresize ' + fraction + '")); '
+            + 'else hl.dispatch(hl.dsp.window.resize({window = w, x = ' + width + ', y = ' + height + ', relative = false})); '
+            + 'if w.floating then hl.dispatch(hl.dsp.window.center({window = w})) end end');
     }
     function canDrag(window) {
         if (!connected || !Hyprland.usingLua) return false;

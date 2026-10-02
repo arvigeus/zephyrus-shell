@@ -8,11 +8,13 @@ ShellRoot {
         implicitWidth: 1280; implicitHeight: 800
         color: Theme.background
         ModuleLoader {
-            id: overlay; anchors.fill: parent; screenName: "primary"
+            id: overlay
+            parent: ShellState.pluginMonitor === "secondary" ? secondarySurface.item : primarySurface
+            anchors.fill: parent
+            screenName: "*"
         }
-        ModuleLoader {
-            id: secondary; width: 1; height: 1; visible: false; screenName: "secondary"
-        }
+        Item { id: primarySurface; anchors.fill: parent }
+        Loader { id: secondarySurface; anchors.fill: parent; sourceComponent: Item {} }
         Timer {
             interval: 80; running: true; repeat: true
             property int step: 0
@@ -53,27 +55,27 @@ ShellRoot {
                     ShellState.monitor = "secondary";
                     ShellState.openPlugin("radio"); step++; ticks = 0;
                 } else if (step === 3) {
-                    radioItem = content("radio", secondary);
+                    radioItem = content("radio", overlay);
                     if (!radioItem) return;
                     ShellState.requestKeepRunning("radio", true);
                     if (content("music") !== musicItem) { fail("Opening Radio stopped Music"); return; }
                     ShellState.toggle("left", "primary");
                     ShellState.dismissPanel();
-                    if (ShellState.monitor !== "secondary" || content("radio", secondary) !== radioItem) { fail("Drawer moved Radio"); return; }
+                    if (ShellState.monitor !== "secondary" || content("radio", overlay) !== radioItem) { fail("Drawer moved Radio"); return; }
                     Plugins.reload(); step++; ticks = 0;
                 } else if (step === 4) {
                     if (Plugins.scan.running) return;
-                    if (content("music") !== musicItem || content("radio", secondary) !== radioItem) { fail("Reload stopped a player"); return; }
+                    if (content("music") !== musicItem || content("radio", overlay) !== radioItem) { fail("Reload stopped a player"); return; }
                     ShellState.openPlugin("games"); step++; ticks = 0;
                 } else if (step === 5) {
-                    const game = find(secondary.item, "moduleContent");
+                    const game = find(overlay.item, "moduleContent");
                     if (!game || !game.item) return;
                     const gameItem = game.item;
                     ShellState.toggle("left", "primary");
                     if (game.item !== gameItem || ShellState.pluginMonitor !== "secondary") { fail("Drawer closed Games on another monitor"); return; }
                     ShellState.dismissPanel();
                     if (ShellState.monitor !== "secondary") { fail("Drawer returned Games to wrong monitor"); return; }
-                    if (content("music") !== musicItem || content("radio", secondary) !== radioItem) { fail("Games stopped a player"); return; }
+                    if (content("music") !== musicItem || content("radio", overlay) !== radioItem) { fail("Games stopped a player"); return; }
                     musicItem.host.requestKeepRunning("radio", false);
                     if (!ShellState.retentionRequests.radio) { fail("Music host changed Radio retention"); return; }
                     musicItem.host.close();
@@ -81,11 +83,11 @@ ShellRoot {
                     step++; ticks = 0;
                 } else if (step === 6) {
                     if (content("music")) { fail("Closing Music did not release it"); return; }
-                    content("games", secondary).host.close();
-                    if (!secondary.item || content("radio", secondary) !== radioItem) { fail("Closing Games stopped Radio"); return; }
+                    content("games", overlay).host.close();
+                    if (!overlay.item || content("radio", overlay) !== radioItem) { fail("Closing Games stopped Radio"); return; }
                     ShellState.stopPlugin("radio"); step++; ticks = 0;
                 } else if (step === 7) {
-                    if (overlay.item || secondary.item) return;
+                    if (overlay.item) return;
                     ShellState.monitor = "primary";
                     ShellState.openPlugin("music"); step++; ticks = 0;
                 } else if (step === 8) {
@@ -103,6 +105,23 @@ ShellRoot {
                     if (!content("games")) { fail("A general module could not request retention"); return; }
                     content("games").host.requestKeepRunning("games", false); step++; ticks = 0;
                 } else if (step === 12) {
+                    if (overlay.item) return;
+                    ShellState.monitor = "secondary";
+                    ShellState.openPlugin("music"); step++; ticks = 0;
+                } else if (step === 13) {
+                    musicItem = content("music");
+                    if (!musicItem) return;
+                    musicItem.host.requestKeepRunning("music", true);
+                    ShellState.reconcileScreens(["primary"]);
+                    secondarySurface.active = false;
+                    step++; ticks = 0;
+                } else if (step === 14) {
+                    if (content("music") !== musicItem || ShellState.pluginMonitor !== "primary") { fail("Unplugging a screen replaced retained resources"); return; }
+                    ShellState.showDesktop(); step++; ticks = 0;
+                } else if (step === 15) {
+                    if (content("music") !== musicItem) { fail("Desktop stopped migrated Music"); return; }
+                    musicItem.host.close(); step++; ticks = 0;
+                } else if (step === 16) {
                     if (overlay.item) return;
                     console.log("RETAINED PASS: drawer, Desktop, idle release, general retention, multi-monitor switching, reload, and explicit stop");
                     Qt.quit();

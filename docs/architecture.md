@@ -24,7 +24,7 @@ in its module backend, so the shell only handles navigation and lifetime.
 | --- | --- |
 | Entry point and IPC | `shell.qml` |
 | Per-monitor surfaces and input regions | `shell/ShellScreen.qml` |
-| Running windows and tray | `shell/RunningApps.qml` |
+| Running windows and tray | `shell/RunningApps.qml`, `shell/TrayPill.qml`, `shell/TrayButton.qml` |
 | Shared compositor geometry and window ordering | `core/WindowList.qml`, `core/windows/WindowOrderModel.qml`, `core/WindowOrder.js` |
 | Background | `shell/Backdrop.qml` |
 | Shared module overlay and host contract | `shell/ModuleOverlay.qml` |
@@ -84,13 +84,17 @@ modules can leave playback running. Escape or the drawer’s
 Close control destroys the selected module. Core services are shared across
 monitors. A retained module stays owned by the monitor where it opened; opening
 a drawer on another monitor does not recreate its player. Optional plugin
-services must not be core singletons.
+services must not be core singletons. In the live shell, one module loader is
+owned by the shell root and visually attached to the selected screen's module
+surface. Removing that surface reparents the loader onto a surviving screen;
+the loaded module objects and their workers keep their lifetime.
 
 `ShellState` is the sole writer of module lifetime bookkeeping: running IDs,
 monitor ownership, retention, and pending navigation. Registry reload passes
 installed IDs to `ShellState.reconcilePlugins`; registry and visual components
-must not independently rewrite those maps. `ModuleLoader` gates overlays by
-monitor ownership; `ModuleOverlay` gates creation until drawers finish closing.
+must not independently rewrite those maps. `ShellState.reconcileScreens` moves
+ownership when a screen disappears. `ModuleLoader` supports the shared live-shell
+host and individual preview hosts; `ModuleOverlay` gates creation until drawers finish closing.
 Each module receives its own host, so a hidden module can close itself without
 closing the selected space. Cross-module navigation uses `host.openPlugin(id,
 payload)` and optional destination `handleOpen(payload)`; the host validates

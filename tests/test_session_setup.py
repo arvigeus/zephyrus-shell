@@ -7,7 +7,6 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from scripts import session
 
 
 def setup_module():
@@ -38,6 +37,18 @@ class SetupTests(unittest.TestCase):
             self.assertEqual(os.readlink(locker), str(root / "previous-lock"))
             self.assertFalse((hypr / "hypridle.conf").is_symlink())
             self.assertFalse((state / "zephyrus-shell/dev-session.json").exists())
+
+    def test_legacy_manifest_requires_migration_instead_of_skipping_new_units(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            module = setup_module()
+            module.install(root / "config", root / "state", root / "repo")
+            manifest = root / "state/zephyrus-shell/dev-session.json"
+            data = json.loads(manifest.read_text())
+            data["files"] = data["files"][:4]
+            manifest.write_text(json.dumps(data))
+            with self.assertRaisesRegex(ValueError, "migration"):
+                module.install(root / "config", root / "state", root / "repo")
 
     def test_edited_installation_is_not_deleted(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -80,49 +91,6 @@ class SetupTests(unittest.TestCase):
                 setup_module().install(config, state, root / "repo")
             self.assertEqual(path.read_text(), "preserve")
             self.assertFalse((config / "hypr/hyprlock.conf").is_symlink())
-
-
-class SessionTests(unittest.TestCase):
-    def test_startup_and_compositor_disconnect_clean_up_owned_processes(self):
-        with tempfile.TemporaryDirectory() as directory:
-            env = {"HYPRLAND_INSTANCE_SIGNATURE": "test-instance", "WAYLAND_DISPLAY": "wayland-test",
-                   "XDG_RUNTIME_DIR": directory, "XDG_CONFIG_HOME": str(Path(directory) / "config"), "XDG_CURRENT_DESKTOP": "Hyprland"}
-            socket = Mock()
-            socket.recv.return_value = b""
-            socket_context = Mock()
-            socket_context.__enter__ = Mock(return_value=socket)
-            socket_context.__exit__ = Mock(return_value=False)
-            children = [Mock(pid=101), Mock(pid=102)]
-            for child in children:
-                child.poll.return_value = None
-            inactive = subprocess.CompletedProcess([], 3)
-            with patch.dict(os.environ, env), \
-                 patch.object(session.socket, "socket", return_value=socket_context), \
-                 patch.object(session, "systemctl", return_value=inactive) as systemctl, \
-                 patch.object(session.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run, \
-                 patch.object(session.subprocess, "Popen", side_effect=children) as spawn, \
-                 patch.object(session.select, "select", return_value=([socket], [], [])), \
-                 patch.object(session.os, "killpg") as kill:
-                session.run()
-            self.assertEqual(spawn.call_args_list[0].args[0][0], "hypridle")
-            self.assertEqual(spawn.call_args_list[1].args[0][0], "quickshell")
-            self.assertEqual([call.args[0] for call in kill.call_args_list], [102, 101])
-            self.assertIn(unittest.mock.call("stop", "hyprpolkitagent.service", check=False), systemctl.call_args_list)
-            self.assertIn(unittest.mock.call("restart", *session.PORTALS), systemctl.call_args_list)
-            self.assertEqual(run.call_args_list[0].args[0][0], "dbus-update-activation-environment")
-
-    def test_refuses_start_outside_hyprland(self):
-        with patch.dict(os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": ""}):
-            with self.assertRaisesRegex(RuntimeError, "Hyprland"):
-                session.run()
-
-    def test_children_are_force_stopped_only_after_graceful_timeout(self):
-        child = Mock(pid=123)
-        child.poll.return_value = None
-        child.wait.side_effect = [subprocess.TimeoutExpired("test", 5), 0]
-        with patch.object(session.os, "killpg") as kill:
-            session.stop_child(child)
-        self.assertEqual([call.args[1] for call in kill.call_args_list], [session.signal.SIGTERM, session.signal.SIGKILL])
 
 
 class LockBackgroundTests(unittest.TestCase):

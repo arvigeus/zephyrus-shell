@@ -3,5 +3,5 @@ import "../core/theme"
 
 Rectangle {
     color: Theme.surface
-    radius: Theme.controlRadius
+    radius: Theme.pillRadius
 }

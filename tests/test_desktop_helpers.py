@@ -15,7 +15,7 @@ def module(name, path):
     return result
 
 
-clipboard = module("clipboard_backend", "plugins/clipboard/backend.py")
+clipboard = module("clipboard_backend", "clipboard/backend.py")
 screenshot = module("desktop_screenshot", "scripts/screenshot.py")
 
 

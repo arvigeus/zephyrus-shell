@@ -67,6 +67,14 @@ ShellRoot {
                 compare(launches, 1);
                 compare(ShellState.panel, "");
             }
+            function test_header_search_button() {
+                const button = findChild(library, "spacesSearchButton");
+                verify(button !== null);
+                mouseClick(button, button.width / 2, button.height / 2);
+                tryVerify(() => searchLoader.item !== null);
+                compare(searchLoader.item.query, "");
+                verify(findChild(searchLoader.item, "spacesSearchField").activeFocus);
+            }
             function test_keywords_and_multiple_words() {
                 beginSearch();
                 const field = findChild(searchLoader.item, "spacesSearchField");

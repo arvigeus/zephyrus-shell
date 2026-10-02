@@ -45,6 +45,7 @@ in its module backend, so the shell only handles navigation and lifetime.
 | Audio route metadata and naming rules | `scripts/audio_devices.py`, `config/audio/` |
 | Allowlisted machine actions | `scripts/machine.py` |
 | Calendar and notification views | `attention/` |
+| Clipboard popover and its owned history worker | `clipboard/`; session-owned cliphist watchers record history |
 | Independent library entries | `plugins/<id>/` |
 | Scrolling layout, optional floating and shortcuts | `hyprland/` |
 

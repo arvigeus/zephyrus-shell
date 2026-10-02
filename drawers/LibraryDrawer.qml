@@ -5,6 +5,7 @@ import "../core"
 import "../widgets"
 
 DrawerFrame {
+    id: root
     signal searchRequested(string query)
     Keys.onPressed: event => {
         if (event.text && event.text.trim() && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
@@ -13,15 +14,17 @@ DrawerFrame {
         }
     }
     headerContent: Component { UserProfileButton {} }
+    headerActions: Component {
+        IconButton {
+            objectName: "spacesSearchButton"
+            iconName: "search"; text: "Search applications and spaces"
+            onClicked: root.searchRequested("")
+        }
+    }
     headerActionText: "Reload spaces"
     onHeaderActionRequested: Plugins.reload()
     ColumnLayout {
         anchors.fill: parent; spacing: 12
-        Action {
-            Layout.fillWidth: true
-            text: "Type to search applications"; iconName: "search"; textAlignment: Text.AlignLeft
-            onClicked: searchRequested("")
-        }
         ScrollArea {
             id: spacesScroll
             Layout.fillWidth: true; Layout.fillHeight: true

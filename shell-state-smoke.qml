@@ -17,6 +17,7 @@ ShellRoot {
                                    test_navigation_is_opaque_and_cancelled_on_desktop,
                                    test_registry_removal_releases_all_owned_state,
                                    test_back_destroys_even_retained_module,
+                                   test_clipboard_toggle_preserves_module_and_owner,
                                    test_removed_monitor_moves_module_ownership]) {
                     init(); test(); cleanup();
                 }
@@ -107,5 +108,25 @@ ShellRoot {
         compare(ShellState.retentionRequests.player, true);
         ShellState.showDesktop();
         compare(ShellState.runningPluginIds, ["player"]);
+    }
+    function test_clipboard_toggle_preserves_module_and_owner() {
+        ShellState.openPlugin("first");
+        ShellState.toggle("clipboard", "primary");
+        compare(ShellState.panel, "clipboard");
+        compare(ShellState.runningPluginIds, ["first"]);
+        ShellState.toggle("clipboard", "primary");
+        compare(ShellState.panel, "module");
+        ShellState.toggle("clipboard", "secondary");
+        compare(ShellState.monitor, "secondary");
+        compare(ShellState.pluginMonitor, "primary");
+        ShellState.dismissPanel();
+        compare(ShellState.panel, "module");
+        compare(ShellState.monitor, "primary");
+        compare(ShellState.runningPluginIds, ["first"]);
+        ShellState.showDesktop();
+        ShellState.toggle("clipboard", "secondary");
+        ShellState.dismissPanel();
+        compare(ShellState.panel, "");
+        compare(ShellState.runningPluginIds, []);
     }
 }

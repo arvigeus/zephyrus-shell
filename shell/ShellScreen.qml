@@ -6,6 +6,7 @@ import "../core"
 import "../widgets"
 import "../drawers"
 import "../attention"
+import "../clipboard"
 
 Scope {
     id: root
@@ -32,6 +33,7 @@ Scope {
         function onPanelChanged() { Qt.callLater(root.syncModuleSurface); }
     }
     readonly property bool selected: !!screen && (ShellState.monitor === screenName || (!Quickshell.screens.some(s => s.name === ShellState.monitor) && screen === Quickshell.screens[0]))
+    readonly property bool popupOpen: root.selected && ["center", "clipboard"].includes(ShellState.panel)
     PanelWindow {
         screen: root.screen
         anchors { top: true; bottom: true; left: true; right: true }
@@ -56,26 +58,28 @@ Scope {
         WlrLayershell.namespace: "zephyrus-shell-bar"
         // Hyprland restricts pointer input to exclusive-focus surfaces. Keep the
         // bar in that set alongside the module, whose hit region starts below it.
-        WlrLayershell.keyboardFocus: root.screenName === ShellState.pluginMonitor && (ShellState.panel === "module" || (root.selected && ShellState.panel === "center"))
+        WlrLayershell.keyboardFocus: root.screenName === ShellState.pluginMonitor && (ShellState.panel === "module" || root.popupOpen)
             ? WlrKeyboardFocus.Exclusive
-            : root.selected && ShellState.panel === "center" ? WlrKeyboardFocus.OnDemand
+            : root.popupOpen ? WlrKeyboardFocus.OnDemand
             : WlrKeyboardFocus.None
         Shortcut {
             sequence: "Escape"
-            enabled: (root.screenName === ShellState.pluginMonitor && ShellState.panel === "module") || (root.selected && ShellState.panel === "center")
+            enabled: (root.screenName === ShellState.pluginMonitor && ShellState.panel === "module") || root.popupOpen
             onActivated: {
                 if (ShellState.panel === "center") {
                     if (attentionContent.item) attentionContent.item.dismiss();
                     else ShellState.dismissPanel();
-                } else ShellState.close();
+                } else if (ShellState.panel === "clipboard") ShellState.dismissPanel();
+                else ShellState.close();
             }
         }
         mask: Region {
             Region { item: spaces }
             Region { item: runningApps }
             Region { item: center }
-            Region { item: right }
-            Region { item: tray }
+            // Track the anchored row itself so newly added controls keep their
+            // hit region when the row moves as tray/status widths change.
+            Region { item: rightPills }
         }
         IdleInhibitor { window: bar; enabled: KeepAwake.mode === "screen" && KeepAwake.active }
         Row {
@@ -92,9 +96,11 @@ Scope {
             onClicked: ShellState.toggle("center", root.screenName)
         }
         Row {
+            id: rightPills
             anchors.right: parent.right; anchors.rightMargin: 14; y: Theme.pillVerticalPadding
             spacing: 8
-            TrayPill { id: tray; window: bar; maximumWidth: Math.max(0, bar.width - 14 - right.width - center.x - center.width - 16) }
+            TrayPill { id: tray; window: bar; maximumWidth: Math.max(0, bar.width - 14 - right.width - clipboardButton.width - center.x - center.width - 24) }
+            ClipboardButton { id: clipboardButton; screenName: root.screenName }
             StatusPill {
                 id: right
                 highlighted: root.selected && ShellState.panel === "right"
@@ -113,7 +119,7 @@ Scope {
         WlrLayershell.namespace: "zephyrus-shell-module"
         // Keep focus stable while the anchored popup is open. Reacquiring it
         // on dismissal can redirect the stationary pointer away from the bar.
-        WlrLayershell.keyboardFocus: visible && (ShellState.panel === "module" || (root.selected && ShellState.panel === "center")) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: visible && (ShellState.panel === "module" || root.popupOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         // The backdrop still fills the screen; module input leaves the pills to the bar.
         mask: Region { x: 0; y: Theme.pillHeight; width: moduleWindow.width; height: Math.max(0, moduleWindow.height - y) }
         ModuleLoader {
@@ -171,6 +177,11 @@ Scope {
             }
         }
         Loader { id: attentionContent; anchors.fill: parent; active: parent.visible; sourceComponent: AttentionPanel {} }
+    }
+    ClipboardPopup {
+        barWindow: bar
+        screenName: root.screenName
+        readyToOpen: !leftDrawer.visible && !rightDrawer.visible
     }
     PanelWindow {
         screen: root.screen

@@ -109,9 +109,10 @@ Window and tray hover tooltips have no input region, so context menus remain
 available while the tooltip is visible.
 
 Tap either Win key to toggle Spaces on the focused monitor. Super+Space also
-toggles it. Typing opens a centered local search of installed applications and
+toggles it. Typing or clicking Search in the drawer header opens a centered local search of installed applications and
 module names; Up/Down selects a result, Enter launches or opens it, and Escape
-closes the drawer. Searches do not load modules or start provider workers.
+closes the drawer. Searches do not load modules or start provider workers. The
+header's Reload spaces action rescans modules after installation or removal.
 The center pill separates date, time, weather and attention indicators with dots.
 Tasks due today, events spanning today and pending notifications have separate
 Lucide icons. A shared, cached calendar snapshot refreshes every 15 minutes even
@@ -119,8 +120,11 @@ when Attention is closed; browsing another month does not change today's icons.
 
 Print selects a screenshot area, Super+Print selects a window, and Shift+Print
 captures the active output. Captures go to XDG Pictures/Screenshots and the
-clipboard. The Settings drawer also exposes Screenshot and Clipboard actions;
-Super+Shift+V opens the native searchable Clipboard space. The dotfiles desktop
+clipboard. The Settings drawer also exposes a Screenshot action. The Clipboard
+icon beside Settings or Super+Shift+V toggles a searchable history popover below
+the bar. Selecting an entry copies it and closes the popover; Escape or clicking
+outside also closes it, returning to any open module. Its worker exists only
+while the popover is open; recording continues in the session. The dotfiles desktop
 package supplies Hyprshot, cliphist, wl-clipboard and session-owned history
 watchers; development checkouts show setup guidance when helpers are missing.
 

@@ -67,11 +67,6 @@ DrawerFrame {
                             External.launch(["python3", Paths.file("scripts/screenshot.py"), "region"], null);
                         }
                     }
-                    Action {
-                        iconName: "clipboard"; text: "Clipboard"; Layout.fillWidth: true
-                        enabled: !!Plugins.find("clipboard")
-                        onClicked: ShellState.openPlugin("clipboard")
-                    }
                 }
                 Action { text: Attention.quiet ? "Do not disturb · On" : "Do not disturb · Off"; Layout.fillWidth: true; highlighted: Attention.quiet; onClicked: Attention.quiet = !Attention.quiet }
             }

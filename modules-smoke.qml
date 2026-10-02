@@ -11,7 +11,7 @@ ShellRoot {
         ModuleLoader { id: overlay; anchors.fill: parent }
         Timer {
             interval: 100; running: true; repeat: true
-            property var modules: ["projects", "files", "music", "radio", "pictures", "terminal", "clipboard"]
+            property var modules: ["projects", "files", "music", "radio", "pictures", "terminal"]
             property int index: 0
             property int phase: 0
             property int ticks: 0

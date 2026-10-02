@@ -1,8 +1,8 @@
 import QtQuick
-import "../../services"
+import "../services"
 
 Worker {
     objectName: "clipboardService"
-    backend: "plugins/clipboard/backend.py"
+    backend: "clipboard/backend.py"
     serviceName: "Clipboard"
 }

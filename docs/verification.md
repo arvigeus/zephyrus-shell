@@ -1,5 +1,18 @@
 # Verification on this machine
 
+Search header and clipboard popover, 2026-10-02: 17 focused Python tests, seven
+Spaces/clock checks, Settings, Wayland, retained lifecycle, preview rendering
+and real-cliphist desktop smoke checks
+passed. Clipboard now opens through the production bar button and anchored
+popover rather than the module host. The smoke check covers deferred creation,
+search, delete, copy, clear, repeated toggling, reopening and worker release,
+while preserving the underlying Applications instance. The popover was rendered
+and visually inspected. Native pointer and keyboard input in an isolated
+headless Hyprland compositor verified repeated icon clicks, inside/outside
+clicks, Escape, returning to Applications, drawer transitions and the Search
+header button. This caught and fixed a stale right-row input region and duplicate
+Escape shortcuts. The test compositor and input client were closed.
+
 Bar input and Spaces search, 2026-10-02: 51 portable QML checks, 20 Attention
 Python tests, nine tray checks, six Spaces/clock checks, preview rendering and
 Hyprland configuration verification passed. An isolated compositor with a

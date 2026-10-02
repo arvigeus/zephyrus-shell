@@ -1,6 +1,6 @@
 # Zephyrus Shell
 
-A personal Quickshell desktop for Hyprland: five pills, two drawers, a quiet center.
+A personal Quickshell desktop for Hyprland: desktop pills, two drawers, a quiet center.
 Built for Quickshell 0.3.1 and Hyprland 0.56.2's Lua configuration.
 
 ## Try it

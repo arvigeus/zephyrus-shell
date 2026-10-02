@@ -6,6 +6,7 @@ import "widgets"
 import "drawers"
 import "attention"
 import "shell"
+import "clipboard"
 
 ShellRoot {
     Component.onCompleted: { const ready = Profiles.loaded; const hardware = HardwareSnapshot.data; }
@@ -30,7 +31,8 @@ ShellRoot {
             }
             Row {
                 z: 1; anchors.right: parent.right; anchors.rightMargin: 14; y: Theme.pillVerticalPadding; spacing: 8
-                TrayPill { window: window; maximumWidth: Math.max(0, canvas.width - 14 - settingsPill.width - clockPill.x - clockPill.width - 16) }
+                TrayPill { window: window; maximumWidth: Math.max(0, canvas.width - 14 - settingsPill.width - clipboardButton.width - clockPill.x - clockPill.width - 24) }
+                ClipboardButton { id: clipboardButton }
                 StatusPill { id: settingsPill; onClicked: ShellState.toggle("right") }
             }
             ModuleLoader {
@@ -99,6 +101,11 @@ ShellRoot {
                 active: ShellState.panel === "center"
                 sourceComponent: AttentionPanel {}
             }
+        }
+        ClipboardPopup {
+            barWindow: window
+            screenName: ShellState.monitor
+            readyToOpen: !left.showing && !right.showing
         }
         Timer {
             property int step: 0

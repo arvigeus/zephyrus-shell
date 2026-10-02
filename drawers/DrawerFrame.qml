@@ -9,6 +9,7 @@ Rectangle {
     property url titleArtwork: ""
     property bool reserveTitleArtwork: false
     property Component headerContent
+    property Component headerActions
     property string headerActionText: ""
     property bool headerActionEnabled: true
     signal headerActionRequested()
@@ -48,6 +49,7 @@ Rectangle {
                     Label { text: root.subtitle; color: Theme.muted; font.pixelSize: 12; Layout.fillWidth: true }
                 }
             }
+            Loader { visible: !!root.headerActions; sourceComponent: root.headerActions }
             IconButton { visible: !!root.headerActionText; iconName: "refresh-cw"; text: root.headerActionText; enabled: root.headerActionEnabled; onClicked: root.headerActionRequested() }
             IconButton { iconName: "x"; text: "Close drawer"; onClicked: ShellState.dismissPanel() }
         }

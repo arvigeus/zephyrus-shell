@@ -15,7 +15,7 @@ QtObject {
     property var pendingPluginOpen: null
     function openProfile(profile) { userProfile = profile; panel = "profile"; }
     function toggle(name, screenName) {
-        if (!["left", "right", "center"].includes(name)) return;
+        if (!["left", "right", "center", "clipboard"].includes(name)) return;
         const sameMonitor = screenName === undefined || monitor === screenName;
         if (screenName !== undefined) monitor = screenName;
         panel = panel === name && sameMonitor ? (pluginId ? "module" : "") : name;

@@ -29,7 +29,7 @@ hl.bind("SUPER + V", hl.dsp.window.float({ action = "toggle" }))
 hl.bind("SUPER + SPACE", hl.dsp.exec_cmd(shell .. "toggle left"))
 hl.bind("SUPER + C", hl.dsp.exec_cmd(shell .. "toggle center"))
 hl.bind("SUPER + COMMA", hl.dsp.exec_cmd(shell .. "toggle right"))
-hl.bind("SUPER + SHIFT + V", hl.dsp.exec_cmd(shell .. "openPlugin clipboard"))
+hl.bind("SUPER + SHIFT + V", hl.dsp.exec_cmd(shell .. "toggle clipboard"))
 local screenshot = "python3 " .. quote(root .. "/scripts/screenshot.py") .. " "
 hl.bind("PRINT", hl.dsp.exec_cmd(screenshot .. "region"))
 hl.bind("SUPER + PRINT", hl.dsp.exec_cmd(screenshot .. "window"))

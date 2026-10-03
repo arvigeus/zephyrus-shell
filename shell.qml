@@ -33,6 +33,7 @@ ShellRoot {
         }
         function reloadPlugins(): void { Plugins.reload(); }
         function reloadTheme(): void { Theme.refresh(); }
+        function reloadSessionLock(): void { SessionLock.refresh(); }
         function lidClosed(): void {
             KeepAwake.setMode("off");
             ShellState.showDesktop();

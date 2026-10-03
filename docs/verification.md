@@ -267,3 +267,9 @@ graph and static contracts passed with Satty and Kooha selected from Arch extra.
 Satty options/configuration were checked against upstream v0.22.0. The capture
 applications were not installed on the host; real screenshot annotation and
 portal recording/audio still need a live session check.
+
+`python3 -m unittest discover -s tests -p test_idle.py` checks session isolation,
+profile generation, lid locking and rollback after failed service changes.
+`bash scripts/check-session-lock.sh` exercises the real Settings toggle, runtime
+state and service launcher with isolated XDG paths and fixture service commands.
+It captures `tests/artifacts/session-lock.png`; no live power action is executed.

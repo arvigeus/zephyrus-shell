@@ -39,7 +39,8 @@ def discover(root):
             if not isinstance(keep_running, bool):
                 raise ValueError("keepRunning must be a boolean")
             entries.append(dict(id=plugin_id, name=data["name"], icon=icon, order=order,
-                                entry=entry.as_uri(), keepRunning=keep_running))
+                                entry=entry.as_uri(), entryPath=entry.relative_to(Path(root).resolve()).as_posix(),
+                                keepRunning=keep_running))
             seen.add(plugin_id)
         except (ValueError, TypeError, OSError, AttributeError) as error:
             errors.append(f"{manifest.parent.name}: {error}")

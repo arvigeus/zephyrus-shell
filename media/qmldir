@@ -1,0 +1,12 @@
+Collections 1.0 Collections.qml
+EpisodeRow 1.0 EpisodeRow.qml
+LocalScan 1.0 LocalScan.qml
+MediaBrowser 1.0 MediaBrowser.qml
+MediaService 1.0 MediaService.qml
+Poster 1.0 Poster.qml
+Ratings 1.0 Ratings.qml
+SplitButton 1.0 SplitButton.qml
+SubtitleService 1.0 SubtitleService.qml
+Subtitles 1.0 Subtitles.qml
+TorrentSearch 1.0 TorrentSearch.qml
+TorrentService 1.0 TorrentService.qml

@@ -2,9 +2,9 @@ local root = debug.getinfo(1, "S").source:sub(2):match("(.*/)") .. ".."
 local function quote(value) return "'" .. value:gsub("'", "'\\''") .. "'" end
 local shell = "quickshell -p " .. quote(root) .. " ipc call shell "
 -- End temporary awake modes when the laptop is put away. logind retains
--- ownership of suspend/docking policy; locking also applies while docked.
+-- ownership of suspend/docking policy. Respect the session-only lock pause.
 hl.bind("switch:on:Lid Switch", function()
-    hl.dispatch(hl.dsp.exec_cmd("loginctl lock-session"))
+    hl.dispatch(hl.dsp.exec_cmd("python3 " .. quote(root .. "/scripts/idle.py") .. " lid"))
     hl.dispatch(hl.dsp.exec_cmd(shell .. "lidClosed"))
 end, { locked = true })
 zephyrus = zephyrus or {}

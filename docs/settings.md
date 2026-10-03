@@ -180,5 +180,12 @@ and releases the mode before suspending. The modes use systemd sleep inhibitors;
 Keep screen on also uses a systemd idle inhibitor and, on Wayland compositors
 supporting the idle-inhibit protocol, the shell's panel window. The selected
 mode lasts until turned off, the lid closes, or the shell exits. Closing the lid
-also locks the session; opening it wakes only enabled outputs after restoring
-saved display preferences.
+returns to Desktop and locks unless the session lock pause is active; opening
+it wakes only enabled outputs after restoring saved display preferences.
+
+The same Sleep dropdown offers **Disable locking**, using the `lock-open` icon.
+It pauses automatic locking and idle suspend for this Hyprland session while
+allowing display blanking, including returning from manual or lid sleep without
+a new password prompt. The Sleep button shows `lock-open` while paused. Select
+**Restore locking** to end the pause, or log out; the next login restores normal
+locking. This is independent of the two awake modes. Manual Super+L still locks.

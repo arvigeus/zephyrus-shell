@@ -1,0 +1,7 @@
+Main 1.0 Main.qml
+MusicPlayback 1.0 MusicPlayback.qml
+MusicResultPane 1.0 MusicResultPane.qml
+MusicRowActionGroup 1.0 MusicRowActionGroup.qml
+MusicSearchInput 1.0 MusicSearchInput.qml
+MusicService 1.0 MusicService.qml
+MusicSongTable 1.0 MusicSongTable.qml

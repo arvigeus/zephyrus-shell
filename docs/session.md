@@ -204,19 +204,35 @@ symlink in the Zephyrus config directory each time you set a wallpaper, includin
 when targeting another desktop. The session supplies its XDG-aware path to
 hyprlock. Before a wallpaper is selected, the solid Zephyrus background is used.
 
-Idle locks after five minutes, blanks displays after six, and suspends after
-thirty. Resume restores saved output choices and turns enabled displays on.
-Before any suspend, hypridle requests locking;
-`inhibit_sleep = 3` holds the logind delay inhibitor until the compositor reports
-a session lock. This also covers suspend from Settings and lid/logind events.
-The idle suspend command explicitly checks systemd inhibitors. **Stay awake**
-blocks automatic suspend but allows locking and display blanking. **Keep screen
-on** blocks idle dimming/blanking and suspend; both modes wake blanked outputs
-when enabled. Key presses and pointer movement also enable DPMS. The Lua DPMS
-commands use `enable`/`disable`; wake hooks use the owned display recovery helper.
-Closing the lid locks the session, returns the shell to Desktop and ends temporary
-awake modes. Opening it restores display choices and wakes enabled outputs.
-logind retains ownership of suspend and docking policy.
+By default idle locks after five minutes, blanks displays after six, and
+suspends after thirty. Before suspend, hypridle requests locking and
+`inhibit_sleep = 3` waits for the compositor's lock notification. Closing the lid
+also locks and ends temporary awake modes. Resume restores saved output choices
+and wakes enabled displays; logind owns suspend and docking policy.
+
+The Sleep dropdown in Settings offers **Disable locking** (`lock-open`). This is
+a one-off choice for the current Hyprland session: it skips idle locking, timed
+suspend, and locks before manual/lid sleep, while retaining six-minute blanking
+and explicit Super+L locking. The Sleep button shows `lock-open` while enabled.
+Choose **Restore locking** in the same menu to end it, or log out; a new login
+always starts with the default policy. Closing Settings, shell reloads, and
+sleep/resume do not clear the pause. Awake controls remain independent.
+
+The choice lives only under `$XDG_RUNTIME_DIR/zephyrus-shell/idle-<instance>/`,
+keyed by `HYPRLAND_INSTANCE_SIGNATURE`; nothing is saved in personal settings.
+The hypridle service launcher writes a transient profile there and restarts the
+existing idle service on each change. The unlocked profile uses
+`inhibit_sleep = 1`, so sleep does not wait for a lock notification it deliberately
+never requests. Changing the choice does not remove an existing screen lock.
+
+**Stay awake** blocks sleep while allowing normal locking and blanking;
+**Keep screen on** blocks idle screen actions and sleep. Both modes wake blanked
+outputs when enabled. The lock pause does not inhibit blanking, so leave
+**Keep screen on** off when you want unattended screens to blank.
+
+Existing development sessions must rerun `python3 scripts/setup-session.py install`
+once to add the hypridle launcher drop-in, followed by `systemctl --user daemon-reload`
+and `systemctl --user restart hypridle`. Reload lid bindings with `hyprctl reload`.
 
 Settings Sleep, Log out, Restart, Power off and scheduled shutdown require a
 two-second hold on the action itself. Releasing early or closing the drawer
@@ -237,8 +253,10 @@ These are initial idle timings to tune later.
   edges; verify the insertion line, column order and cancellation outside the list.
 - Launch from Applications; open both drawers and Attention; select modules and
   Desktop; press Escape. Activate multiple running windows from their app buttons.
-- Super+L, authenticate, then test five/six-minute idle lock/blanking, inhibitors,
-  Settings Sleep, and lid/suspend resume. Confirm the lock is present on resume.
+- Super+L and authenticate. Test six-minute idle blanking, inhibitors, Settings
+  Sleep, and lid/suspend resume. Default automatic actions must lock. Enable Disable locking, repeat the checks,
+  and verify blanking without a password prompt. Restore locking and log out/in;
+  both must restore the default. An explicitly locked session stays locked across sleep.
 - In a portal-using app, open a file picker and share a screen/window. Check
   permission prompts and cancellation, not only backend service state.
 - Open Calendar, navigate months and task lists, refresh, create/edit a disposable

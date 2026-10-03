@@ -32,15 +32,16 @@ ColumnLayout {
                     objectName: "session-action-" + parent.modelData.id
                     anchors.centerIn: parent
                     holdDuration: 2000
-                    iconName: parent.modelData.id !== "suspend" ? parent.modelData.icon : KeepAwake.mode === "screen" ? "eye" : KeepAwake.mode === "sleep" ? "coffee" : "moon"
+                    iconName: parent.modelData.id !== "suspend" ? parent.modelData.icon : SessionLock.paused ? "lock-open" : KeepAwake.mode === "screen" ? "eye" : KeepAwake.mode === "sleep" ? "coffee" : "moon"
                     text: parent.modelData.label
-                    highlighted: parent.modelData.id === "suspend" && KeepAwake.mode !== "off"
+                    highlighted: parent.modelData.id === "suspend" && (KeepAwake.mode !== "off" || SessionLock.paused)
                     enabled: !root.machine.busy && (parent.modelData.id !== "logout" || !!root.machine.snapshot.hyprland)
-                    ToolTip.text: "Hold for 2 seconds to " + parent.modelData.label.toLowerCase()
+                    ToolTip.text: "Hold for 2 seconds to " + parent.modelData.label.toLowerCase() + (parent.modelData.id === "suspend" && SessionLock.paused ? ". Automatic locking is disabled for this session." : "")
                     onActivated: root.execute(parent.modelData.id)
                 }
                 IconButton {
                     id: sleepOptions
+                    objectName: visible ? "session-sleep-options" : ""
                     visible: parent.modelData.id === "suspend"
                     x: parent.width / 2 + 23
                     anchors.verticalCenter: parent.verticalCenter
@@ -82,6 +83,19 @@ ColumnLayout {
                             textAlignment: Text.AlignLeft
                             ToolTip.text: "Prevent sleep, screen dimming, and screen blanking."
                             onClicked: { KeepAwake.setMode("screen"); sleepMenu.close(); }
+                        }
+                        Action {
+                            objectName: sleepOptions.visible ? "session-lock-toggle" : ""
+                            Layout.fillWidth: true
+                            iconName: "lock-open"
+                            text: SessionLock.paused ? "Restore locking" : "Disable locking"
+                            textAlignment: Text.AlignLeft
+                            highlighted: SessionLock.paused
+                            enabled: SessionLock.loaded && SessionLock.available && !SessionLock.busy
+                            ToolTip.text: SessionLock.available
+                                ? "Disable automatic locking and idle sleep until you restore locking or log out. The screen can still blank; manual locking remains available."
+                                : "Automatic locking controls require a Hyprland session."
+                            onClicked: { SessionLock.setPaused(!SessionLock.paused); sleepMenu.close(); }
                         }
                         Action {
                             visible: KeepAwake.mode !== "off"
@@ -174,5 +188,12 @@ ColumnLayout {
                 }
             }
         }
+    }
+    Label {
+        visible: !!SessionLock.error
+        text: SessionLock.error
+        color: Theme.danger
+        Layout.fillWidth: true
+        wrapMode: Text.Wrap
     }
 }

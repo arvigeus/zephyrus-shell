@@ -36,6 +36,7 @@ def install(config, state, root=ROOT):
         raise ValueError("Checkout path must not contain a newline")
     user_units = config / "systemd/user"
     files[user_units / "zephyrus-shell.service"] = (ROOT / "systemd/user/zephyrus-shell.service.in").read_text().replace("@ROOT@", unit_root)
+    files[user_units / "hypridle.service.d/idle-policy.conf"] = (ROOT / "systemd/user/idle-policy.conf.in").read_text().replace("@ROOT@", unit_root)
     for unit in ("hypridle", "hyprpolkitagent"):
         files[user_units / (unit + ".service.d/zephyrus.conf")] = ROOT / "systemd/user/hyprland-only.conf"
         files[user_units / ("graphical-session.target.wants/" + unit + ".service")] = Path("/usr/lib/systemd/user") / (unit + ".service")

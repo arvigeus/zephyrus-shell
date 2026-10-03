@@ -152,7 +152,9 @@ Item {
                 visible: status === Loader.Ready && ShellState.pluginId === retained.pluginId
                 source: {
                     const retainedEntry = Plugins.find(retained.pluginId);
-                    return retainedEntry ? retainedEntry.entry : "";
+                    // Resolve through this QML context so modules and the shell share
+                    // Quickshell's configuration URL (and its singleton instances).
+                    return retainedEntry ? Qt.resolvedUrl("../plugins/" + retainedEntry.entryPath.split("/").map(encodeURIComponent).join("/")) : "";
                 }
                 onActiveChanged: if (!active) loadedOnce = false
                 onLoaded: {

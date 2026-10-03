@@ -116,3 +116,9 @@ Module creation waits for the drawer exit animation and uses an asynchronous
 Loader with a shared loading indicator. Escape cancels loading; Desktop hides
 retained modules while their initialization finishes.
 Module content is destroyed on close, including when creation is in progress.
+
+Dynamic module entries are resolved by `ModuleOverlay.qml` using the discovered
+`entryPath`, relative to `plugins/`. Do not load entries through their filesystem
+URL: they must share the shell's Quickshell URL and singleton instances. Include
+an on-disk `qmldir` index in component directories used only by dynamic modules;
+list sibling QML types there so late loading does not depend on the startup scan.

@@ -13,3 +13,4 @@ singleton Profiles 1.0 Profiles.qml
 singleton HardwareSnapshot 1.0 HardwareSnapshot.qml
 singleton KeepAwake 1.0 KeepAwake.qml
 singleton WindowList 1.0 WindowList.qml
+singleton SessionLock 1.0 SessionLock.qml

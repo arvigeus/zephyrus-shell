@@ -6,7 +6,7 @@ trap 'rm -rf -- "$games_test_root"' EXIT
 export XDG_CONFIG_HOME="$games_test_root/config" XDG_DATA_HOME="$games_test_root/data" XDG_CACHE_HOME="$games_test_root/cache"
 export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
 export HOME="$games_test_root/home" GAMES_SMOKE_LAUNCH_LOG="$games_test_root/steam-launch.log"
-mkdir -p "$XDG_CONFIG_HOME/zephyrus-shell" "$HOME/.steam/steam/steamapps/common/Smoke Game" "$games_test_root/bin" tests/artifacts
+mkdir -p "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME/zephyrus-shell" "$HOME/.steam/steam/steamapps/common/Smoke Game" "$games_test_root/bin" tests/artifacts
 export PATH="$games_test_root/bin:$PATH"
 cat > "$games_test_root/bin/steam" <<'SH'
 #!/usr/bin/env bash

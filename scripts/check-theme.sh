@@ -10,3 +10,9 @@ timeout 20s dbus-run-session quickshell -p "$PWD/theme-smoke.qml" --no-color > "
 cat "$theme_test_root/log"
 rg -q 'THEME PASS' "$theme_test_root/log"
 if rg -q 'ReferenceError|TypeError|Cannot assign|Binding loop|ERROR qml:|THEME FAIL' "$theme_test_root/log"; then exit 1; fi
+# A second process uses the persisted light selection, like a new login.
+export ZEPHYRUS_THEME_COLD_LIGHT=1
+timeout 20s dbus-run-session quickshell -p "$PWD/theme-smoke.qml" --no-color > "$theme_test_root/cold-log" 2>&1 || { cat "$theme_test_root/cold-log"; exit 1; }
+cat "$theme_test_root/cold-log"
+rg -q 'THEME PASS' "$theme_test_root/cold-log"
+if rg -q 'ReferenceError|TypeError|Cannot assign|Binding loop|ERROR qml:|THEME FAIL' "$theme_test_root/cold-log"; then exit 1; fi

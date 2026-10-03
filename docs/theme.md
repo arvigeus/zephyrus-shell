@@ -161,3 +161,11 @@ Upstream references: [GTK shared settings](https://docs.gtk.org/gtk3/class.Setti
 [Flatpak desktop and font integration](https://docs.flatpak.org/en/latest/desktop-integration.html),
 [Zed appearance overrides](https://zed.dev/docs/themes),
 [Kitty configuration](https://sw.kovidgoyal.net/kitty/conf/).
+
+Modules resolve their validated entry paths through the shared module host's QML
+context. Preserve the resulting Quickshell URL: converting it to a `file:` URL
+creates separate QML singleton instances, leaving module colors and state stale.
+Dynamically loaded component directories include `qmldir` type indexes because
+Quickshell's initial import scan cannot synthesize indexes for late-loaded files.
+The theme smoke test covers live, retained, recreated and fresh light-session
+modules without opening Terminal.

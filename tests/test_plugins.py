@@ -41,6 +41,17 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(len(result["entries"]), 1)
         self.assertEqual(len(result["errors"]), 3)
 
+    def test_entry_path_preserves_directory_and_nested_filename_for_qml_resolution(self):
+        self.add("directory with spaces", id="different-id", entry="nested/Entry.qml")
+        nested = self.root / "directory with spaces/nested"
+        nested.mkdir()
+        (nested / "Entry.qml").write_text("not executable QML")
+        result = plugins.discover(self.root)
+        self.assertEqual(result["errors"], [])
+        entry = result["entries"][0]
+        self.assertEqual(entry["entryPath"], "directory with spaces/nested/Entry.qml")
+        self.assertEqual(entry["entry"], (nested / "Entry.qml").as_uri())
+
     def test_removal_is_detected(self):
         self.add("removable")
         (self.root / "removable/manifest.json").unlink()

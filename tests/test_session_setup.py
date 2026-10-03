@@ -31,6 +31,8 @@ class SetupTests(unittest.TestCase):
             module.install(config, state, root / "repo with space")
             self.assertIn("repo with space/hyprland/hyprland.lua", original.read_text())
             self.assertEqual((hypr / "hyprland.lua.before-zephyrus").read_text(), "old-config")
+            policy = config / "systemd/user/hypridle.service.d/idle-policy.conf"
+            self.assertIn('ExecStart=/usr/bin/python3 "' + str(root / "repo with space/scripts/idle.py") + '" run', policy.read_text())
             module.install(config, state, root / "repo with space")
             module.teardown(state)
             self.assertEqual(original.read_text(), "old-config")

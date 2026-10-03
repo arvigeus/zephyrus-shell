@@ -311,5 +311,5 @@ FocusScope {
         serviceName: "Terminal commands"
         onReady: root.reloadCommands()
     }
-    Component.onCompleted: { if (!Theme.loaded) ThemeRuntime.refresh(); addTab(); }
+    Component.onCompleted: addTab()
 }

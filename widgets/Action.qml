@@ -37,6 +37,9 @@ Button {
         border.width: root.activeFocus ? 2 : 1
         opacity: root.enabled ? 1 : 0.5
         Rectangle { visible: root.highlighted; x: 0; y: 10; width: 2; height: parent.height - 20; color: Theme.accent }
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color {
+            enabled: Theme.mode !== "light"
+            ColorAnimation { duration: 120 }
+        }
     }
 }

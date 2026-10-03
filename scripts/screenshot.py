@@ -7,15 +7,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import time
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def dismiss_shell():
-    subprocess.run(["quickshell", "-p", str(ROOT), "ipc", "call", "shell", "desktop"],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
-    time.sleep(0.35)
 
 
 def report_error(title, error):
@@ -24,7 +17,7 @@ def report_error(title, error):
     print(str(error), file=sys.stderr)
 
 
-def capture(mode, *, dismiss=True, edit=False, active=False):
+def capture(mode, *, edit=False, active=False):
     if mode not in ("region", "window", "output"):
         raise ValueError("Choose area, window or screen capture.")
     executable = shutil.which("hyprshot")
@@ -35,8 +28,6 @@ def capture(mode, *, dismiss=True, edit=False, active=False):
         raise ValueError("Install satty to annotate screenshots.")
     if active and mode != "window":
         raise ValueError("Active selection is only needed for window capture.")
-    if dismiss:
-        dismiss_shell()
     result = subprocess.run(["xdg-user-dir", "PICTURES"], capture_output=True, text=True, timeout=5)
     pictures = Path(result.stdout.strip()) if result.returncode == 0 and result.stdout.strip() else Path.home() / "Pictures"
     folder = pictures / "Screenshots"

@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Open Kooha's native recording controls after dismissing shell overlays."""
+"""Open Kooha's native recording controls while keeping shell surfaces open."""
 import os
 import shutil
 import subprocess
 import sys
 
-from screenshot import dismiss_shell, report_error
+from screenshot import report_error
 
 
 def record():
     executable = shutil.which("kooha")
     if not executable:
         raise ValueError("Install kooha to record your screen.")
-    dismiss_shell()
     # Kooha owns source selection, recording, settings and application lifetime.
     os.execv(executable, [executable])
 

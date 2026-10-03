@@ -75,21 +75,21 @@ class ScreenshotTests(unittest.TestCase):
                 (Path(command[4]) / command[6]).write_bytes(b"PNG fixture")
                 return subprocess.CompletedProcess(command, 0)
             with patch.object(screenshot.shutil, "which", return_value="/usr/bin/hyprshot"), patch.object(screenshot.subprocess, "run", side_effect=execute) as run:
-                result = screenshot.capture("output", dismiss=False)
+                result = screenshot.capture("output")
             command = run.call_args_list[1].args[0]
             self.assertEqual(command[:3], ["/usr/bin/hyprshot", "-m", "output"])
             self.assertEqual(command[-2:], ["-m", "active"])
             self.assertEqual(command[4], str(Path(directory) / "Screenshots"))
             self.assertEqual(result.parent, Path(directory) / "Screenshots")
 
-    def test_overlay_is_released_before_interactive_selection(self):
-        replies = [subprocess.CompletedProcess([], 0), subprocess.CompletedProcess([], 1, "", ""), subprocess.CompletedProcess([], 1)]
+    def test_interactive_selection_keeps_shell_surfaces_open(self):
+        replies = [subprocess.CompletedProcess([], 0, "", ""), subprocess.CompletedProcess([], 1, "", "")]
         with tempfile.TemporaryDirectory() as directory, patch.object(screenshot.Path, "home", return_value=Path(directory)), \
                 patch.object(screenshot.shutil, "which", return_value="hyprshot"), \
-                patch.object(screenshot.subprocess, "run", side_effect=replies) as run, patch.object(screenshot.time, "sleep") as wait:
+                patch.object(screenshot.subprocess, "run", side_effect=replies) as run:
             self.assertIsNone(screenshot.capture("region"))
-            self.assertEqual(run.call_args_list[0].args[0][-1], "desktop")
-            wait.assert_called_once_with(0.35)
+            self.assertEqual(run.call_args_list[0].args[0], ["xdg-user-dir", "PICTURES"])
+            self.assertEqual(run.call_args_list[1].args[0][:3], ["hyprshot", "-m", "region"])
 
     def test_annotation_replaces_helper_and_keeps_paths_as_arguments(self):
         with tempfile.TemporaryDirectory(prefix="edited captures ") as directory:
@@ -101,7 +101,7 @@ class ScreenshotTests(unittest.TestCase):
             with patch.object(screenshot.shutil, "which", side_effect=lambda name: "/usr/bin/" + name), \
                     patch.object(screenshot.subprocess, "run", side_effect=execute) as run, \
                     patch.object(screenshot.os, "execv") as launch:
-                image = screenshot.capture("window", dismiss=False, edit=True, active=True)
+                image = screenshot.capture("window", edit=True, active=True)
             command = run.call_args_list[1].args[0]
             self.assertIn("active", command)
             self.assertIn("--silent", command)
@@ -114,10 +114,10 @@ class ScreenshotTests(unittest.TestCase):
                 replies = [subprocess.CompletedProcess([], 0, directory + "\n", ""), subprocess.CompletedProcess([], status)]
                 with patch.object(screenshot.shutil, "which", side_effect=lambda name: name), \
                         patch.object(screenshot.subprocess, "run", side_effect=replies), patch.object(screenshot.os, "execv") as launch:
-                    self.assertIsNone(screenshot.capture("region", dismiss=False, edit=True))
+                    self.assertIsNone(screenshot.capture("region", edit=True))
                     launch.assert_not_called()
 
-    def test_missing_editor_does_not_dismiss_shell_or_capture(self):
+    def test_missing_editor_stops_before_capture(self):
         with patch.object(screenshot.shutil, "which", side_effect=lambda name: "hyprshot" if name == "hyprshot" else None), \
                 patch.object(screenshot.subprocess, "run") as run:
             with self.assertRaisesRegex(ValueError, "Install satty"):
@@ -126,19 +126,17 @@ class ScreenshotTests(unittest.TestCase):
 
 
 class RecorderTests(unittest.TestCase):
-    def test_native_app_owns_lifetime_after_shell_is_dismissed(self):
+    def test_native_app_launch_keeps_shell_surfaces_open(self):
         events = []
         with patch.object(recorder.shutil, "which", return_value="/usr/bin/kooha"), \
-                patch.object(recorder, "dismiss_shell", side_effect=lambda: events.append("dismiss")), \
                 patch.object(recorder.os, "execv", side_effect=lambda *args: events.append(args)):
             recorder.record()
-        self.assertEqual(events, ["dismiss", ("/usr/bin/kooha", ["/usr/bin/kooha"])])
+        self.assertEqual(events, [("/usr/bin/kooha", ["/usr/bin/kooha"])])
 
     def test_missing_recorder_leaves_shell_open(self):
-        with patch.object(recorder.shutil, "which", return_value=None), patch.object(recorder, "dismiss_shell") as dismiss:
+        with patch.object(recorder.shutil, "which", return_value=None):
             with self.assertRaisesRegex(ValueError, "Install kooha"):
                 recorder.record()
-            dismiss.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -122,6 +122,8 @@ Lucide icons. A shared, cached calendar snapshot refreshes every 15 minutes even
 when Attention is closed; browsing another month does not change today's icons.
 
 Print or Super+Shift+S selects a screenshot area and opens Satty for annotation.
+Screenshot shortcuts and Settings' capture actions leave open drawers and
+modules visible while capturing.
 Enter saves the annotated image, copies it and closes Satty; Escape keeps the
 original capture. Super+Shift+Print captures an area directly, Super+Print
 captures the active window, Super+Ctrl+Print selects a window, and Shift+Print
@@ -130,9 +132,10 @@ clipboard. The Settings drawer's Screenshot action also opens Satty. Its
 configuration lives in `config/satty.toml`, without installing another user
 configuration link.
 
-Super+Alt+R or Settings' Screen recording action opens Kooha. Use its native
-controls to choose a screen or area, microphone/system audio, format and save
-location, then start and stop recording. Kooha owns its normal application
+Super+Alt+R or Settings' Screen recording action opens Kooha and leaves open
+drawers and modules visible. Use Kooha's native controls to choose a screen or
+area, microphone/system audio, format and save location, then start and stop
+recording. Kooha owns its normal application
 settings and uses PipeWire through the desktop portal. Both applications launch
 independently of the drawer and remain open when shell surfaces close. The keys
 follow [Spectacle's defaults](https://github.com/KDE/spectacle/blob/master/desktop/org.kde.spectacle.desktop.cmake)

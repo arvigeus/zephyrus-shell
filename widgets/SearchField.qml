@@ -6,7 +6,7 @@ TextField {
     implicitHeight: 46
     color: Theme.text
     placeholderTextColor: Theme.muted
-    font.pixelSize: 15
+    font.family: Theme.font; font.pixelSize: Theme.sp(15)
     leftPadding: 16
     rightPadding: 16
     selectByMouse: true

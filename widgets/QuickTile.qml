@@ -27,8 +27,8 @@ Rectangle {
                 Icon { name: root.symbol }
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: 3
-                    Text { text: root.title; font.pixelSize: 15; font.bold: true; color: Theme.text }
-                    Text { text: root.subtitle; font.pixelSize: 12; color: Theme.muted; Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.PlainText }
+                    Text { text: root.title; font.family: Theme.font; font.pixelSize: Theme.sp(15); font.bold: true; color: Theme.text }
+                    Text { text: root.subtitle; font.family: Theme.font; font.pixelSize: Theme.sp(12); color: Theme.muted; Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.PlainText }
                 }
             }
             onClicked: root.toggled()

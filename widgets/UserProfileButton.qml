@@ -21,8 +21,8 @@ Widgets.Action {
         }
         ColumnLayout {
             Layout.fillWidth: true; spacing: 4
-            Widgets.Label { text: root.profile.name; font.pixelSize: 20; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
-            Widgets.Label { text: "@" + root.profile.username; color: Theme.muted; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+            Widgets.Label { text: root.profile.name; font.family: Theme.font; font.pixelSize: Theme.sp(20); font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
+            Widgets.Label { text: "@" + root.profile.username; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); Layout.fillWidth: true; elide: Text.ElideRight }
         }
     }
     onClicked: ShellState.openProfile(profile)

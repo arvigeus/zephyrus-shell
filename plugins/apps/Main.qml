@@ -113,7 +113,7 @@ ColumnLayout {
                 Text {
                     text: appButton.modelData.name
                     color: appButton.highlighted ? Theme.accent : Theme.text
-                    font.pixelSize: 14
+                    font.family: Theme.font; font.pixelSize: Theme.sp(14)
                     x: 0; y: 62; width: parent.width; height: parent.height - y
                     verticalAlignment: Text.AlignTop
                     horizontalAlignment: Text.AlignHCenter

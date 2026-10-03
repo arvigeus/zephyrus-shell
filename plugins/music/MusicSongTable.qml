@@ -28,7 +28,7 @@ ColumnLayout {
             ? "Most played in " + root.controller.selectedGenreName
             : "Most played"
         color: Theme.muted
-        font.pixelSize: 13
+        font.family: Theme.font; font.pixelSize: Theme.sp(13)
         font.weight: Font.DemiBold
     }
 
@@ -36,10 +36,10 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.preferredHeight: 28
         spacing: 10
-        W.Label { Layout.fillWidth: true; Layout.preferredWidth: Math.max(240, rows.width * 0.38); text: "SONG"; color: Theme.muted; font.pixelSize: 10; font.weight: Font.DemiBold }
-        W.Label { Layout.fillWidth: true; Layout.preferredWidth: Math.max(160, rows.width * 0.25); text: "ARTIST"; color: Theme.muted; font.pixelSize: 10; font.weight: Font.DemiBold }
-        W.Label { Layout.fillWidth: true; Layout.preferredWidth: Math.max(160, rows.width * 0.25); text: "ALBUM"; color: Theme.muted; font.pixelSize: 10; font.weight: Font.DemiBold }
-        W.Label { Layout.preferredWidth: 54; horizontalAlignment: Text.AlignRight; text: "TIME"; color: Theme.muted; font.pixelSize: 10; font.weight: Font.DemiBold }
+        W.Label { Layout.fillWidth: true; Layout.preferredWidth: Math.max(240, rows.width * 0.38); text: "SONG"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(10); font.weight: Font.DemiBold }
+        W.Label { Layout.fillWidth: true; Layout.preferredWidth: Math.max(160, rows.width * 0.25); text: "ARTIST"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(10); font.weight: Font.DemiBold }
+        W.Label { Layout.fillWidth: true; Layout.preferredWidth: Math.max(160, rows.width * 0.25); text: "ALBUM"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(10); font.weight: Font.DemiBold }
+        W.Label { Layout.preferredWidth: 54; horizontalAlignment: Text.AlignRight; text: "TIME"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(10); font.weight: Font.DemiBold }
     }
 
     Item {
@@ -112,13 +112,13 @@ ColumnLayout {
                             text: String(songRow.index + 1)
                             color: Theme.muted
                             horizontalAlignment: Text.AlignRight
-                            font.pixelSize: 12
+                            font.family: Theme.font; font.pixelSize: Theme.sp(12)
                         }
                         W.Label {
                             Layout.fillWidth: true
                             text: songRow.modelData.title || "Unknown Title"
                             color: songRow.playing ? Theme.accent : Theme.text
-                            font.pixelSize: 13
+                            font.family: Theme.font; font.pixelSize: Theme.sp(13)
                             font.weight: Font.Medium
                             elide: Text.ElideRight
                         }
@@ -175,7 +175,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             text: songRow.modelData.artist || "Unknown Artist"
                             color: Theme.muted
-                            font.pixelSize: 12
+                            font.family: Theme.font; font.pixelSize: Theme.sp(12)
                             elide: Text.ElideRight
                         }
                         MusicRowActionGroup {
@@ -245,7 +245,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             text: songRow.modelData.album || "Unknown Album"
                             color: Theme.muted
-                            font.pixelSize: 12
+                            font.family: Theme.font; font.pixelSize: Theme.sp(12)
                             elide: Text.ElideRight
                         }
                         MusicRowActionGroup {
@@ -289,7 +289,7 @@ ColumnLayout {
                         Layout.preferredWidth: 54
                         text: root.controller.formatTime(songRow.modelData.duration)
                         color: Theme.muted
-                        font.pixelSize: 12
+                        font.family: Theme.font; font.pixelSize: Theme.sp(12)
                         horizontalAlignment: Text.AlignRight
                     }
                 }

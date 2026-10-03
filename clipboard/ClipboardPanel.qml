@@ -45,7 +45,7 @@ Rectangle {
         anchors.fill: parent; anchors.margins: 16; spacing: 12
         RowLayout {
             Layout.fillWidth: true
-            W.Label { text: "Clipboard"; font.pixelSize: 20; font.weight: Font.DemiBold; Layout.fillWidth: true }
+            W.Label { text: "Clipboard"; font.family: Theme.font; font.pixelSize: Theme.sp(20); font.weight: Font.DemiBold; Layout.fillWidth: true }
             W.IconButton { iconName: "x"; text: "Close clipboard"; onClicked: root.closeRequested() }
         }
         RowLayout {

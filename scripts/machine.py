@@ -112,7 +112,7 @@ def ddc_brightness(bus, refresh=False, device_root=Path("/dev")):
 def monitor_rule(monitor, **changes):
     rule = {"output": monitor["name"], "mode": f"{monitor['width']}x{monitor['height']}@{monitor['refreshRate']}",
             "position": f"{monitor.get('x', 0)}x{monitor.get('y', 0)}", "scale": monitor.get("scale", 1),
-            "transform": monitor.get("transform", 0)}
+            "transform": monitor.get("transform", 0), "disabled": False}
     rule.update(changes)
     return rule
 
@@ -121,15 +121,20 @@ def lua_rule(rule):
     return "hl.monitor({ " + ", ".join(key + " = " + json.dumps(value) for key, value in rule.items()) + " })"
 
 
+def saved_monitor_rules():
+    path = config_directory() / "display-settings.lua"
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text().splitlines()[0].removeprefix("-- Zephyrus display settings: "))
+
+
 def apply_monitor_rules(rules, persist=True):
     command(["hyprctl", "eval", "; ".join(lua_rule(rule) for rule in rules)], True)
     if not persist:
         return
     path = config_directory() / "display-settings.lua"
     prefix = "-- Zephyrus display settings: "
-    saved = {}
-    if path.exists():
-        saved = json.loads(path.read_text().splitlines()[0].removeprefix(prefix))
+    saved = saved_monitor_rules()
     for rule in rules:
         saved[rule["output"]] = rule
     # One atomic file contains both editable state and reloadable Lua rules.
@@ -172,14 +177,15 @@ def display_action(name, value):
     elif name == "display":
         if not isinstance(data.get("enabled"), bool):
             raise ValueError("Expected display state")
-        if not data["enabled"] and len([m for m in monitors if not m.get("disabled")]) <= 1:
+        if not data["enabled"] and not monitor.get("disabled") and len([m for m in monitors if not m.get("disabled")]) <= 1:
             raise ValueError("Keep at least one display enabled")
-        # Disable only for this session so unplugging an external output cannot
-        # leave a laptop with its only attached display disabled at next login.
-        rule = monitor_rule(monitor, disabled=False) if data["enabled"] and monitor.get("width") else {"output": connector, "mode": "preferred", "scale": "auto", "position": "auto", "disabled": False}
-        if not data["enabled"]:
-            rule = {"output": connector, "disabled": True}
-        apply_monitor_rules([rule], persist=False)
+        # Keep geometry along with the preference, including when an output is
+        # disabled and Hyprland no longer reports its original mode/scale.
+        rule = saved_monitor_rules().get(connector) or (
+            monitor_rule(monitor) if monitor.get("width") else
+            {"output": connector, "mode": "preferred", "scale": "auto", "position": "auto"})
+        rule = dict(rule, disabled=not data["enabled"])
+        apply_monitor_rules([rule])
     elif name in ("display-mode", "display-scale"):
         if monitor.get("disabled"):
             raise ValueError("Enable the display first")
@@ -209,7 +215,7 @@ def primary_monitor(monitors):
     return next((m for m in enabled if m["name"] == preferred), next((m for m in enabled if m.get("focused")), enabled[0] if enabled else {})).get("name", "")
 
 
-def recover_displays():
+def recover_displays(wake=False):
     """Recover a laptop output after a topology change, never during idle polling.
 
     Hyprland moves windows/workspaces when it removes an output. Enabling a real
@@ -219,6 +225,17 @@ def recover_displays():
         return
     monitors = json.loads(command(["hyprctl", "monitors", "all", "-j"], True))
     real = [m for m in monitors if m["name"] != "FALLBACK"]
+    saved = saved_monitor_rules()
+    # Reassert preferences after hotplug/resume, but never disable the last
+    # usable attached display. The safety fallback does not erase preferences.
+    desired = [m for m in real if not saved.get(m["name"], {}).get("disabled", m.get("disabled", False))]
+    if desired:
+        changes = [saved[m["name"]] for m in real if m["name"] in saved
+                   and "disabled" in saved[m["name"]]
+                   and bool(m.get("disabled")) != saved[m["name"]]["disabled"]]
+        if changes:
+            apply_monitor_rules(changes, persist=False)
+            real = [dict(m, disabled=saved.get(m["name"], {}).get("disabled", m.get("disabled", False))) for m in real]
     enabled = [m for m in real if not m.get("disabled")]
     if not enabled:
         internal = next((m for m in real if m["name"].startswith(("eDP", "LVDS", "DSI"))), None)
@@ -229,7 +246,11 @@ def recover_displays():
             enabled = [destination]
     # A disabled output and DPMS blanking are different states. Wake the sole
     # internal panel if the external screen has disappeared while it was blank.
-    if len(enabled) == 1 and enabled[0]["name"].startswith(("eDP", "LVDS", "DSI")):
+    if wake:
+        for monitor in enabled:
+            command(["hyprctl", "dispatch", 'hl.dsp.dpms({ action = "enable", monitor = '
+                     + json.dumps(monitor["name"]) + ' })'], True)
+    elif len(enabled) == 1 and enabled[0]["name"].startswith(("eDP", "LVDS", "DSI")):
         command(["hyprctl", "dispatch", 'hl.dsp.dpms({ action = "enable", monitor = '
                  + json.dumps(enabled[0]["name"]) + ' })'], True)
 
@@ -541,6 +562,8 @@ def action(name, value):
         clean_thumbnail_cache()
     elif name == "recover-displays":
         recover_displays()
+    elif name == "wake-displays":
+        recover_displays(wake=True)
     elif name in ("primary", "display", "display-mode", "display-scale", "display-order", "display-ddc"):
         display_action(name, value)
     elif name == "brightness":

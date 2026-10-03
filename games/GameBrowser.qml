@@ -611,7 +611,7 @@ Item {
                         W.Label {
                             Layout.fillWidth: true
                             text: root.selected.title || ""
-                            font.pixelSize: Math.min(31, root.width / 43)
+                            font.family: Theme.font; font.pixelSize: Theme.sp(Math.min(31, root.width / 43))
                             font.bold: true
                             wrapMode: Text.Wrap
                             maximumLineCount: 2
@@ -635,7 +635,7 @@ Item {
                             Layout.fillWidth: true
                             text: (root.selected.platforms || []).slice(0, 5).join(" · ")
                             color: Theme.muted
-                            font.pixelSize: 12
+                            font.family: Theme.font; font.pixelSize: Theme.sp(12)
                             wrapMode: Text.Wrap
                             maximumLineCount: 2
                         }
@@ -715,7 +715,7 @@ Item {
                     spacing: 7
                     RowLayout {
                         Layout.fillWidth: true
-                        W.Label { text: "Stores"; font.pixelSize: 17; font.bold: true }
+                        W.Label { text: "Stores"; font.family: Theme.font; font.pixelSize: Theme.sp(17); font.bold: true }
                         Item { Layout.fillWidth: true }
                         W.IconButton {
                             iconName: "refresh-cw"
@@ -913,7 +913,7 @@ Item {
                             Layout.fillWidth: true
                             text: root.selected.summary || (root.detailLoading ? "Loading game details…" : "No description available.")
                             wrapMode: Text.Wrap
-                            font.pixelSize: 15
+                            font.family: Theme.font; font.pixelSize: Theme.sp(15)
                         }
                         W.Label {
                             visible: (root.selected.developers || []).length > 0
@@ -969,7 +969,7 @@ Item {
                                             id: relationText
                                             anchors.centerIn: parent
                                             text: modelData.title + " · " + modelData.type
-                                            font.pixelSize: 11
+                                            font.family: Theme.font; font.pixelSize: Theme.sp(11)
                                             color: Theme.muted
                                         }
                                     }
@@ -994,7 +994,7 @@ Item {
                 width: Math.min(560, parent.width - 64)
                 visible: !root.localMode && !root.initializing && !root.loading && !root.titles.length && root.setupRequired && !root.error
                 spacing: 12
-                W.Label { text: "Set up the Games catalogue"; font.pixelSize: 24; font.bold: true; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                W.Label { text: "Set up the Games catalogue"; font.family: Theme.font; font.pixelSize: Theme.sp(24); font.bold: true; Layout.fillWidth: true; wrapMode: Text.Wrap }
                 W.Label {
                     Layout.fillWidth: true
                     text: root.catalogState.configError
@@ -1010,7 +1010,7 @@ Item {
                 width: Math.min(480, parent.width - 64)
                 visible: !root.initializing && !root.loading && !root.titles.length && (root.localMode || root.catalogState.configured) && !root.error && !root.setupRequired
                 spacing: 8
-                W.Label { Layout.fillWidth: true; text: root.localMode ? "No local game files yet." : root.favorites ? "No favorite games yet." : search.text ? "No games found." : "No catalogue results are available."; font.pixelSize: 20; horizontalAlignment: Text.AlignHCenter }
+                W.Label { Layout.fillWidth: true; text: root.localMode ? "No local game files yet." : root.favorites ? "No favorite games yet." : search.text ? "No games found." : "No catalogue results are available."; font.family: Theme.font; font.pixelSize: Theme.sp(20); horizontalAlignment: Text.AlignHCenter }
                 W.Label { Layout.fillWidth: true; text: root.localMode ? "Find a local copy from a game in Discover." : root.favorites ? "Add a game to Favorites from its details." : "Try another title or refresh the catalogue."; color: Theme.muted; horizontalAlignment: Text.AlignHCenter }
             }
 

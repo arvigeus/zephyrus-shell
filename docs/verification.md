@@ -1,5 +1,16 @@
 # Verification on this machine
 
+Desktop/settings follow-up, 2026-10-03: the full 367-test Python suite passed.
+Native Qt 5/6 offscreen galleries verified palette, font, style and exact menu
+surface color in dark and light modes; GTK 3/4 CSS parsing passed. Theme smoke
+uses the actual System card button and verifies persisted light/dark roundtrips.
+Settings, power and real-cliphist lifecycle smoke checks passed. Live checks
+confirmed the 75% scrolling default, both lid switch bindings, clipboard recording
+services, preserved disabled laptop output after reload, and notifications on the
+focused output's Overlay layer. Physical lid/suspend/resume remains a manual check.
+`bash scripts/check-notifications.sh` also verifies real D-Bus notifications,
+replacement, quiet mode, popup body rendering, history retention and dismissal.
+
 Search header and clipboard popover, 2026-10-02: 17 focused Python tests, seven
 Spaces/clock checks, Settings, Wayland, retained lifecycle, preview rendering
 and real-cliphist desktop smoke checks
@@ -244,3 +255,15 @@ The weather pill passed shared-forecast and visual checks. With explicit user
 consent, the real one-shot weather service returned the configured Ha Long
 forecast with no error. All monitor pills share that result and the existing
 15-minute provider cache.
+
+Capture integration, 2026-10-02: all 12 desktop helper tests passed, including
+annotation handoff with paths containing spaces, missing tools, capture
+cancellation (including a zero exit without an image), active-window selection
+and Kooha process ownership after overlay dismissal. The Settings lifecycle
+smoke test and all 12 component preview captures passed. Visual inspection at
+1280×800 verified both capture actions fit above the hardware details.
+`Hyprland --verify-config` accepted the updated shortcuts. The dotfiles package
+graph and static contracts passed with Satty and Kooha selected from Arch extra.
+Satty options/configuration were checked against upstream v0.22.0. The capture
+applications were not installed on the host; real screenshot annotation and
+portal recording/audio still need a live session check.

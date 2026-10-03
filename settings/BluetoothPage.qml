@@ -143,8 +143,8 @@ ColumnLayout {
                     Layout.fillWidth: true
                     Layout.leftMargin: 28
                     spacing: 6
-                    Label { visible: root.forgetCandidate === modelData; text: "Press forget again to remove this device"; color: Theme.danger; font.pixelSize: 11 }
-                    Label { visible: modelData.batteryAvailable; text: "Battery " + Math.round(modelData.battery * 100) + "%"; color: Theme.muted; font.pixelSize: 11 }
+                    Label { visible: root.forgetCandidate === modelData; text: "Press forget again to remove this device"; color: Theme.danger; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
+                    Label { visible: modelData.batteryAvailable; text: "Battery " + Math.round(modelData.battery * 100) + "%"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
                     Label {
                         visible: pairing.running && root.pairingDevice === modelData
                         text: root.prompt.code ? (root.prompt.kind === "display" ? "Enter this code on the device: " : "Confirm the code matches: ") + root.prompt.code : "Pairing…"

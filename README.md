@@ -49,6 +49,7 @@ migration are already prepared. The scrolling layout needs no plugins. See
 
 ## What works
 
+- Shared colors and typography for the shell, KDE/Qt, GTK, Kitty and supported editors, with automatic theme-file updates and a common light/dark preference. See [desktop appearance](docs/theme.md) for app coverage and restoration.
 - Separate pills for Spaces, running windows, the clock, the tray and Settings; empty lists hide, and gaps pass pointer input through.
 - Left and right overlay drawers; opening a panel closes the previous one. Escape closes it.
 - One drawer on one monitor at a time, with pills on every monitor.
@@ -73,8 +74,9 @@ migration are already prepared. The scrolling layout needs no plugins. See
   locally detected Steam installs and launch, optional Epic ownership/install/launch
   through Legendary, UMU support for Epic games, and detail-page ProtonDB guidance.
   Configure the catalog and optional Steam ownership in [Games setup](docs/games.md).
-- Terminal opens the user's shell in an embedded Qt Quick terminal surface. Closing the
-  module ends that shell session. It uses the packaged QMLTermWidget component.
+- Terminal has independent shell tabs, shared light/dark colors and a Play menu for
+  configurable named commands. Closing the module ends its sessions. See
+  [Terminal configuration](docs/terminal.md).
 - Spaces opens the module drawer over the current view. Desktop reveals the Hyprland session; Music and Radio can keep playing there until closed.
 - Tap Win to open Spaces, then type to search installed applications and space names.
   Up/Down selects a result and Enter opens it; Escape closes the drawer/search.

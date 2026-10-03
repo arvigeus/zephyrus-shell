@@ -37,7 +37,7 @@ ColumnLayout {
         text: root.ready ? root.shown.location : ""
         Layout.fillWidth: true
         color: Theme.muted
-        font.pixelSize: 12
+        font.family: Theme.font; font.pixelSize: Theme.sp(12)
     }
 
     GridLayout {
@@ -57,7 +57,7 @@ ColumnLayout {
                 Icon { name: root.current.icon || ""; Layout.preferredWidth: root.hoursBeside ? 38 : 56; Layout.preferredHeight: root.hoursBeside ? 38 : 56 }
                 Label {
                     text: root.ready ? Math.round(root.current.temperature) + "°C" : ""
-                    font.pixelSize: root.hoursBeside ? 42 : 48
+                    font.family: Theme.font; font.pixelSize: Theme.sp(root.hoursBeside ? 42 : 48)
                     font.weight: Font.Light
                 }
             }
@@ -84,8 +84,8 @@ ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 4
                         Icon { name: modelData.icon; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
-                        Label { text: modelData.label; color: Theme.muted; font.pixelSize: 11; Layout.fillWidth: true }
-                        Label { text: modelData.value; font.pixelSize: 12; font.weight: Font.DemiBold }
+                        Label { text: modelData.label; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11); Layout.fillWidth: true }
+                        Label { text: modelData.value; font.family: Theme.font; font.pixelSize: Theme.sp(12); font.weight: Font.DemiBold }
                     }
                 }
             }
@@ -98,8 +98,8 @@ ColumnLayout {
             spacing: 5
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: root.forecast && root.forecast.stale ? "Saved hours" : "Next hours"; color: Theme.muted; font.pixelSize: 11; Layout.fillWidth: true }
-                Label { text: "Precip."; color: Theme.muted; font.pixelSize: 10 }
+                Label { text: root.forecast && root.forecast.stale ? "Saved hours" : "Next hours"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11); Layout.fillWidth: true }
+                Label { text: "Precip."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(10) }
             }
             Repeater {
                 model: root.hours
@@ -108,7 +108,7 @@ ColumnLayout {
                     objectName: "weatherHour"
                     Layout.fillWidth: true
                     spacing: 6
-                    Label { text: modelData.time.slice(11, 16); font.pixelSize: 11; Layout.preferredWidth: 34 }
+                    Label { text: modelData.time.slice(11, 16); font.family: Theme.font; font.pixelSize: Theme.sp(11); Layout.preferredWidth: 34 }
                     Icon {
                         name: modelData.icon
                         Layout.preferredWidth: 18; Layout.preferredHeight: 18
@@ -116,12 +116,12 @@ ColumnLayout {
                         Controls.ToolTip.text: modelData.description
                         HoverHandler { id: hourHover }
                     }
-                    Label { text: Math.round(modelData.temperature) + "°"; font.pixelSize: 12; Layout.fillWidth: true }
+                    Label { text: Math.round(modelData.temperature) + "°"; font.family: Theme.font; font.pixelSize: Theme.sp(12); Layout.fillWidth: true }
                     Label {
                         text: modelData.precipitation_probability === null || modelData.precipitation_probability === undefined
                             ? "—" : Math.round(modelData.precipitation_probability) + "%"
                         color: Theme.muted
-                        font.pixelSize: 11
+                        font.family: Theme.font; font.pixelSize: Theme.sp(11)
                         Layout.preferredWidth: 30
                         horizontalAlignment: Text.AlignRight
                     }
@@ -131,7 +131,7 @@ ColumnLayout {
                 visible: root.hours.length === 0
                 text: root.loading ? "Loading…" : "Hourly forecast unavailable"
                 color: Theme.muted
-                font.pixelSize: 11
+                font.family: Theme.font; font.pixelSize: Theme.sp(11)
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
             }
@@ -153,7 +153,7 @@ ColumnLayout {
         visible: root.ready
         text: "7-day outlook"
         color: Theme.muted
-        font.pixelSize: 11
+        font.family: Theme.font; font.pixelSize: Theme.sp(11)
         Layout.fillWidth: true
     }
 
@@ -176,14 +176,14 @@ ColumnLayout {
                     text: modelData.date === root.localDate ? "Today" : Qt.formatDate(new Date(modelData.date + "T12:00:00"), "ddd")
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
-                    font.pixelSize: 11
+                    font.family: Theme.font; font.pixelSize: Theme.sp(11)
                 }
                 Label {
                     text: Qt.formatDate(new Date(modelData.date + "T12:00:00"), "M/d")
                     color: Theme.muted
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
-                    font.pixelSize: 10
+                    font.family: Theme.font; font.pixelSize: Theme.sp(10)
                 }
                 Icon {
                     name: modelData.icon
@@ -193,8 +193,8 @@ ColumnLayout {
                     Controls.ToolTip.text: modelData.description
                     HoverHandler { id: dayHover }
                 }
-                Label { text: Math.round(modelData.high) + "°"; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; font.weight: Font.DemiBold; font.pixelSize: 12 }
-                Label { text: Math.round(modelData.low) + "°"; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: Theme.muted; font.pixelSize: 11 }
+                Label { text: Math.round(modelData.high) + "°"; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; font.weight: Font.DemiBold; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
+                Label { text: Math.round(modelData.low) + "°"; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
             }
         }
     }
@@ -204,14 +204,14 @@ ColumnLayout {
         text: root.forecast && root.forecast.stale ? "Saved forecast · Open-Meteo" : "Open-Meteo"
         Layout.fillWidth: true
         color: Theme.muted
-        font.pixelSize: 11
+        font.family: Theme.font; font.pixelSize: Theme.sp(11)
     }
     Label {
         visible: root.ready && root.error !== ""
         text: root.error
         Layout.fillWidth: true
         color: Theme.muted
-        font.pixelSize: 11
+        font.family: Theme.font; font.pixelSize: Theme.sp(11)
         wrapMode: Text.Wrap
         elide: Text.ElideNone
     }

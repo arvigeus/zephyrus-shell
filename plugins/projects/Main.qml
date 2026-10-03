@@ -282,7 +282,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 3
                 W.Heading { text: "WORKSPACE" }
-                W.Label { text: "Projects"; font.pixelSize: 28; font.bold: true }
+                W.Label { text: "Projects"; font.family: Theme.font; font.pixelSize: Theme.sp(28); font.bold: true }
                 W.Label { text: root.projectsPath || "Your XDG Projects folder"; color: Theme.muted; elide: Text.ElideMiddle; Layout.fillWidth: true }
             }
             W.Action { text: "Git Clone"; iconName: "folder-git-2"; enabled: !root.busy; onClicked: root.showForm("clone") }
@@ -305,7 +305,7 @@ Item {
         }
         RowLayout {
             Layout.fillWidth: true
-            W.Label { text: "Recent Projects"; font.pixelSize: 17; font.bold: true; Layout.fillWidth: true }
+            W.Label { text: "Recent Projects"; font.family: Theme.font; font.pixelSize: Theme.sp(17); font.bold: true; Layout.fillWidth: true }
             W.IconButton {
                 id: recentOptions
                 iconName: "ellipsis-vertical"; iconSize: 18
@@ -366,7 +366,7 @@ Item {
                             visible: !projectImage.visible && !techImage.visible
                             anchors.centerIn: parent
                             text: card.modelData.name.charAt(0).toUpperCase()
-                            font.pixelSize: 25; font.bold: true
+                            font.family: Theme.font; font.pixelSize: Theme.sp(25); font.bold: true
                         }
                         Image {
                             id: techImage
@@ -389,9 +389,9 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 5
-                        W.Label { text: card.modelData.name; font.pixelSize: 17; font.bold: true; Layout.fillWidth: true }
-                        W.Label { text: card.modelData.path; color: Theme.muted; font.pixelSize: 12; elide: Text.ElideMiddle; Layout.fillWidth: true }
-                        W.Label { text: root.openedLabel(card.modelData.opened); color: Theme.muted; font.pixelSize: 11 }
+                        W.Label { text: card.modelData.name; font.family: Theme.font; font.pixelSize: Theme.sp(17); font.bold: true; Layout.fillWidth: true }
+                        W.Label { text: card.modelData.path; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); elide: Text.ElideMiddle; Layout.fillWidth: true }
+                        W.Label { text: root.openedLabel(card.modelData.opened); color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
                     }
                     Row {
                         spacing: 6
@@ -467,7 +467,7 @@ Item {
         background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.radius }
         contentItem: ColumnLayout {
             spacing: 12
-            W.Label { text: root.createdPath ? "Building new project" : "New project"; font.pixelSize: 22; font.bold: true }
+            W.Label { text: root.createdPath ? "Building new project" : "New project"; font.family: Theme.font; font.pixelSize: Theme.sp(22); font.bold: true }
             W.Label {
                 Layout.fillWidth: true
                 text: root.createdPath ? root.createdPath : "Create inside " + (root.projectsPath || "your Projects folder") + ", then scaffold it in a live terminal."
@@ -505,7 +505,7 @@ Item {
                                 width: templateColumn.width
                                 visible: root.filteredTemplates(modelData).length > 0
                                 spacing: 6
-                                W.Label { text: categoryGroup.modelData.toUpperCase(); color: Theme.accent; font.pixelSize: 11; font.bold: true }
+                                W.Label { text: categoryGroup.modelData.toUpperCase(); color: Theme.accent; font.family: Theme.font; font.pixelSize: Theme.sp(11); font.bold: true }
                                 Flow {
                                     width: parent.width
                                     spacing: 8
@@ -549,11 +549,11 @@ Item {
                                                 }
                                                 ColumnLayout {
                                                     Layout.fillWidth: true; spacing: 2
-                                                    W.Label { Layout.fillWidth: true; text: templateCard.modelData.label; font.bold: true; font.pixelSize: 12 }
+                                                    W.Label { Layout.fillWidth: true; text: templateCard.modelData.label; font.bold: true; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
                                                     W.Label {
                                                         Layout.fillWidth: true
                                                         text: templateCard.modelData.available ? templateCard.modelData.description : "Requires " + templateCard.modelData.requires
-                                                        color: Theme.muted; font.pixelSize: 10
+                                                        color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(10)
                                                     }
                                                 }
                                             }
@@ -620,7 +620,7 @@ Item {
         background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.radius }
         contentItem: ColumnLayout {
             spacing: 12
-            W.Label { text: "Git Clone"; font.pixelSize: 22; font.bold: true }
+            W.Label { text: "Git Clone"; font.family: Theme.font; font.pixelSize: Theme.sp(22); font.bold: true }
             W.Label { text: "Clone a Git repository into your Projects folder."; color: Theme.muted; Layout.fillWidth: true }
             W.Label { text: "Repository URL"; color: Theme.muted }
             W.SearchField {
@@ -699,7 +699,7 @@ Item {
                     : root.actionMode === "notes" ? "Notes for " + root.selectedProject.name
                     : root.actionMode === "cleanup" ? "Cleanup files in " + root.selectedProject.name
                     : "Delete " + root.selectedProject.name + "?"
-                font.pixelSize: 21; font.bold: true
+                font.family: Theme.font; font.pixelSize: Theme.sp(21); font.bold: true
             }
             W.Label {
                 Layout.fillWidth: true
@@ -717,7 +717,7 @@ Item {
                 Layout.fillWidth: true; spacing: 8
                 W.Label { text: root.actionBusy ? "Inspecting this project…" : root.configuredMise ? "A mise configuration was found. Trust and install its tools." : "Inferred tools (edit as needed)"; color: Theme.muted; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 W.SearchField { id: inferredField; visible: !root.configuredMise && !root.actionBusy; Layout.fillWidth: true; placeholderText: "node@lts python@latest" }
-                W.Label { text: root.configuredMise ? "mise trust --yes && mise install --yes" : "mise use --yes --env local …"; color: Theme.muted; font.pixelSize: 11 }
+                W.Label { text: root.configuredMise ? "mise trust --yes && mise install --yes" : "mise use --yes --env local …"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
             }
             W.Label {
                 visible: root.actionPhase === "form" && root.actionMode === "update"
@@ -728,7 +728,7 @@ Item {
                 id: notesField
                 visible: root.actionPhase === "form" && root.actionMode === "notes"
                 Layout.fillWidth: true; Layout.fillHeight: true
-                color: Theme.text; font.family: "monospace"; font.pixelSize: 13
+                color: Theme.text; font.family: "monospace"; font.pixelSize: Theme.sp(13)
                 wrapMode: TextEdit.Wrap
                 enabled: !root.actionBusy
                 placeholderText: "Write anything you want to remember about this project…"
@@ -771,17 +771,17 @@ Item {
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: 1
                     ProjectCheck { id: cacheChoice; text: "Downloaded packages and build caches"; checked: true }
-                    W.Label { Layout.fillWidth: true; Layout.leftMargin: 32; text: "Caches from npm, Bun, Cargo, Gradle, Python, and other development tools."; color: Theme.muted; font.pixelSize: 11; wrapMode: Text.Wrap }
+                    W.Label { Layout.fillWidth: true; Layout.leftMargin: 32; text: "Caches from npm, Bun, Cargo, Gradle, Python, and other development tools."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11); wrapMode: Text.Wrap }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: 1
                     ProjectCheck { id: miseChoice; text: "Tools installed with Mise"; checked: false; enabled: root.miseAvailable }
-                    W.Label { Layout.fillWidth: true; Layout.leftMargin: 32; text: "Removes all Mise tool versions and its cache. Your project setup files remain."; color: Theme.muted; font.pixelSize: 11; wrapMode: Text.Wrap }
+                    W.Label { Layout.fillWidth: true; Layout.leftMargin: 32; text: "Removes all Mise tool versions and its cache. Your project setup files remain."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11); wrapMode: Text.Wrap }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: 1
                     ProjectCheck { id: toolsChoice; text: "Other installed developer tools"; checked: false }
-                    W.Label { Layout.fillWidth: true; Layout.leftMargin: 32; text: "Removes Bun, Deno, and Rustup installations. You can reinstall them later."; color: Theme.muted; font.pixelSize: 11; wrapMode: Text.Wrap }
+                    W.Label { Layout.fillWidth: true; Layout.leftMargin: 32; text: "Removes Bun, Deno, and Rustup installations. You can reinstall them later."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11); wrapMode: Text.Wrap }
                 }
                 W.Label {
                     visible: miseChoice.checked || toolsChoice.checked

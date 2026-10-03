@@ -10,9 +10,9 @@ RowLayout {
     implicitHeight: 8
     Repeater {
         model: [
-            {start: 0, end: 60, color: "#58b87a"},
-            {start: 60, end: 85, color: "#e1b957"},
-            {start: 85, end: 100, color: "#e16c74"}
+            {start: 0, end: 60, color: Theme.success},
+            {start: 60, end: 85, color: Theme.warning},
+            {start: 85, end: 100, color: Theme.danger}
         ]
         Rectangle {
             required property var modelData

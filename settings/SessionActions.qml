@@ -134,7 +134,7 @@ ColumnLayout {
                 background: Rectangle { color: Theme.surface; radius: Theme.controlRadius; border.color: Theme.border }
                 contentItem: ColumnLayout {
                     spacing: 6
-                    Label { text: "Shut down in"; color: Theme.muted; font.pixelSize: 12 }
+                    Label { text: "Shut down in"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
                     GridLayout {
                         columns: 2
                         Layout.fillWidth: true
@@ -163,7 +163,7 @@ ColumnLayout {
                     Label {
                         visible: !!root.machine.snapshot.scheduledShutdown
                         text: root.machine.snapshot.scheduledShutdown || ""
-                        Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.muted; font.pixelSize: 11
+                        Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11)
                     }
                     Action {
                         visible: !!root.machine.snapshot.scheduledShutdown

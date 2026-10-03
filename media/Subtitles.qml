@@ -208,7 +208,7 @@ ColumnLayout {
         }
         ColumnLayout {
             width: parent.width; spacing: 10
-            W.Label { text: "Available subtitles"; font.pixelSize: 17; font.bold: true; visible: !!root.path }
+            W.Label { text: "Available subtitles"; font.family: Theme.font; font.pixelSize: Theme.sp(17); font.bold: true; visible: !!root.path }
             W.Label { text: "No subtitles found in this video or beside it."; visible: !!root.path && !root.loading && !root.availableTracks.length; color: Theme.muted }
             Repeater {
                 model: root.availableTracks
@@ -277,7 +277,7 @@ ColumnLayout {
                     }
                 }
             }
-            W.Label { text: "Find more on OpenSubtitles"; font.pixelSize: 17; font.bold: true; visible: !!root.path; Layout.topMargin: 10 }
+            W.Label { text: "Find more on OpenSubtitles"; font.family: Theme.font; font.pixelSize: Theme.sp(17); font.bold: true; visible: !!root.path; Layout.topMargin: 10 }
             Flow {
                 Layout.fillWidth: true; spacing: 8
                 Repeater {

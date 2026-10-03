@@ -1,0 +1,7 @@
+{
+  "commands": [
+    {"name": "System information", "command": "uname -a"},
+    {"name": "Disk usage", "command": "df -h"},
+    {"name": "Shell project", "command": "cd ~/Projects/zephyrus-shell && git status --short"}
+  ]
+}

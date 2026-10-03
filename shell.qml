@@ -11,7 +11,10 @@ ShellRoot {
     // Module resources outlive individual output surfaces, including unplugging
     // the display where a retained player or worker was started.
     property ModuleLoader modules: ModuleLoader { screenName: "*"; readyToLoad: false; anchors.fill: parent }
-    Component.onCompleted: { const ready = Profiles.loaded; const hardware = HardwareSnapshot.data; }
+    Component.onCompleted: {
+        const ready = Profiles.loaded; const hardware = HardwareSnapshot.data;
+        ThemeRuntime.start();
+    }
     Connections {
         target: Quickshell
         function onScreensChanged() { Qt.callLater(() => ShellState.reconcileScreens(Quickshell.screens.map(s => s.name))); }
@@ -29,6 +32,11 @@ ShellRoot {
             ShellState.openPlugin(id);
         }
         function reloadPlugins(): void { Plugins.reload(); }
+        function reloadTheme(): void { Theme.refresh(); }
+        function lidClosed(): void {
+            KeepAwake.setMode("off");
+            ShellState.showDesktop();
+        }
     }
     Variants {
         model: Quickshell.screens

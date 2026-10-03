@@ -112,7 +112,7 @@ Item {
                 Layout.fillWidth: true
                 text: root.value ? (root.selectedLabel || root.displayValue()) : root.emptyText
                 color: root.value ? Theme.text : Theme.muted
-                font.pixelSize: 14
+                font.family: Theme.font; font.pixelSize: Theme.sp(14)
                 elide: Text.ElideRight
                 verticalAlignment: Text.AlignVCenter
                 textFormat: Text.PlainText
@@ -206,7 +206,7 @@ Item {
                     contentItem: Text {
                         text: modelData.label
                         color: Theme.text
-                        font.pixelSize: 14
+                        font.family: Theme.font; font.pixelSize: Theme.sp(14)
                         elide: Text.ElideRight
                         verticalAlignment: Text.AlignVCenter
                         textFormat: Text.PlainText

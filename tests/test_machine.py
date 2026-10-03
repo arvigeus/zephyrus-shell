@@ -212,12 +212,44 @@ class DisplayTests(unittest.TestCase):
             machine.action("display-scale", json.dumps({"name": "eDP-2", "scale": 1.5}))
         self.assertIn('position = "1280x0"', command.call_args.args[0][2])
 
-    def test_disable_uses_lua_and_is_session_only(self):
+    def test_disable_uses_lua_and_persists_geometry(self):
         import json
         with patch.object(machine, "command", side_effect=self.command) as command:
             machine.action("display", json.dumps({"name": "DP-3", "enabled": False}))
         self.assertIn('disabled = true', command.call_args.args[0][2])
-        self.assertFalse((self.root / "zephyrus-shell/display-settings.lua").exists())
+        saved = machine.saved_monitor_rules()["DP-3"]
+        self.assertTrue(saved["disabled"])
+        self.assertEqual(saved["scale"], 1)
+        self.assertEqual(saved["mode"], "2560x1440@60")
+
+    def test_enable_restores_saved_geometry_after_disabled_snapshot(self):
+        import json
+        with patch.object(machine, "command", side_effect=self.command):
+            machine.action("display", json.dumps({"name": "eDP-2", "enabled": False}))
+            self.monitors[0].update(disabled=True, width=0, height=0, scale=1)
+            machine.action("display", json.dumps({"name": "eDP-2", "enabled": True}))
+        self.assertFalse(machine.saved_monitor_rules()["eDP-2"]["disabled"])
+        self.assertEqual(machine.saved_monitor_rules()["eDP-2"]["scale"], 1.25)
+
+    def test_resume_reasserts_disabled_preference_before_waking_remaining_output(self):
+        import json
+        with patch.dict(machine.os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": "test"}), \
+             patch.object(machine, "command", side_effect=self.command) as command:
+            machine.action("display", json.dumps({"name": "eDP-2", "enabled": False}))
+            command.reset_mock()
+            machine.recover_displays(wake=True)
+        self.assertEqual(command.call_count, 3)
+        self.assertIn('disabled = true', command.call_args_list[1].args[0][2])
+        self.assertIn('monitor = "DP-3"', command.call_args_list[2].args[0][2])
+
+    def test_unplug_safety_fallback_preserves_disabled_preference(self):
+        import json
+        with patch.dict(machine.os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": "test"}), \
+             patch.object(machine, "command", side_effect=self.command):
+            machine.action("display", json.dumps({"name": "eDP-2", "enabled": False}))
+            self.monitors = [dict(self.monitors[0], disabled=True)]
+            machine.recover_displays(wake=True)
+        self.assertTrue(machine.saved_monitor_rules()["eDP-2"]["disabled"])
 
     def test_last_display_cannot_be_disabled(self):
         import json

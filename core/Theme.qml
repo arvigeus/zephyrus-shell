@@ -13,8 +13,20 @@ QtObject {
     readonly property color accent: Design.Theme.accent
     readonly property color accentSurface: Design.Theme.accentSurface
     readonly property color danger: Design.Theme.danger
+    readonly property color warning: Design.Theme.warning
+    readonly property color success: Design.Theme.success
     readonly property color accentText: Design.Theme.accentText
     readonly property string font: Design.Theme.font
+    readonly property real fontSize: Design.Theme.fontSize
+    readonly property string monospaceFont: Design.Theme.monospaceFont
+    readonly property real monospaceFontSize: Design.Theme.monospaceFontSize
+    readonly property string mode: Design.Theme.mode
+    readonly property bool loaded: Design.Theme.loaded
+    readonly property string error: Design.Theme.error
+    readonly property var warnings: Design.Theme.warnings
+    function sp(pixels) { return Design.Theme.sp(pixels); }
+    function refresh() { Design.Theme.refresh(); }
+    function setMode(mode) { Design.Theme.setMode(mode); }
     readonly property int radius: Design.Theme.radius
     readonly property int controlRadius: Design.Theme.controlRadius
     readonly property int gap: Design.Theme.gap

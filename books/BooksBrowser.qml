@@ -387,7 +387,7 @@ Item {
                     ColumnLayout {
                         id: detailText
                         Layout.fillWidth: true; Layout.fillHeight: true; spacing: 6
-                        W.Label { Layout.fillWidth: true; text: root.selected.title || ""; font.pixelSize: Math.min(32, detail.width / 22); font.bold: true; wrapMode: Text.Wrap; maximumLineCount: 3 }
+                        W.Label { Layout.fillWidth: true; text: root.selected.title || ""; font.family: Theme.font; font.pixelSize: Theme.sp(Math.min(32, detail.width / 22)); font.bold: true; wrapMode: Text.Wrap; maximumLineCount: 3 }
                         Flow {
                             Layout.fillWidth: true; spacing: 3
                             Repeater {
@@ -440,7 +440,7 @@ Item {
                         W.Label {
                             objectName: "bookDescription"; Layout.fillWidth: true
                             text: root.selected.description || root.selected.first_sentence || (root.detailLoading ? "Loading synopsis…" : "No synopsis available.")
-                            wrapMode: Text.Wrap; font.pixelSize: 15
+                            wrapMode: Text.Wrap; font.family: Theme.font; font.pixelSize: Theme.sp(15)
                         }
                         Flow {
                             Layout.fillWidth: true; spacing: 5; visible: (root.selected.subjects || []).length > 0
@@ -537,7 +537,7 @@ Item {
                     }
                     ColumnLayout {
                         Layout.fillWidth: true
-                        W.Label { Layout.fillWidth: true; text: root.authorDetails.name || root.author.name || "Unknown author"; font.pixelSize: 23; font.bold: true; wrapMode: Text.Wrap; maximumLineCount: 2 }
+                        W.Label { Layout.fillWidth: true; text: root.authorDetails.name || root.author.name || "Unknown author"; font.family: Theme.font; font.pixelSize: Theme.sp(23); font.bold: true; wrapMode: Text.Wrap; maximumLineCount: 2 }
                         W.Label { Layout.fillWidth: true; text: [root.authorDetails.birthDate, root.authorDetails.deathDate ? "– " + root.authorDetails.deathDate : ""].filter(Boolean).join("   ·   "); color: Theme.muted; wrapMode: Text.Wrap }
                         BusyIndicator { visible: root.authorLoading; running: visible; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
                     }

@@ -49,7 +49,7 @@ RowLayout {
                                 Layout.fillWidth: true
                                 wrapMode: Text.Wrap
                                 maximumLineCount: 2
-                                font.pixelSize: 11
+                                font.family: Theme.font; font.pixelSize: Theme.sp(11)
                             }
                         }
                         onClicked: root.openPage(card.modelData)
@@ -59,7 +59,7 @@ RowLayout {
                         Icon { name: "thermometer"; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
                         Label {
                             text: card.temperature ? card.temperature.value + "°C" : "Unavailable"
-                            color: Theme.muted; font.pixelSize: 11
+                            color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11)
                             Controls.ToolTip.visible: temperatureHover.hovered
                             Controls.ToolTip.text: (card.temperature ? card.temperature.driver + " · " + card.temperature.label + "\n" : "")
                                 + "Sampled on opening or refresh"
@@ -67,7 +67,7 @@ RowLayout {
                         }
                     }
                     UsageBar { Layout.fillWidth: true; percent: card.usage; available: card.usageAvailable }
-                    Label { text: card.usageAvailable ? Math.round(card.usage) + "% used" : "Usage unavailable"; color: Theme.muted; font.pixelSize: 11 }
+                    Label { text: card.usageAvailable ? Math.round(card.usage) + "% used" : "Usage unavailable"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
                     Item { Layout.fillHeight: true }
                     RowLayout {
                         Layout.fillWidth: true
@@ -109,7 +109,7 @@ RowLayout {
                 contentItem: RowLayout {
                     spacing: 5
                     Icon { name: "hard-drive"; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
-                    Label { text: "System"; Layout.fillWidth: true; font.pixelSize: 11; font.weight: Font.DemiBold }
+                    Label { text: "System"; Layout.fillWidth: true; font.family: Theme.font; font.pixelSize: Theme.sp(11); font.weight: Font.DemiBold }
                     Icon { name: "chevron-right"; Layout.preferredWidth: 14; Layout.preferredHeight: 14; opacity: 0.6 }
                 }
                 onClicked: root.openPage("system")
@@ -117,34 +117,42 @@ RowLayout {
             RowLayout {
                 Layout.fillWidth: true
                 Icon { name: "memory-stick"; Layout.preferredWidth: 15; Layout.preferredHeight: 15 }
-                Label { text: "Memory"; font.pixelSize: 11 }
+                Label { text: "Memory"; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
                 Item { Layout.fillWidth: true }
-                Label { text: Math.round(root.hw.memoryPercent || 0) + "%"; color: Theme.muted; font.pixelSize: 11 }
+                Label { text: Math.round(root.hw.memoryPercent || 0) + "%"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
             }
             UsageBar { Layout.fillWidth: true; percent: root.hw.memoryPercent || 0 }
             RowLayout {
                 Layout.fillWidth: true
                 Icon { name: "hard-drive"; Layout.preferredWidth: 15; Layout.preferredHeight: 15 }
-                Label { text: "Storage"; font.pixelSize: 11 }
+                Label { text: "Storage"; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
                 Item { Layout.fillWidth: true }
-                Label { text: Math.round(root.hw.storagePercent || 0) + "%"; color: Theme.muted; font.pixelSize: 11 }
+                Label { text: Math.round(root.hw.storagePercent || 0) + "%"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
             }
             UsageBar { Layout.fillWidth: true; percent: root.hw.storagePercent || 0 }
             Item { Layout.fillHeight: true }
             RowLayout {
                 Layout.fillWidth: true
-                IconButton {
-                    iconName: "upload"
-                    iconSize: 18
-                    text: "Update the system"
-                    onClicked: {}
-                }
                 HoldAction {
                     iconName: "brush-cleaning"
                     iconSize: 18
                     text: "Hold to remove cached image previews"
                     enabled: !root.machine.busy
                     onActivated: root.machine.run("clean-thumbnails", "confirm")
+                }
+                IconButton {
+                    objectName: "system-theme-toggle"
+                    iconName: Theme.mode === "dark" ? "sun" : "moon"
+                    iconSize: 18
+                    text: Theme.mode === "dark" ? "Switch to light theme" : "Switch to dark theme"
+                    enabled: Theme.loaded && !ThemeRuntime.busy
+                    onClicked: Theme.setMode(Theme.mode === "dark" ? "light" : "dark")
+                }
+                IconButton {
+                    iconName: "upload"
+                    iconSize: 18
+                    text: "Update the system"
+                    onClicked: {}
                 }
                 Item { Layout.fillWidth: true }
             }

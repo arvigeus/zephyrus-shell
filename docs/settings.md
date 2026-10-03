@@ -1,5 +1,9 @@
 # Settings drawer
 
+Desktop colors, fonts and light/dark appearance share the configuration described
+in [desktop appearance](theme.md). The source is watched automatically; an
+appearance button can use the same source in a later UI update.
+
 The profile selector applies a saved configuration. Subsequent edits update that
 profile automatically. Defaults live in `config/profiles.json`; after the first
 edit, the working copy lives in `$XDG_STATE_HOME/zephyrus-shell/profiles.json`
@@ -84,8 +88,9 @@ or disables a display; enabled displays use the monitor icon and disabled
 displays use monitor-off. Its name selects the shell's primary brightness target.
 The last enabled display cannot be disabled. Hyprland does not have a global
 primary-monitor concept. This preference is stored in XDG state. Resolution,
-refresh rate, and scale are available in Display settings and apply to the current
-Hyprland session. Enabling a disabled display restores its preferred mode at
+refresh rate, scale, order, and enabled/disabled choices are saved in
+`$XDG_CONFIG_HOME/zephyrus-shell/display-settings.lua` and restored on reload,
+login, hotplug and wake. Enabling a disabled display restores saved geometry, or its preferred mode at
 automatic position and scale when no previous geometry is available. Disconnecting
 the last external display re-enables the internal panel if necessary, while
 Hyprland transfers the removed display's workspaces and apps to an enabled output.
@@ -146,6 +151,9 @@ polled continuously. The home breakdown is cached after a successful scan.
 RAM reports actual usage with no invented performance-mode selector.
 Lucide icons are vendored with their license in `assets/lucide/`.
 
+The System card's second action switches between the shared dark and light
+themes, saving the choice in `theme.json`. Cleaning comes first and Update third.
+
 The brush button at the bottom of the System card removes generated image thumbnails
 from `$XDG_CACHE_HOME/thumbnails` (normally `~/.cache/thumbnails`). Hold it for
 1.3 seconds, as with the Movies delete control. Its tooltip describes the
@@ -153,7 +161,7 @@ action. It refuses a symlink target; image previews regenerate when needed.
 The cached home breakdown is invalidated after a successful cleanup and rescanned
 when System details are next opened. Projects offers
 separate, selective development cache cleanup.
-The upload icon beside the brush is reserved for system updates and currently
+The upload icon after the theme toggle is reserved for system updates and currently
 has no action.
 
 ## Shutdown
@@ -171,4 +179,6 @@ the moon; clicking it turns the mode off. Manual Sleep is available in the menu
 and releases the mode before suspending. The modes use systemd sleep inhibitors;
 Keep screen on also uses a systemd idle inhibitor and, on Wayland compositors
 supporting the idle-inhibit protocol, the shell's panel window. The selected
-mode lasts until turned off or the shell exits.
+mode lasts until turned off, the lid closes, or the shell exits. Closing the lid
+also locks the session; opening it wakes only enabled outputs after restoring
+saved display preferences.

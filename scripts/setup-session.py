@@ -40,11 +40,22 @@ def install(config, state, root=ROOT):
         files[user_units / (unit + ".service.d/zephyrus.conf")] = ROOT / "systemd/user/hyprland-only.conf"
         files[user_units / ("graphical-session.target.wants/" + unit + ".service")] = Path("/usr/lib/systemd/user") / (unit + ".service")
     files[user_units / "graphical-session.target.wants/zephyrus-shell.service"] = Path("../zephyrus-shell.service")
+    files[user_units / "zephyrus-clipboard@.service"] = ROOT / "systemd/user/zephyrus-clipboard@.service"
+    for kind in ("text", "image"):
+        files[user_units / f"graphical-session.target.wants/zephyrus-clipboard@{kind}.service"] = Path("../zephyrus-clipboard@.service")
+    previous_entries = []
     if manifest.exists():
         existing = json.loads(manifest.read_text())
-        if existing["root"] == str(root) and {entry["path"] for entry in existing["files"]} == {str(path) for path in files} and all(fingerprint(Path(entry["path"])) == entry["installed"] for entry in existing["files"]):
+        previous_entries = existing["files"]
+        installed = {entry["path"] for entry in previous_entries}
+        if (existing["root"] != str(root) or not installed.issubset({str(path) for path in files})
+                or not all(fingerprint(Path(entry["path"])) == entry["installed"] for entry in previous_entries)):
+            raise ValueError("A development setup already exists, needs migration, or was edited; teardown it before reinstalling.")
+        # Add newly supported units to an unchanged installation without
+        # tearing down its active graphical session or losing recovery data.
+        files = {path: content for path, content in files.items() if str(path) not in installed}
+        if not files:
             return
-        raise ValueError("A development setup already exists, needs migration, or was edited; teardown it before reinstalling.")
     for path in files:
         backup = path.with_name(path.name + ".before-zephyrus")
         if backup.exists() or backup.is_symlink() or (path.exists() and not path.is_file() and not path.is_symlink()):
@@ -65,7 +76,7 @@ def install(config, state, root=ROOT):
                 path.write_text(content)
             entry["installed"] = fingerprint(path)
         manifest.parent.mkdir(parents=True, exist_ok=True)
-        manifest.write_text(json.dumps({"root": str(root), "files": entries}, indent=2) + "\n")
+        manifest.write_text(json.dumps({"root": str(root), "files": previous_entries + entries}, indent=2) + "\n")
     except BaseException:
         for entry in reversed(entries):
             path = Path(entry["path"])

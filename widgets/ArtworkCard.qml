@@ -46,7 +46,7 @@ W.Action {
                 anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 8
                 width: badgeText.implicitWidth + 16; height: 24
                 radius: Theme.controlRadius; color: Theme.scrim(0.87)
-                W.Label { id: badgeText; anchors.centerIn: parent; text: root.badge; font.pixelSize: 11 }
+                W.Label { id: badgeText; anchors.centerIn: parent; text: root.badge; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
             }
             Rectangle {
                 visible: root.favorite
@@ -57,13 +57,13 @@ W.Action {
         }
         W.Label {
             Layout.fillWidth: true; Layout.preferredHeight: 34
-            text: root.text; font.pixelSize: 13; maximumLineCount: 2
+            text: root.text; font.family: Theme.font; font.pixelSize: Theme.sp(13); maximumLineCount: 2
             wrapMode: Text.Wrap; verticalAlignment: Text.AlignTop
         }
         W.Label {
             visible: !!root.subtitle
             Layout.fillWidth: true; Layout.preferredHeight: visible ? 18 : 0
-            text: root.subtitle; color: Theme.muted; font.pixelSize: 11
+            text: root.subtitle; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11)
         }
     }
 }

@@ -9,7 +9,7 @@ import "shell"
 import "clipboard"
 
 ShellRoot {
-    Component.onCompleted: { const ready = Profiles.loaded; const hardware = HardwareSnapshot.data; }
+    Component.onCompleted: { const ready = Profiles.loaded; const hardware = HardwareSnapshot.data; ThemeRuntime.refresh(); }
     FloatingWindow {
         id: window
         title: "Zephyrus Shell · component preview"

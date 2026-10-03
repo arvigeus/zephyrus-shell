@@ -681,7 +681,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     text: "Genres"
                     color: Theme.text
-                    font.pixelSize: 14
+                    font.family: Theme.font; font.pixelSize: Theme.sp(14)
                     font.weight: Font.DemiBold
                 }
                 Button {
@@ -695,7 +695,7 @@ ColumnLayout {
                         color: parent.hovered ? Theme.accent : Theme.muted
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
-                        font.pixelSize: 12
+                        font.family: Theme.font; font.pixelSize: Theme.sp(12)
                     }
                     background: Rectangle {
                         radius: Theme.controlRadius
@@ -944,7 +944,7 @@ ColumnLayout {
                     Layout.minimumWidth: 80
                     text: stationRow.station.name
                     color: stationRow.isPlaying ? Theme.accent : Theme.text
-                    font.pixelSize: 14
+                    font.family: Theme.font; font.pixelSize: Theme.sp(14)
                     elide: Text.ElideRight
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -952,7 +952,7 @@ ColumnLayout {
                     Layout.preferredWidth: Math.min(270, Math.max(100, stationList.width * 0.26))
                     text: (stationRow.station.tags || "").split(",").map(tag => tag.trim()).filter(tag => !!tag).slice(0, 4).join(", ")
                     color: Theme.muted
-                    font.pixelSize: 12
+                    font.family: Theme.font; font.pixelSize: Theme.sp(12)
                     horizontalAlignment: Text.AlignRight
                     elide: Text.ElideRight
                     verticalAlignment: Text.AlignVCenter
@@ -980,7 +980,7 @@ ColumnLayout {
                     contentItem: Label {
                         text: qualitySelector.displayText
                         color: qualitySelector.hovered || qualitySelector.activeFocus ? Theme.text : Theme.muted
-                        font.pixelSize: 11
+                        font.family: Theme.font; font.pixelSize: Theme.sp(11)
                         horizontalAlignment: Text.AlignRight
                         verticalAlignment: Text.AlignVCenter
                         rightPadding: 0
@@ -1044,7 +1044,7 @@ ColumnLayout {
                     Layout.maximumWidth: 180
                     text: stationRow.station.qualityLabel || ""
                     color: Theme.muted
-                    font.pixelSize: 11
+                    font.family: Theme.font; font.pixelSize: Theme.sp(11)
                     horizontalAlignment: Text.AlignRight
                     rightPadding: 20
                     elide: Text.ElideRight

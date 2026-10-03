@@ -20,7 +20,7 @@ QtObject {
     }
 
     property Process wakeDisplays: Process {
-        command: ["hyprctl", "dispatch", "hl.dsp.dpms({ action = \"enable\" })"]
+        command: ["python3", Paths.file("scripts/machine.py"), "wake-displays"]
     }
     function lockStopped(kind) {
         if (mode !== kind) return;

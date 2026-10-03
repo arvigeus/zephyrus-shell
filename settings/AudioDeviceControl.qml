@@ -59,7 +59,7 @@ ColumnLayout {
             }
         }
         Action { text: root.identifiers ? "Hide device identifiers" : "Device identifiers & naming"; Layout.fillWidth: true; onClicked: root.identifiers = !root.identifiers }
-        Repeater { model: root.identifiers ? root.choices : []; Label { required property var modelData; text: root.inventory.describe(modelData).detail; color: Theme.muted; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; font.pixelSize: 11 } }
+        Repeater { model: root.identifiers ? root.choices : []; Label { required property var modelData; text: root.inventory.describe(modelData).detail; color: Theme.muted; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; font.family: Theme.font; font.pixelSize: Theme.sp(11) } }
         Repeater { model: root.identifiers ? root.inventory.snapshot.errors || [] : []; Label { required property string modelData; text: modelData; color: Theme.danger; Layout.fillWidth: true; wrapMode: Text.Wrap } }
         Action { visible: root.identifiers; text: "Reload names"; onClicked: root.inventory.refresh() }
         Label { visible: root.choices.length === 0; text: "No device available"; color: Theme.muted }

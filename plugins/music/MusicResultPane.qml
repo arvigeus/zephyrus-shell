@@ -37,7 +37,7 @@ Item {
                 Layout.preferredWidth: 50
                 Layout.minimumWidth: 30
                 text: root.title
-                font.pixelSize: 14
+                font.family: Theme.font; font.pixelSize: Theme.sp(14)
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
@@ -104,7 +104,7 @@ Item {
             Layout.fillWidth: true
             text: root.controller ? root.controller.columnErrors[root.kind] || "" : ""
             color: Theme.danger
-            font.pixelSize: 11
+            font.family: Theme.font; font.pixelSize: Theme.sp(11)
             wrapMode: Text.Wrap
         }
 
@@ -188,7 +188,7 @@ Item {
                             Layout.preferredWidth: 22
                             text: String(resultRow.index + 1)
                             color: Theme.muted
-                            font.pixelSize: 11
+                            font.family: Theme.font; font.pixelSize: Theme.sp(11)
                             horizontalAlignment: Text.AlignRight
                         }
                         Rectangle {
@@ -225,7 +225,7 @@ Item {
                                     Layout.fillWidth: true
                                     text: resultRow.modelData.title || "Unknown Title"
                                     color: resultRow.playing ? Theme.accent : Theme.text
-                                    font.pixelSize: 12
+                                    font.family: Theme.font; font.pixelSize: Theme.sp(12)
                                     font.weight: Font.Medium
                                     elide: Text.ElideRight
                                 }
@@ -278,7 +278,7 @@ Item {
                                 text: (resultRow.modelData.artist || "Unknown Artist")
                                     + " · " + (resultRow.modelData.album || "Unknown Album")
                                 color: Theme.muted
-                                font.pixelSize: 10
+                                font.family: Theme.font; font.pixelSize: Theme.sp(10)
                                 elide: Text.ElideRight
                             }
                         }
@@ -286,7 +286,7 @@ Item {
                             Layout.preferredWidth: 38
                             text: root.controller.formatTime(resultRow.modelData.duration)
                             color: Theme.muted
-                            font.pixelSize: 10
+                            font.family: Theme.font; font.pixelSize: Theme.sp(10)
                             horizontalAlignment: Text.AlignRight
                         }
                     }
@@ -333,7 +333,7 @@ Item {
                                         ? resultRow.modelData.name || "Unknown Artist"
                                         : resultRow.modelData.title || "Unknown Album"
                                     color: resultRow.selected ? Theme.accent : Theme.text
-                                    font.pixelSize: 12
+                                    font.family: Theme.font; font.pixelSize: Theme.sp(12)
                                     font.weight: Font.Medium
                                     elide: Text.ElideRight
                                 }
@@ -375,7 +375,7 @@ Item {
                                 Layout.fillWidth: true
                                 text: resultRow.modelData.artist || "Unknown Artist"
                                 color: Theme.muted
-                                font.pixelSize: 10
+                                font.family: Theme.font; font.pixelSize: Theme.sp(10)
                                 elide: Text.ElideRight
                             }
                         }

@@ -1,6 +1,17 @@
 local root = debug.getinfo(1, "S").source:sub(2):match("(.*/)") .. ".."
 local function quote(value) return "'" .. value:gsub("'", "'\\''") .. "'" end
 local shell = "quickshell -p " .. quote(root) .. " ipc call shell "
+-- End temporary awake modes when the laptop is put away. logind retains
+-- ownership of suspend/docking policy; locking also applies while docked.
+hl.bind("switch:on:Lid Switch", function()
+    hl.dispatch(hl.dsp.exec_cmd("loginctl lock-session"))
+    hl.dispatch(hl.dsp.exec_cmd(shell .. "lidClosed"))
+end, { locked = true })
+zephyrus = zephyrus or {}
+function zephyrus.wake_displays()
+    hl.dispatch(hl.dsp.exec_cmd("python3 " .. quote(root .. "/scripts/machine.py") .. " wake-displays"))
+end
+hl.bind("switch:off:Lid Switch", zephyrus.wake_displays, { locked = true })
 -- A modifier-only release bind can also fire after a Super chord on 0.56.
 -- Track intervening keys so tapping Win opens Spaces without changing chords.
 local pressedKeys, superUsed = {}, false
@@ -31,9 +42,13 @@ hl.bind("SUPER + C", hl.dsp.exec_cmd(shell .. "toggle center"))
 hl.bind("SUPER + COMMA", hl.dsp.exec_cmd(shell .. "toggle right"))
 hl.bind("SUPER + SHIFT + V", hl.dsp.exec_cmd(shell .. "toggle clipboard"))
 local screenshot = "python3 " .. quote(root .. "/scripts/screenshot.py") .. " "
-hl.bind("PRINT", hl.dsp.exec_cmd(screenshot .. "region"))
-hl.bind("SUPER + PRINT", hl.dsp.exec_cmd(screenshot .. "window"))
+hl.bind("PRINT", hl.dsp.exec_cmd(screenshot .. "region --edit"))
+hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd(screenshot .. "region --edit"))
+hl.bind("SUPER + SHIFT + PRINT", hl.dsp.exec_cmd(screenshot .. "region"))
+hl.bind("SUPER + PRINT", hl.dsp.exec_cmd(screenshot .. "window --active"))
+hl.bind("SUPER + CTRL + PRINT", hl.dsp.exec_cmd(screenshot .. "window"))
 hl.bind("SHIFT + PRINT", hl.dsp.exec_cmd(screenshot .. "output"))
+hl.bind("SUPER + ALT + R", hl.dsp.exec_cmd("python3 " .. quote(root .. "/scripts/record-screen.py")))
 hl.bind("SUPER + ESCAPE", hl.dsp.exec_cmd(shell .. "close"))
 hl.bind("SUPER + mouse:272", hl.dsp.window.drag(), { mouse = true })
 hl.bind("SUPER + mouse:273", hl.dsp.window.resize(), { mouse = true })

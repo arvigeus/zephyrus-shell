@@ -1123,7 +1123,7 @@ ColumnLayout {
                     W.Label {
                         Layout.fillWidth: true
                         text: root.currentTrack && root.currentTrack.title || ""
-                        font.pixelSize: 13
+                        font.family: Theme.font; font.pixelSize: Theme.sp(13)
                         elide: Text.ElideRight
                     }
                     W.Label {
@@ -1136,7 +1136,7 @@ ColumnLayout {
                             return message.includes("could not") || message.includes("install mpv")
                                 || message.includes("stream ended") ? Theme.danger : Theme.muted;
                         }
-                        font.pixelSize: 11
+                        font.family: Theme.font; font.pixelSize: Theme.sp(11)
                         elide: Text.ElideRight
                     }
                 }
@@ -1187,7 +1187,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 6
-                W.Label { text: root.formatTime(root.position); color: Theme.muted; font.pixelSize: 11 }
+                W.Label { text: root.formatTime(root.position); color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
                 Slider {
                     id: playbackSlider
                     Layout.fillWidth: true
@@ -1199,7 +1199,7 @@ ColumnLayout {
                         if (!pressed) root.seekTo(value);
                     }
                 }
-                W.Label { text: root.formatTime(root.duration); color: Theme.muted; font.pixelSize: 11 }
+                W.Label { text: root.formatTime(root.duration); color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
                 W.Icon { name: "volume-2"; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
                 Slider {
                     Layout.preferredWidth: 96
@@ -1243,7 +1243,7 @@ ColumnLayout {
             W.Label {
                 Layout.fillWidth: true
                 text: root.lyricsTitle
-                font.pixelSize: 16
+                font.family: Theme.font; font.pixelSize: Theme.sp(16)
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
@@ -1276,7 +1276,7 @@ ColumnLayout {
                         text: root.lyricsText || "No lyrics available"
                         color: Theme.text
                         font.family: Theme.font
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.sp(14)
                         background: Item {}
                     }
                 }
@@ -1286,7 +1286,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 text: "Lyrics from " + root.lyricsProvider
                 color: Theme.muted
-                font.pixelSize: 11
+                font.family: Theme.font; font.pixelSize: Theme.sp(11)
             }
         }
     }
@@ -1340,7 +1340,7 @@ ColumnLayout {
                     W.Label {
                         Layout.fillWidth: true
                         text: root.artistInfo && root.artistInfo.name || "Unknown Artist"
-                        font.pixelSize: 17
+                        font.family: Theme.font; font.pixelSize: Theme.sp(17)
                         font.weight: Font.DemiBold
                         elide: Text.ElideRight
                     }
@@ -1390,7 +1390,7 @@ ColumnLayout {
                         Layout.fillWidth: true
                         text: root.artistInfo && root.artistInfo.editorialNotes
                             ? root.artistInfo.editorialNotes.tagline || "" : ""
-                        font.pixelSize: 14
+                        font.family: Theme.font; font.pixelSize: Theme.sp(14)
                         font.weight: Font.Medium
                         wrapMode: Text.Wrap
                     }
@@ -1400,7 +1400,7 @@ ColumnLayout {
                                 && (root.artistInfo.editorialNotes.standard || root.artistInfo.editorialNotes.short))))
                         Layout.fillWidth: true
                         text: "About"
-                        font.pixelSize: 14
+                        font.family: Theme.font; font.pixelSize: Theme.sp(14)
                         font.weight: Font.DemiBold
                     }
                     W.Label {
@@ -1428,7 +1428,7 @@ ColumnLayout {
                         Layout.fillWidth: true
                         text: "Artist information from Apple Music"
                         color: Theme.muted
-                        font.pixelSize: 11
+                        font.family: Theme.font; font.pixelSize: Theme.sp(11)
                     }
                 }
             }
@@ -1462,7 +1462,7 @@ ColumnLayout {
             W.Label {
                 Layout.fillWidth: true
                 text: "Genres"
-                font.pixelSize: 14
+                font.family: Theme.font; font.pixelSize: Theme.sp(14)
                 font.weight: Font.DemiBold
             }
             W.SearchField {

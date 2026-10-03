@@ -20,3 +20,12 @@ hl.config({
         key_press_enables_dpms = true, mouse_move_enables_dpms = true },
     animations = { enabled = true },
 })
+
+-- Keep generated colors across compositor reloads, including a light palette.
+local config = os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
+local generated = config .. "/zephyrus-shell/appearance.lua"
+local theme = io.open(generated, "r")
+if theme then
+    theme:close()
+    dofile(generated)
+end

@@ -38,9 +38,12 @@ login-manager desktop entry or your old `hyprland.conf`.
 ## Native scrolling desktop
 
 `windows.lua` selects Hyprland's built-in scrolling layout. New ordinary windows
-join horizontal columns at half the monitor's usable width. Explicit widths also
+join horizontal columns at 75% of the monitor's usable width. Explicit widths also
 apply to a single column; it no longer automatically fills the work area. Focusing a column brings it into view. Dialogs keep native
 floating behavior, and Super+V can toggle floating for an individual window.
+Native resizing retains the current column's width while it exists. Hyprland has
+no documented native option to remember resized widths by application across
+launches; Zephyrus does not add a geometry-recording service.
 No plugin or custom window controls are required. The earlier hyprbars prototype
 has been disabled (`hyprpm disable hyprbars`); its cached installation may remain,
 but the session does not load it. Application-owned title bars remain owned by
@@ -118,21 +121,46 @@ Tasks due today, events spanning today and pending notifications have separate
 Lucide icons. A shared, cached calendar snapshot refreshes every 15 minutes even
 when Attention is closed; browsing another month does not change today's icons.
 
-Print selects a screenshot area, Super+Print selects a window, and Shift+Print
+Print or Super+Shift+S selects a screenshot area and opens Satty for annotation.
+Enter saves the annotated image, copies it and closes Satty; Escape keeps the
+original capture. Super+Shift+Print captures an area directly, Super+Print
+captures the active window, Super+Ctrl+Print selects a window, and Shift+Print
 captures the active output. Captures go to XDG Pictures/Screenshots and the
-clipboard. The Settings drawer also exposes a Screenshot action. The Clipboard
-icon beside Settings or Super+Shift+V toggles a searchable history popover below
+clipboard. The Settings drawer's Screenshot action also opens Satty. Its
+configuration lives in `config/satty.toml`, without installing another user
+configuration link.
+
+Super+Alt+R or Settings' Screen recording action opens Kooha. Use its native
+controls to choose a screen or area, microphone/system audio, format and save
+location, then start and stop recording. Kooha owns its normal application
+settings and uses PipeWire through the desktop portal. Both applications launch
+independently of the drawer and remain open when shell surfaces close. The keys
+follow [Spectacle's defaults](https://github.com/KDE/spectacle/blob/master/desktop/org.kde.spectacle.desktop.cmake)
+where supported; Shift+Print captures one active output, and the recording key
+opens controls rather than toggling a recording.
+
+The Clipboard icon beside Settings or Super+Shift+V toggles a searchable history popover below
 the bar. Selecting an entry copies it and closes the popover; Escape or clicking
 outside also closes it, returning to any open module. Its worker exists only
 while the popover is open; recording continues in the session. The dotfiles desktop
-package supplies Hyprshot, cliphist, wl-clipboard and session-owned history
-watchers; development checkouts show setup guidance when helpers are missing.
+package supplies Hyprshot, Satty, Kooha, cliphist and wl-clipboard. Development
+setup also installs session-owned text/image history services. Re-run
+`python3 scripts/setup-session.py install` and `systemctl --user daemon-reload`
+when upgrading an unchanged setup, then start `zephyrus-clipboard@text.service`
+and `zephyrus-clipboard@image.service`, or log in again. New or cleared history
+shows an empty list rather than an unavailable-history error.
+
+Desktop notifications appear on the focused output, above applications and
+below the pill bar. Clicking the popup opens Attention; hiding it or its timeout
+leaves the notification in Attention. Quiet mode suppresses desktop popups.
 
 Hyprland transfers workspaces and windows when an output disappears or is
 disabled. The shell checks topology changes and re-enables a connected internal
 panel if no usable output remains, including waking its DPMS state. Working
 external-only setups stay external-only. Module ownership follows a surviving
-screen without recreating retained workers or players.
+screen without recreating retained workers or players. Settings persists enabled
+and disabled choices with geometry; hotplug and resume restore those choices.
+The internal safety fallback does not erase an external-only preference.
 
 ## Session ownership
 
@@ -174,14 +202,18 @@ when targeting another desktop. The session supplies its XDG-aware path to
 hyprlock. Before a wallpaper is selected, the solid Zephyrus background is used.
 
 Idle locks after five minutes, blanks displays after six, and suspends after
-thirty. Resume turns displays on. Before any suspend, hypridle requests locking;
+thirty. Resume restores saved output choices and turns enabled displays on.
+Before any suspend, hypridle requests locking;
 `inhibit_sleep = 3` holds the logind delay inhibitor until the compositor reports
 a session lock. This also covers suspend from Settings and lid/logind events.
 The idle suspend command explicitly checks systemd inhibitors. **Stay awake**
 blocks automatic suspend but allows locking and display blanking. **Keep screen
 on** blocks idle dimming/blanking and suspend; both modes wake blanked outputs
 when enabled. Key presses and pointer movement also enable DPMS. The Lua DPMS
-commands use `enable`/`disable`, including the idle and resume hooks.
+commands use `enable`/`disable`; wake hooks use the owned display recovery helper.
+Closing the lid locks the session, returns the shell to Desktop and ends temporary
+awake modes. Opening it restores display choices and wakes enabled outputs.
+logind retains ownership of suspend and docking policy.
 
 Settings Sleep, Log out, Restart, Power off and scheduled shutdown require a
 two-second hold on the action itself. Releasing early or closing the drawer

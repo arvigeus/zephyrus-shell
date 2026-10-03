@@ -502,7 +502,7 @@ Item {
                 Item {
                     Layout.fillWidth: true; Layout.preferredHeight: Math.max(72,Math.min(145,root.height*0.17))
                     W.CrossfadeImage { id: logo; anchors.fill: parent; source: root.selected.logo || ""; fillMode: Image.PreserveAspectFit; horizontalAlignment: Image.AlignLeft; imageWidth: 900 }
-                    W.Label { anchors.fill: parent; opacity: 1 - logo.imageOpacity; visible: opacity > 0; text: root.selected.title || ""; font.pixelSize: Math.min(48,root.width/25); font.bold: true; wrapMode: Text.Wrap; maximumLineCount: 2; verticalAlignment: Text.AlignVCenter }
+                    W.Label { anchors.fill: parent; opacity: 1 - logo.imageOpacity; visible: opacity > 0; text: root.selected.title || ""; font.family: Theme.font; font.pixelSize: Theme.sp(Math.min(48,root.width/25)); font.bold: true; wrapMode: Text.Wrap; maximumLineCount: 2; verticalAlignment: Text.AlignVCenter }
                 }
                 W.Label { Layout.fillWidth: true; text: [root.selected.year,root.animeMode ? root.selected.format : (root.selected.runtime ? root.selected.runtime + " min" : ""),root.animeMode && root.kind === "tv" && root.selected.episodesCount ? root.selected.episodesCount + (root.selected.episodesCount === 1 ? " episode" : " episodes") : "",(root.selected.genres || []).join(" / ")].filter(Boolean).join("   ·   "); color: Theme.muted }
                 W.Label { visible: root.animeMode && !!(root.selected.premiere || root.selected.sourceMaterial || root.selected.ageRating); Layout.fillWidth: true; text: [root.selected.premiere,root.selected.sourceMaterial ? "Source: " + root.selected.sourceMaterial : "",root.selected.ageRating ? "Rated " + root.selected.ageRating : ""].filter(Boolean).join("   ·   "); color: Theme.muted; wrapMode: Text.Wrap }
@@ -546,7 +546,7 @@ Item {
                     contentWidth: availableWidth
                     ColumnLayout {
                         width: parent.width; spacing: 12
-                        W.Label { visible: root.tab === "overview"; Layout.fillWidth: true; text: root.selected.plot || (root.detailLoading ? "Loading synopsis…" : "No synopsis available."); wrapMode: Text.Wrap; font.pixelSize: 16 }
+                        W.Label { visible: root.tab === "overview"; Layout.fillWidth: true; text: root.selected.plot || (root.detailLoading ? "Loading synopsis…" : "No synopsis available."); wrapMode: Text.Wrap; font.family: Theme.font; font.pixelSize: Theme.sp(16) }
                         W.Label { visible: root.tab === "overview"; Layout.fillWidth: true; text: root.animeMode ? (root.selected.studios || []).join(" / ") : (root.selected.countries || []).map(Countries.label).join(" / "); color: Theme.muted; wrapMode: Text.Wrap }
                         W.Label { visible: root.tab === "overview" && root.animeMode && !!root.selected.background; Layout.fillWidth: true; text: root.selected.background || ""; wrapMode: Text.Wrap; color: Theme.muted }
                         Repeater {
@@ -650,7 +650,7 @@ Item {
                     ScrollBar.vertical: ScrollBar {}
                     header: Column {
                         width: filmography.width; spacing: 12; bottomPadding: 16
-                        W.Label { width: parent.width; text: root.personDetails.name || ""; font.pixelSize: 22; font.bold: true; wrapMode: Text.Wrap }
+                        W.Label { width: parent.width; text: root.personDetails.name || ""; font.family: Theme.font; font.pixelSize: Theme.sp(22); font.bold: true; wrapMode: Text.Wrap }
                         W.Label { width: parent.width; text: root.personDetails.biography || ""; wrapMode: Text.Wrap }
                         W.BusySpinner { visible: root.extraLoading; running: visible }
                         Flow {

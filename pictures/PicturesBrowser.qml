@@ -588,7 +588,7 @@ Item {
                     W.Label {
                         Layout.fillWidth: true
                         text: root.selected.title || (root.providerName(root.selected.provider || root.providerId) + " " + (root.selected.id || ""))
-                        font.pixelSize: Math.min(36, root.width / 34)
+                        font.family: Theme.font; font.pixelSize: Theme.sp(Math.min(36, root.width / 34))
                         font.bold: true
                         wrapMode: Text.Wrap
                     }
@@ -607,7 +607,7 @@ Item {
                                 required property var modelData
                                 text: modelData.label + ": " + modelData.value
                                 color: Theme.muted
-                                font.pixelSize: 13
+                                font.family: Theme.font; font.pixelSize: Theme.sp(13)
                             }
                         }
                     }

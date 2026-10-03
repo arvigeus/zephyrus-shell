@@ -38,17 +38,24 @@ class SetupTests(unittest.TestCase):
             self.assertFalse((hypr / "hypridle.conf").is_symlink())
             self.assertFalse((state / "zephyrus-shell/dev-session.json").exists())
 
-    def test_legacy_manifest_requires_migration_instead_of_skipping_new_units(self):
+    def test_unchanged_install_adds_clipboard_units_and_teardown_removes_them(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             module = setup_module()
             module.install(root / "config", root / "state", root / "repo")
             manifest = root / "state/zephyrus-shell/dev-session.json"
             data = json.loads(manifest.read_text())
-            data["files"] = data["files"][:4]
+            extra = [entry for entry in data["files"] if "clipboard" in entry["path"]]
+            for entry in extra:
+                Path(entry["path"]).unlink()
+            data["files"] = [entry for entry in data["files"] if entry not in extra]
             manifest.write_text(json.dumps(data))
-            with self.assertRaisesRegex(ValueError, "migration"):
-                module.install(root / "config", root / "state", root / "repo")
+            module.install(root / "config", root / "state", root / "repo")
+            unit = root / "config/systemd/user/zephyrus-clipboard@.service"
+            self.assertTrue(unit.is_symlink())
+            self.assertEqual(len(json.loads(manifest.read_text())["files"]), len(data["files"]) + 3)
+            module.teardown(root / "state")
+            self.assertFalse(unit.is_symlink())
 
     def test_edited_installation_is_not_deleted(self):
         with tempfile.TemporaryDirectory() as directory:

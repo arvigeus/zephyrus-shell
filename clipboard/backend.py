@@ -19,7 +19,12 @@ def command(name, *args, data=None):
     except subprocess.TimeoutExpired:
         raise ValueError("Clipboard operation timed out. Try again.") from None
     if result.returncode:
-        raise ValueError("Clipboard history changed or is unavailable. Refresh and try again.")
+        diagnostic = result.stderr.decode("utf-8", errors="replace").strip()
+        # cliphist returns failure for a new (or wiped) database. This is an
+        # empty history, not a missing package or a broken clipboard.
+        if name == "cliphist" and args == ("list",) and diagnostic == "opening db: please store something first":
+            return b""
+        raise ValueError("Clipboard operation failed: " + (diagnostic or "Refresh and try again."))
     return result.stdout
 
 

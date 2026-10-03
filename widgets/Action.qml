@@ -14,7 +14,7 @@ Button {
     implicitWidth: Math.max(42, contentItem.implicitWidth + 28)
     hoverEnabled: true
     font.family: Theme.font
-    font.pixelSize: 14
+    font.pixelSize: Theme.sp(14)
     Accessible.name: text
     ToolTip.visible: hovered && text.length > 0
     ToolTip.text: text

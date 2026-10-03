@@ -83,18 +83,18 @@ ColumnLayout {
 
     Label {
         visible: !root.loaded && root.error === ""
-        text: "Reading battery information…"; color: Theme.muted; font.pixelSize: 12
+        text: "Reading battery information…"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12)
         Layout.fillWidth: true
     }
     RowLayout {
         visible: root.error !== ""
         Layout.fillWidth: true
-        Label { text: root.error; color: Theme.danger; wrapMode: Text.Wrap; Layout.fillWidth: true; font.pixelSize: 12 }
+        Label { text: root.error; color: Theme.danger; wrapMode: Text.Wrap; Layout.fillWidth: true; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
         IconButton { iconName: "refresh-cw"; text: "Retry battery information"; enabled: !root.loading; onClicked: root.refresh() }
     }
     Label {
         visible: root.loaded && root.batteries.length === 0
-        text: "No laptop battery detected."; color: Theme.muted; font.pixelSize: 12
+        text: "No laptop battery detected."; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12)
         Layout.fillWidth: true
     }
     Repeater {
@@ -114,15 +114,15 @@ ColumnLayout {
                 Label {
                     id: timeEstimate
                     text: root.timeText(card.modelData)
-                    visible: text !== ""; color: Theme.muted; font.pixelSize: 12
+                    visible: text !== ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12)
                     Layout.fillWidth: true; wrapMode: Text.Wrap
                 }
                 Rectangle { visible: timeEstimate.visible; Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
                 RowLayout {
                     Layout.fillWidth: true
                     Icon { name: "battery-full"; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
-                    Label { text: "Battery health"; Layout.fillWidth: true; font.pixelSize: 12 }
-                    Label { text: card.healthAvailable ? Math.round(card.modelData.healthPercent) + "%" : "Unavailable"; font.weight: Font.DemiBold; font.pixelSize: 12 }
+                    Label { text: "Battery health"; Layout.fillWidth: true; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
+                    Label { text: card.healthAvailable ? Math.round(card.modelData.healthPercent) + "%" : "Unavailable"; font.weight: Font.DemiBold; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
                 }
                 Rectangle {
                     visible: card.healthAvailable
@@ -130,12 +130,12 @@ ColumnLayout {
                     Rectangle {
                         width: parent.width * Math.min(100, Math.max(0, card.modelData.healthPercent || 0)) / 100
                         height: parent.height; radius: 3
-                        color: card.modelData.healthPercent < 60 ? Theme.danger : card.modelData.healthPercent < 80 ? "#e1b957" : "#58b87a"
+                        color: card.modelData.healthPercent < 60 ? Theme.danger : card.modelData.healthPercent < 80 ? Theme.warning : Theme.success
                     }
                 }
                 Label {
                     text: root.capacityText(card.modelData)
-                    color: Theme.muted; font.pixelSize: 12
+                    color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12)
                     Layout.fillWidth: true; wrapMode: Text.Wrap
                 }
                 Repeater {
@@ -152,13 +152,13 @@ ColumnLayout {
                         Controls.ToolTip.delay: 500
                         HoverHandler { id: rowHover }
                         Icon { name: modelData.icon; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
-                        Label { text: modelData.label; font.pixelSize: 12; color: Theme.muted; Layout.fillWidth: true }
-                        Label { text: modelData.value; font.pixelSize: 12 }
+                        Label { text: modelData.label; font.family: Theme.font; font.pixelSize: Theme.sp(12); color: Theme.muted; Layout.fillWidth: true }
+                        Label { text: modelData.value; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
                     }
                 }
                 Label {
                     text: [card.modelData.manufacturer, card.modelData.model, card.modelData.technology].filter(Boolean).join(" · ") || card.modelData.name
-                    color: Theme.muted; font.pixelSize: 11
+                    color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11)
                     Layout.fillWidth: true; wrapMode: Text.Wrap
                 }
             }

@@ -39,7 +39,7 @@ Item {
                 color: Theme.text
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
-                font.pixelSize: 12
+                font.family: Theme.font; font.pixelSize: Theme.sp(12)
             }
         }
 

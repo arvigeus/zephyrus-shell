@@ -31,7 +31,7 @@ W.ScrollArea {
                 required property var modelData
                 Layout.fillWidth: true
                 spacing: 8
-                W.Label { text: modelData.label; font.pixelSize: 18; font.bold: true }
+                W.Label { text: modelData.label; font.family: Theme.font; font.pixelSize: Theme.sp(18); font.bold: true }
                 Flow {
                     Layout.fillWidth: true
                     spacing: 10

@@ -78,7 +78,7 @@ Item {
                 width: feed.width - 8
                 spacing: 10
 
-                Label { visible: root.cloudStale; text: "Showing saved Nextcloud data"; color: Theme.muted; font.pixelSize: 11 }
+                Label { visible: root.cloudStale; text: "Showing saved Nextcloud data"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
                 Label {
                     visible: root.cloudError !== "" && root.cloudState === "ready"
                     text: root.cloudError
@@ -89,7 +89,7 @@ Item {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    Label { text: "TASKS"; color: Theme.muted; font.pixelSize: 11; font.letterSpacing: 1.4 }
+                    Label { text: "TASKS"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11); font.letterSpacing: 1.4 }
                     IconButton {
                         iconName: "plus"
                         iconSize: 17
@@ -98,7 +98,7 @@ Item {
                         onClicked: root.addTaskRequested()
                     }
                     Item { Layout.fillWidth: true }
-                    Label { visible: root.cloudState === "ready"; text: root.taskCount + " open"; color: Theme.muted; font.pixelSize: 11 }
+                    Label { visible: root.cloudState === "ready"; text: root.taskCount + " open"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
                 }
                 Label {
                     visible: root.cloudState !== "ready"
@@ -136,7 +136,7 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: 3
                                 Label { text: modelData.summary; Layout.fillWidth: true }
-                                Label { text: root.taskDetail(modelData); color: Theme.muted; font.pixelSize: 12; Layout.fillWidth: true }
+                                Label { text: root.taskDetail(modelData); color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); Layout.fillWidth: true }
                                 TapHandler { onTapped: root.editTaskRequested(modelData) }
                             }
                             Action {
@@ -149,7 +149,7 @@ Item {
                         }
                     }
                 }
-                Label { text: "UPCOMING"; color: Theme.muted; font.pixelSize: 11; font.letterSpacing: 1.4; Layout.topMargin: 8 }
+                Label { text: "UPCOMING"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11); font.letterSpacing: 1.4; Layout.topMargin: 8 }
                 Label { visible: root.cloudState === "ready" && root.shownEvents.length === 0; text: "Nothing upcoming."; color: Theme.muted }
                 Repeater {
                     model: root.shownEvents
@@ -168,7 +168,7 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: 3
                                 Label { text: modelData.summary; Layout.fillWidth: true }
-                                Label { text: root.eventDetail(modelData); color: Theme.muted; font.pixelSize: 12; Layout.fillWidth: true }
+                                Label { text: root.eventDetail(modelData); color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); Layout.fillWidth: true }
                             }
                         }
                     }
@@ -179,7 +179,7 @@ Item {
                     Label {
                         text: "NOTIFICATIONS" + (root.view === "priority" && root.notifications.length > 2 ? " · " + root.notifications.length : "")
                         color: Theme.muted
-                        font.pixelSize: 11
+                        font.family: Theme.font; font.pixelSize: Theme.sp(11)
                         font.letterSpacing: 1.4
                         Layout.fillWidth: true
                     }

@@ -39,7 +39,7 @@ ColumnLayout {
         Label { text: root.machine.snapshot.battery ? Math.round(root.percent) + "%" : "—"; color: Theme.muted; Layout.preferredWidth: 38; horizontalAlignment: Text.AlignRight }
         IconButton { text: "Battery information"; iconName: root.expanded ? "chevron-up" : "chevron-down"; onClicked: root.expanded = !root.expanded }
     }
-    Label { Layout.leftMargin: 48; Layout.fillWidth: true; text: root.machine.snapshot.batteryInfo || "No battery detected"; color: Theme.muted; font.pixelSize: 12; wrapMode: Text.Wrap }
+    Label { Layout.leftMargin: 48; Layout.fillWidth: true; text: root.machine.snapshot.batteryInfo || "No battery detected"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); wrapMode: Text.Wrap }
     Loader {
         id: detailsLoader
         objectName: "batteryDetailsLoader"
@@ -50,6 +50,6 @@ ColumnLayout {
     Label {
         visible: root.expanded && detailsLoader.status === Loader.Loading
         Layout.leftMargin: 48; Layout.fillWidth: true
-        text: "Reading battery information…"; color: Theme.muted; font.pixelSize: 12
+        text: "Reading battery information…"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12)
     }
 }

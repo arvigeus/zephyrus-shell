@@ -1,19 +1,38 @@
 pragma Singleton
 import QtQuick
+import "Defaults.js" as Bundled
 
 QtObject {
-    readonly property color background: "#101115"
-    readonly property color surface: "#191b21"
-    readonly property color raised: "#252830"
-    readonly property color border: "#32353f"
-    readonly property color text: "#f1f2f6"
-    readonly property color muted: "#a1a6b5"
-    readonly property color accent: "#ff465c"
+    id: root
+    property var settings: Bundled.settings
+    readonly property var colors: settings.palettes[settings.mode]
+    readonly property var icons: settings.icons || ({})
+    readonly property string mode: settings.mode
+    readonly property color background: colors.background
+    readonly property color surface: colors.surface
+    readonly property color raised: colors.raised
+    readonly property color border: colors.border
+    readonly property color text: colors.text
+    readonly property color muted: colors.muted
+    readonly property color accent: colors.accent
     readonly property color accentSurface: Qt.tint(surface, Qt.rgba(accent.r, accent.g, accent.b, 0.16))
-    readonly property color danger: "#ff8090"
+    readonly property color danger: colors.danger
+    readonly property color warning: colors.warning
+    readonly property color success: colors.success
     function scrim(opacity) { return Qt.rgba(background.r, background.g, background.b, opacity); }
-    readonly property color accentText: "#ffffff"
-    readonly property string font: "sans-serif"
+    readonly property color accentText: colors.accent_text
+    readonly property string font: settings.font
+    readonly property real fontSize: settings.font_size
+    readonly property string monospaceFont: settings.monospace_font
+    readonly property real monospaceFontSize: settings.monospace_font_size
+    function sp(pixels) { return Math.round(pixels * fontSize / 11); }
+    property string error: ""
+    property var warnings: []
+    property bool loaded: false
+    signal reloadRequested()
+    signal modeRequested(string mode)
+    function refresh() { reloadRequested(); }
+    function setMode(mode) { if (["dark", "light"].includes(mode)) modeRequested(mode); }
     readonly property int radius: 10
     readonly property int controlRadius: 5
     readonly property int moduleMargin: 28

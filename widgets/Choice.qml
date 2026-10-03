@@ -7,14 +7,14 @@ ComboBox {
     implicitHeight: 42
     hoverEnabled: true
     leftPadding: 14; rightPadding: 28
-    contentItem: Text { text: root.displayText; color: Theme.text; font.pixelSize: 14; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter; textFormat: Text.PlainText }
+    contentItem: Text { text: root.displayText; color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.sp(14); elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter; textFormat: Text.PlainText }
     background: Rectangle { radius: Theme.controlRadius; color: root.hovered ? Theme.raised : Theme.surface; border.color: root.activeFocus ? Theme.accent : "transparent" }
     indicator: Icon { name: "chevron-down"; width: 18; height: 18; x: root.width - 26; anchors.verticalCenter: parent.verticalCenter }
     delegate: ItemDelegate {
         required property var modelData
         required property int index
         width: root.width
-        contentItem: Text { text: root.textRole ? modelData[root.textRole] : modelData; color: Theme.text; font.pixelSize: 14; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter; textFormat: Text.PlainText }
+        contentItem: Text { text: root.textRole ? modelData[root.textRole] : modelData; color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.sp(14); elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter; textFormat: Text.PlainText }
         background: Rectangle { color: root.highlightedIndex === parent.index ? Theme.raised : Theme.surface }
         highlighted: root.highlightedIndex === index
     }

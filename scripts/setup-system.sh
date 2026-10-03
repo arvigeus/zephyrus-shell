@@ -42,12 +42,30 @@ packages=(
     xdg-desktop-portal
     xdg-desktop-portal-hyprland
     xdg-desktop-portal-gtk
+    hyprshot
+    satty
+    kooha
+    wl-clipboard
+    cliphist
+    libnotify
+    xdg-user-dirs
     kitty
     dolphin
     git
     qt6-declarative
+    qt5-wayland
+    qt6-wayland
+    qt6-5compat
     qmltermwidget
     noto-fonts
+    breeze-gtk
+    breeze-icons
+    breeze
+    breeze5
+    kvantum
+    kvantum-qt5
+    plasma-integration
+    plasma5-integration
     python
     python-dateutil
     python-dbus

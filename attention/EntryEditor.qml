@@ -92,7 +92,7 @@ Item {
 
             Label {
                 text: (root.editing ? "Edit " : "New ") + (root.kind === "VTODO" ? "task" : "event")
-                font.pixelSize: 20
+                font.family: Theme.font; font.pixelSize: Theme.sp(20)
                 font.weight: Font.DemiBold
                 Layout.fillWidth: true
             }
@@ -119,7 +119,7 @@ Item {
                     id: form
                     width: formScroll.width - 8
                     spacing: 8
-                    Label { text: "Title"; color: Theme.muted; font.pixelSize: 12 }
+                    Label { text: "Title"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
                     SearchField {
                         id: titleField
                         Layout.fillWidth: true
@@ -127,7 +127,7 @@ Item {
                         enabled: root.editable && !root.busy
                         onAccepted: root.submit()
                     }
-                    Label { text: root.kind === "VTODO" ? "Task list" : "Calendar"; color: Theme.muted; font.pixelSize: 12; Layout.topMargin: 8 }
+                    Label { text: root.kind === "VTODO" ? "Task list" : "Calendar"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); Layout.topMargin: 8 }
                     Choice {
                         id: collectionChoice
                         Layout.fillWidth: true
@@ -136,7 +136,7 @@ Item {
                         enabled: !root.editing && !root.busy && root.options.length > 0
                         onActivated: index => root.collection = model[index].slug
                     }
-                    Label { visible: root.kind === "VTODO"; text: "Due date · optional"; color: Theme.muted; font.pixelSize: 12; Layout.topMargin: 8 }
+                    Label { visible: root.kind === "VTODO"; text: "Due date · optional"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); Layout.topMargin: 8 }
                     SearchField {
                         id: dueField
                         visible: root.kind === "VTODO"
@@ -144,7 +144,7 @@ Item {
                         placeholderText: "YYYY-MM-DD"
                         enabled: root.editable && !root.busy
                     }
-                    Label { visible: root.kind === "VEVENT"; text: "When"; color: Theme.muted; font.pixelSize: 12; Layout.topMargin: 8 }
+                    Label { visible: root.kind === "VEVENT"; text: "When"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); Layout.topMargin: 8 }
                     Choice {
                         id: modeChoice
                         visible: root.kind === "VEVENT"
@@ -159,12 +159,12 @@ Item {
                         spacing: 8
                         ColumnLayout {
                             Layout.fillWidth: true
-                            Label { text: "Start date"; color: Theme.muted; font.pixelSize: 12 }
+                            Label { text: "Start date"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
                             SearchField { id: startDateField; Layout.fillWidth: true; placeholderText: "YYYY-MM-DD"; enabled: root.editable && !root.busy }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
-                            Label { text: "End date"; color: Theme.muted; font.pixelSize: 12 }
+                            Label { text: "End date"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
                             SearchField { id: endDateField; Layout.fillWidth: true; placeholderText: "YYYY-MM-DD"; enabled: root.editable && !root.busy }
                         }
                     }
@@ -174,16 +174,16 @@ Item {
                         spacing: 8
                         ColumnLayout {
                             Layout.fillWidth: true
-                            Label { text: "Starts"; color: Theme.muted; font.pixelSize: 12 }
+                            Label { text: "Starts"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
                             SearchField { id: startTimeField; Layout.fillWidth: true; placeholderText: "HH:MM"; enabled: root.editable && !root.busy }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
-                            Label { text: "Ends"; color: Theme.muted; font.pixelSize: 12 }
+                            Label { text: "Ends"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
                             SearchField { id: endTimeField; Layout.fillWidth: true; placeholderText: "HH:MM"; enabled: root.editable && !root.busy }
                         }
                     }
-                    Label { text: "Notes · optional"; color: Theme.muted; font.pixelSize: 12; Layout.topMargin: 8 }
+                    Label { text: "Notes · optional"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); Layout.topMargin: 8 }
                     Controls.TextArea {
                         id: notesField
                         Layout.fillWidth: true

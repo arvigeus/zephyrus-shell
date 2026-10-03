@@ -1,0 +1,6 @@
+# Zephyrus capture flow; all other annotation options use Satty's defaults.
+[general]
+copy-command = "wl-copy --type image/png"
+early-exit = []
+actions-on-enter = ["save-to-file", "save-to-clipboard", "exit"]
+actions-on-escape = ["exit"]

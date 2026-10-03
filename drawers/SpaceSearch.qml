@@ -106,7 +106,7 @@ Item {
                             Icon { anchors.centerIn: parent; width: 24; height: 24; visible: resultButton.modelData.kind === "space"; name: visible ? resultButton.modelData.entry.icon : "" }
                         }
                         Label { text: resultButton.text; Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight }
-                        Label { text: resultButton.modelData.kind === "app" ? "Application" : "Space"; color: Theme.muted; font.pixelSize: 12 }
+                        Label { text: resultButton.modelData.kind === "app" ? "Application" : "Space"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
                     }
                     onClicked: root.activateResult(index)
                     Keys.onReturnPressed: root.activateResult(index)

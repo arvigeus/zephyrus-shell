@@ -186,16 +186,32 @@ Scope {
     PanelWindow {
         screen: root.screen
         visible: Attention.toast !== "" && ShellState.panel !== "center"
-        anchors.top: true
+            && (root.screenName === Attention.toastMonitor
+                || (!Quickshell.screens.some(s => s.name === Attention.toastMonitor) && root.screen === Quickshell.screens[0]))
+        anchors { top: true; right: true }
         margins.top: Theme.pillHeight + 6
-        implicitWidth: 360; implicitHeight: 64
+        margins.right: 14
+        implicitWidth: Math.min(380, root.screenWidth - 28); implicitHeight: toastContent.item ? toastContent.item.implicitHeight : 0
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         WlrLayershell.namespace: "zephyrus-shell-toast"
-        Action {
+        Loader {
+            id: toastContent
             anchors.fill: parent
-            text: Attention.toast
-            onClicked: { Attention.toast = ""; ShellState.toggle("center", root.screenName); }
+            active: parent.visible
+            source: Qt.resolvedUrl("../attention/NotificationToast.qml")
+            onLoaded: {
+                item.summary = Qt.binding(() => Attention.toast);
+                item.body = Qt.binding(() => Attention.toastNotification ? Attention.toastNotification.body : "");
+                item.appName = Qt.binding(() => Attention.toastNotification ? Attention.toastNotification.appName : "");
+            }
+        }
+        Connections {
+            target: toastContent.item
+            function onOpened() { Attention.dismissToast(); ShellState.toggle("center", root.screenName); }
+            function onDismissed() { Attention.dismissToast(); }
         }
     }
 }

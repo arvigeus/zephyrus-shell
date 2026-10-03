@@ -57,17 +57,20 @@ DrawerFrame {
                     DisplaySection { expanded: root.expandSections; machine: machineService; onOpenPage: page => root.page = page }
                     PowerSection { expanded: root.expandSections; machine: machineService }
                 }
-                HardwareSection { machine: machineService; onOpenPage: page => root.page = page }
                 RowLayout {
                     Layout.fillWidth: true
                     Action {
                         iconName: "camera"; text: "Screenshot"; Layout.fillWidth: true
                         onClicked: {
-                            ShellState.showDesktop();
-                            External.launch(["python3", Paths.file("scripts/screenshot.py"), "region"], null);
+                            External.launch(["python3", Paths.file("scripts/screenshot.py"), "region", "--edit"], null);
                         }
                     }
+                    Action {
+                        iconName: "video"; text: "Screen recording"; Layout.fillWidth: true
+                        onClicked: External.launch(["python3", Paths.file("scripts/record-screen.py")], null)
+                    }
                 }
+                HardwareSection { machine: machineService; onOpenPage: page => root.page = page }
                 Action { text: Attention.quiet ? "Do not disturb · On" : "Do not disturb · Off"; Layout.fillWidth: true; highlighted: Attention.quiet; onClicked: Attention.quiet = !Attention.quiet }
             }
         }

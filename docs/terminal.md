@@ -33,7 +33,9 @@ The Play button on the right opens Commands. Define entries in
   "commands": [
     {"name": "System information", "command": "uname -a"},
     {"name": "Disk usage", "command": "df -h"},
-    {"name": "Shell project", "command": "cd ~/Projects/zephyrus-shell && git status --short"}
+    {"name": "Shell project", "command": "cd ~/Projects/zephyrus-shell && git status --short"},
+    {"name": "Pause idle locking (this session)", "command": "test -n \"$XDG_RUNTIME_DIR\" && test -n \"$HYPRLAND_INSTANCE_SIGNATURE\" && mkdir -p \"$XDG_RUNTIME_DIR/zephyrus-shell\" && touch \"$XDG_RUNTIME_DIR/zephyrus-shell/idle-lock-disabled-$HYPRLAND_INSTANCE_SIGNATURE\""},
+    {"name": "Restore idle locking now", "command": "test -n \"$XDG_RUNTIME_DIR\" && test -n \"$HYPRLAND_INSTANCE_SIGNATURE\" && rm -f \"$XDG_RUNTIME_DIR/zephyrus-shell/idle-lock-disabled-$HYPRLAND_INSTANCE_SIGNATURE\""}
   ]
 }
 ```
@@ -42,6 +44,12 @@ An empty configuration is created on first use. The menu includes an Open comman
 configuration action and rereads the file every time it opens; no shell restart
 is needed. Invalid JSON or entries display an error instead of stale commands.
 See [the example](../config/terminal.example.json).
+
+The example includes commands to pause only the five-minute idle lock and restore
+it manually. While paused, the six-minute display blanking and idle suspend
+listeners continue to run. The pause is scoped to the current Hyprland instance,
+so logging out or restarting the compositor clears it. Manual locking and the
+lock-before-suspend action remain available.
 
 Selecting a name sends its command and Enter to the **selected tab's existing
 shell**, using that tab's directory, environment and shell syntax. Commands never

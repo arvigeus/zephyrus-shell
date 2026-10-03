@@ -1,0 +1,9 @@
+{
+  "actions": [
+    {
+      "name": "Convert to M4A (320 kbps)",
+      "match": {"kind": "extension", "value": ".mka"},
+      "command": "ffmpeg -hide_banner -i {path} -map 0:a:0 -map_metadata 0 -vn -c:a aac -b:a 320k -movflags +faststart -n {directory}/{stem}.m4a"
+    }
+  ]
+}

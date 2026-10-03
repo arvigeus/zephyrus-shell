@@ -1,13 +1,18 @@
 """Small, home-scoped filesystem worker for the Files module."""
+import atexit
 import json
 import os
+import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
 
 HOME = Path(os.environ.get("HOME", "/")).expanduser().resolve()
+ACTION_PLACEHOLDER = re.compile(r"\{(path|name|directory|stem|extension)\}")
+ACTION_PROCESSES = {}
 
 
 def safe_path(value):
@@ -61,6 +66,150 @@ def spawn(command):
                      stderr=subprocess.DEVNULL, start_new_session=True)
 
 
+def custom_action_configuration():
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    path = config_home / "zephyrus-shell/files.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("x", encoding="utf-8") as file:
+            file.write('{"actions": []}\n')
+    except FileExistsError:
+        pass
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, UnicodeError) as error:
+        raise ValueError(f"Fix the JSON in {path} to load file actions.") from error
+    if not isinstance(data, dict) or not isinstance(data.get("actions"), list):
+        raise ValueError("Files configuration must contain an actions array.")
+
+    actions = []
+    for index, item in enumerate(data["actions"]):
+        if not isinstance(item, dict) or any(
+            not isinstance(item.get(key), str) or not item[key].strip()
+            for key in ("name", "command")
+        ):
+            raise ValueError(f"Action {index + 1} needs a nonempty name and command.")
+        if any(character in item["command"] for character in ("\0", "\x1b", "\r")):
+            raise ValueError(f"Action {index + 1} contains unsupported control characters.")
+        match = item.get("match")
+        if (
+            not isinstance(match, dict)
+            or not isinstance(match.get("kind"), str)
+            or not isinstance(match.get("value"), str)
+            or not match["value"].strip()
+        ):
+            raise ValueError(f"Action {index + 1} needs a match kind and value.")
+
+        kind = match["kind"]
+        value = match["value"].strip()
+        action = {"name": item["name"].strip(), "command": item["command"], "kind": kind}
+        if kind == "extension":
+            if not value.startswith(".") or "/" in value or "\\" in value:
+                raise ValueError(f"Action {index + 1} extension values must look like .mka.")
+            action["value"] = value.casefold()
+        elif kind in ("file", "directory"):
+            target = Path(value).expanduser()
+            if not target.is_absolute():
+                target = HOME / target
+            try:
+                target = target.resolve(strict=False)
+            except (OSError, RuntimeError) as error:
+                raise ValueError(f"Action {index + 1} has an invalid match path.") from error
+            if not target.is_relative_to(HOME):
+                raise ValueError(f"Action {index + 1} match paths must stay inside your home folder.")
+            action["value"] = target
+        else:
+            raise ValueError(f"Action {index + 1} match kind must be file, extension, or directory.")
+        actions.append(action)
+    return path, actions
+
+
+def matching_custom_actions(value):
+    target = safe_path(value)
+    _, actions = custom_action_configuration()
+    matched = []
+    for index, action in enumerate(actions):
+        if action["kind"] == "file":
+            applies = target.is_file() and target == action["value"]
+        elif action["kind"] == "extension":
+            applies = target.is_file() and target.suffix.casefold() == action["value"]
+        else:
+            applies = target.is_dir() and target == action["value"]
+        if applies:
+            matched.append({"index": index, "name": action["name"]})
+    return {"actions": matched}
+
+
+def run_custom_action(value, index):
+    target = safe_path(value)
+    _, actions = custom_action_configuration()
+    if not isinstance(index, int) or isinstance(index, bool) or index < 0 or index >= len(actions):
+        raise ValueError("That file action is no longer available. Reopen the menu and try again.")
+    action = actions[index]
+    if action["kind"] == "file":
+        applies = target.is_file() and target == action["value"]
+    elif action["kind"] == "extension":
+        applies = target.is_file() and target.suffix.casefold() == action["value"]
+    else:
+        applies = target.is_dir() and target == action["value"]
+    if not applies:
+        raise ValueError("That file action no longer applies. Reopen the menu and try again.")
+
+    directory = target if target.is_dir() else target.parent
+    values = {
+        "path": str(target),
+        "name": target.name,
+        "directory": str(directory),
+        "stem": target.stem,
+        "extension": target.suffix,
+    }
+    command = ACTION_PLACEHOLDER.sub(
+        lambda match: shlex.quote(values[match.group(1)]), action["command"]
+    )
+    process = subprocess.Popen(
+        ["/bin/sh", "-c", command], cwd=str(directory), stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+    )
+    ACTION_PROCESSES[process.pid] = process
+    return {"message": "Started " + action["name"], "job_id": process.pid}
+
+
+def custom_action_status(value):
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        raise ValueError("That file action is no longer available.")
+    process = ACTION_PROCESSES.get(value)
+    if process is None:
+        return {"finished": True, "returncode": None}
+    returncode = process.poll()
+    if returncode is None:
+        return {"finished": False}
+    ACTION_PROCESSES.pop(value, None)
+    return {"finished": True, "returncode": returncode}
+
+
+def stop_custom_actions(signum=None, _frame=None):
+    processes = list(ACTION_PROCESSES.values())
+    for process in processes:
+        if process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+    for process in processes:
+        if process.poll() is None:
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+    ACTION_PROCESSES.clear()
+    if signum is not None:
+        raise SystemExit(0)
+
+
 def delete_entry(value):
     requested = Path(value)
     if ".." in requested.parts:
@@ -88,6 +237,12 @@ def run(request):
     op = request.get("op")
     if op == "list":
         return list_directory(request.get("path"))
+    if op == "custom_actions":
+        return matching_custom_actions(request.get("path"))
+    if op == "custom_action":
+        return run_custom_action(request.get("path"), request.get("index"))
+    if op == "custom_action_status":
+        return custom_action_status(request.get("job_id"))
     if op == "delete":
         return delete_entry(request.get("path", ""))
     path = safe_path(request.get("path"))
@@ -131,7 +286,13 @@ def run(request):
 def main():
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from services.worker import serve
-    serve(run, latest=("list",), controls=("delete", "open", "reveal", "copy", "terminal"))
+    atexit.register(stop_custom_actions)
+    signal.signal(signal.SIGTERM, stop_custom_actions)
+    serve(
+        run,
+        latest=("list",),
+        controls=("delete", "open", "reveal", "copy", "terminal", "custom_action"),
+    )
 
 
 if __name__ == "__main__":

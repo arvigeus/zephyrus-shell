@@ -15,6 +15,11 @@ ColumnLayout {
     property bool loading: true
     property bool showHidden: false
     property int browseGeneration: 0
+    property int actionMenuGeneration: 0
+    property var activeActionsMenu: null
+    property var activeActionJobs: []
+    property var pollingActionJobs: ({})
+    property int pendingActionStarts: 0
     readonly property var visibleEntries: entries.filter(entry => (showHidden || !entry.hidden) && entry.name.toLowerCase().includes(search.text.trim().toLowerCase()))
     spacing: 12
 
@@ -33,7 +38,7 @@ ColumnLayout {
         const ext = entry.extension;
         if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".heic", ".tif", ".tiff"].includes(ext)) return "image";
         if ([".mp4", ".mkv", ".mov", ".avi", ".webm", ".mpeg", ".mpg", ".m4v", ".wmv"].includes(ext)) return "video";
-        if ([".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".opus", ".wma"].includes(ext)) return "music";
+        if ([".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".opus", ".wma", ".mka"].includes(ext)) return "music";
         if ([".pdf", ".txt", ".md", ".doc", ".docx", ".odt", ".rtf", ".xls", ".xlsx", ".ods", ".ppt", ".pptx", ".csv"].includes(ext)) return "file-text";
         if ([".zip", ".tar", ".gz", ".bz2", ".xz", ".7z", ".rar", ".tgz"].includes(ext)) return "archive";
         return "file";
@@ -74,15 +79,8 @@ ColumnLayout {
             if (!error && result && ["terminal", "reveal"].includes(op) && host) host.close();
         });
     }
-    function openActions(button, menu, entryPath) {
-        if (menu.visible) { menu.close(); return; }
-        menu.parent = button;
-        if (pendingDeletePath && pendingDeletePath !== entryPath) {
-            pendingDeletePath = "";
-            deleteConfirmation.stop();
-        }
+    function showActions(button, menu, selectedIndex) {
         const window = root.Window.window;
-        const selectedIndex = pendingDeletePath === entryPath ? 4 : 0;
         if (!window) { menu.open(); menu.currentIndex = selectedIndex; return; }
         const point = button.mapToItem(window.contentItem, 0, 0);
         const menuX = Math.max(8, Math.min(point.x + button.width - menu.width, window.width - menu.width - 8));
@@ -94,13 +92,40 @@ ColumnLayout {
         menu.open();
         menu.currentIndex = selectedIndex;
     }
+    function openActions(button, menu, entry) {
+        if (menu.visible) { menu.close(); return; }
+        menu.parent = button;
+        if (activeActionsMenu && activeActionsMenu !== menu && activeActionsMenu.visible)
+            activeActionsMenu.close();
+        activeActionsMenu = menu;
+        menu.anchorEntry = entry;
+        menu.customActions = [];
+        statusText = "";
+        if (pendingDeletePath && pendingDeletePath !== entry.path) {
+            pendingDeletePath = "";
+            deleteConfirmation.stop();
+        }
+        const generation = ++actionMenuGeneration;
+        service.request("custom_actions", {path: entry.path}, function(result, error) {
+            if (generation !== actionMenuGeneration || !menu.anchorEntry || menu.anchorEntry.path !== entry.path) return;
+            menu.customActions = error || !result ? [] : result.actions;
+            if (error) statusText = error;
+            showActions(button, menu, pendingDeletePath === entry.path ? 4 : 0);
+        });
+    }
     function activateMenuAction(actionIndex, entry, menu) {
         if (actionIndex === 4 && pendingDeletePath !== entry.path) {
             root.confirmDelete(entry);
             Qt.callLater(() => {
                 if (root.pendingDeletePath === entry.path && !menu.visible)
-                    root.openActions(menu.anchorButton, menu, entry.path);
+                    root.openActions(menu.anchorButton, menu, entry);
             });
+            return;
+        }
+        if (actionIndex >= 5) {
+            const customAction = menu.customActions[actionIndex - 5];
+            menu.close();
+            if (customAction) runCustomAction(customAction, entry);
             return;
         }
         menu.close();
@@ -109,6 +134,55 @@ ColumnLayout {
         else if (actionIndex === 2) root.runAction("reveal", entry);
         else if (actionIndex === 3) root.copyPath(entry.path);
         else if (actionIndex === 4) root.confirmDelete(entry);
+    }
+    function runCustomAction(action, entry) {
+        statusText = "";
+        pendingActionStarts++;
+        updateActionRetention();
+        service.request("custom_action", {path: entry.path, index: action.index}, function(result, error) {
+            pendingActionStarts = Math.max(0, pendingActionStarts - 1);
+            if (error) {
+                statusText = error;
+                updateActionRetention();
+                return;
+            }
+            statusText = result ? result.message : "";
+            if (result && result.job_id !== undefined) {
+                activeActionJobs = activeActionJobs.concat([{jobId: result.job_id, name: action.name}]);
+            }
+            updateActionRetention();
+        });
+    }
+    function updateActionRetention() {
+        if (host) host.requestKeepRunning("files", pendingActionStarts > 0 || activeActionJobs.length > 0);
+    }
+    function pollActionJobs() {
+        for (const job of activeActionJobs.slice()) {
+            const key = String(job.jobId);
+            if (pollingActionJobs[key]) continue;
+            const polling = Object.assign({}, pollingActionJobs);
+            polling[key] = true;
+            pollingActionJobs = polling;
+            service.request("custom_action_status", {job_id: job.jobId}, function(result, error) {
+                const nextPolling = Object.assign({}, pollingActionJobs);
+                delete nextPolling[key];
+                pollingActionJobs = nextPolling;
+                if (error) {
+                    statusText = error;
+                    activeActionJobs = activeActionJobs.filter(item => item.jobId !== job.jobId);
+                    updateActionRetention();
+                    return;
+                }
+                if (!result || !result.finished) return;
+                activeActionJobs = activeActionJobs.filter(item => item.jobId !== job.jobId);
+                statusText = result.returncode === 0
+                    ? "Finished " + job.name
+                    : result.returncode === null
+                        ? "Stopped tracking " + job.name
+                        : job.name + " exited with code " + result.returncode;
+                updateActionRetention();
+            });
+        }
     }
     function confirmDelete(entry) {
         if (pendingDeletePath !== entry.path) {
@@ -137,6 +211,12 @@ ColumnLayout {
         interval: 10000
         repeat: false
         onTriggered: root.pendingDeletePath = ""
+    }
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.activeActionJobs.length > 0
+        onTriggered: root.pollActionJobs()
     }
 
     FilesService { id: service }
@@ -233,10 +313,10 @@ ColumnLayout {
                 iconName: "settings"; iconSize: 20; text: "Actions for " + row.modelData.name
                 visible: rowHover.hovered || hovered || activeFocus
                 ToolTip.visible: false
-                onClicked: root.openActions(gear, actions, row.modelData.path)
+                onClicked: root.openActions(gear, actions, row.modelData)
                 Keys.onLeftPressed: (event) => { root.goUp(); fileList.forceActiveFocus(); event.accepted = true; }
-                Keys.onRightPressed: (event) => { root.openActions(gear, actions, row.modelData.path); event.accepted = true; }
-                Keys.onSpacePressed: (event) => { root.openActions(gear, actions, row.modelData.path); event.accepted = true; }
+                Keys.onRightPressed: (event) => { root.openActions(gear, actions, row.modelData); event.accepted = true; }
+                Keys.onSpacePressed: (event) => { root.openActions(gear, actions, row.modelData); event.accepted = true; }
                 Keys.onUpPressed: { root.moveSelection(-1); fileList.forceActiveFocus(); }
                 Keys.onDownPressed: { root.moveSelection(1); fileList.forceActiveFocus(); }
                 Menu {
@@ -244,7 +324,9 @@ ColumnLayout {
                     property var anchorButton: gear
                     popupType: Popup.Item
                     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-                    width: 220
+                    width: 260
+                    property var customActions: []
+                    property var anchorEntry: null
                     focus: true
                     background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.controlRadius }
                     onClosed: fileList.forceActiveFocus()
@@ -322,6 +404,39 @@ ColumnLayout {
                         Keys.onLeftPressed: (event) => { actions.close(); event.accepted = true; }
                         Keys.onSpacePressed: (event) => { actions.close(); event.accepted = true; }
                     }
+                    MenuSeparator {
+                        visible: actions.customActions.length > 0
+                        implicitHeight: 9
+                        contentItem: Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: 1
+                            color: Theme.border
+                        }
+                    }
+                    Repeater {
+                        model: actions.customActions
+                        delegate: MenuItem {
+                            id: customMenuItem
+                            required property var modelData
+                            required property int index
+                            text: modelData.name
+                            implicitHeight: 42
+                            leftPadding: 12; rightPadding: 12
+                            contentItem: Label {
+                                text: customMenuItem.text
+                                color: customMenuItem.highlighted ? Theme.accent : Theme.text
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+                            background: Rectangle { color: customMenuItem.highlighted ? Theme.raised : "transparent" }
+                            onTriggered: root.activateMenuAction(5 + index, row.modelData, actions)
+                            Keys.onReturnPressed: (event) => { root.activateMenuAction(5 + index, row.modelData, actions); event.accepted = true; }
+                            Keys.onEnterPressed: (event) => { root.activateMenuAction(5 + index, row.modelData, actions); event.accepted = true; }
+                            Keys.onRightPressed: (event) => { root.activateMenuAction(5 + index, row.modelData, actions); event.accepted = true; }
+                            Keys.onLeftPressed: (event) => { actions.close(); event.accepted = true; }
+                            Keys.onSpacePressed: (event) => { actions.close(); event.accepted = true; }
+                        }
+                    }
                 }
             }
         }
@@ -334,7 +449,7 @@ ColumnLayout {
         Keys.onEnterPressed: (event) => { if (currentItem && currentIndex >= 0) root.openEntry(currentItem.modelData); event.accepted = true; }
         Keys.onRightPressed: (event) => { if (currentItem && currentIndex >= 0) root.openEntry(currentItem.modelData); event.accepted = true; }
         Keys.onLeftPressed: (event) => { root.goUp(); event.accepted = true; }
-        Keys.onSpacePressed: (event) => { if (currentItem && currentIndex >= 0) root.openActions(currentItem.actionButton, currentItem.actionMenu, currentItem.modelData.path); event.accepted = true; }
+        Keys.onSpacePressed: (event) => { if (currentItem && currentIndex >= 0) root.openActions(currentItem.actionButton, currentItem.actionMenu, currentItem.modelData); event.accepted = true; }
         Label {
             anchors.centerIn: parent
             width: Math.min(500, parent.width - 32)

@@ -2,6 +2,8 @@
   "commands": [
     {"name": "System information", "command": "uname -a"},
     {"name": "Disk usage", "command": "df -h"},
-    {"name": "Shell project", "command": "cd ~/Projects/zephyrus-shell && git status --short"}
+    {"name": "Shell project", "command": "cd ~/Projects/zephyrus-shell && git status --short"},
+    {"name": "Pause idle locking (this session)", "command": "test -n \"$XDG_RUNTIME_DIR\" && test -n \"$HYPRLAND_INSTANCE_SIGNATURE\" && mkdir -p \"$XDG_RUNTIME_DIR/zephyrus-shell\" && touch \"$XDG_RUNTIME_DIR/zephyrus-shell/idle-lock-disabled-$HYPRLAND_INSTANCE_SIGNATURE\""},
+    {"name": "Restore idle locking now", "command": "test -n \"$XDG_RUNTIME_DIR\" && test -n \"$HYPRLAND_INSTANCE_SIGNATURE\" && rm -f \"$XDG_RUNTIME_DIR/zephyrus-shell/idle-lock-disabled-$HYPRLAND_INSTANCE_SIGNATURE\""}
   ]
 }

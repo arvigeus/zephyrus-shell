@@ -4,9 +4,14 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from services.worker import serve
+
+
+_thumbnail_directory = tempfile.TemporaryDirectory(prefix="zephyrus-clipboard-")
+IMAGE_PREVIEW = re.compile(r"\b(png|jpe?g|gif|webp)\b", re.IGNORECASE)
 
 
 def command(name, *args, data=None):
@@ -33,8 +38,11 @@ def entries():
     for row in command("cliphist", "list").decode("utf-8", errors="replace").splitlines():
         identifier, separator, preview = row.partition("\t")
         if separator and re.fullmatch(r"[0-9]+", identifier):
+            binary = preview.startswith("[[ binary data")
+            image = bool(binary and IMAGE_PREVIEW.search(preview))
             result.append({"id": identifier, "preview": preview,
-                           "binary": preview.startswith("[[ binary data")})
+                           "label": "Image" if image else preview,
+                           "binary": binary, "image": image})
     return result
 
 
@@ -54,10 +62,32 @@ def mime_type(data):
         return "application/octet-stream"
 
 
+def thumbnail(identifier):
+    if not re.fullmatch(r"[0-9]+", identifier):
+        raise ValueError("Choose a clipboard entry.")
+    entry = next((entry for entry in entries() if entry["id"] == identifier), None)
+    if not entry or not entry["image"]:
+        return {"image": False, "source": ""}
+    row = identifier + "\t" + entry["preview"] + "\n"
+    data = command("cliphist", "decode", data=row.encode())
+    mime = mime_type(data)
+    extensions = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
+    extension = extensions.get(mime)
+    if not extension:
+        return {"image": False, "source": ""}
+    path = Path(_thumbnail_directory.name) / (identifier + "." + extension)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_bytes(data)
+    temporary.replace(path)
+    return {"image": True, "source": path.as_uri()}
+
+
 def run(request):
     op = request["op"]
     if op == "list":
         return {"entries": entries()}
+    if op == "thumbnail":
+        return thumbnail(str(request.get("entry_id", "")))
     if op == "clear":
         command("cliphist", "wipe")
         return {"entries": []}
@@ -81,4 +111,4 @@ def run(request):
 
 
 if __name__ == "__main__":
-    serve(run, latest=("list",), controls=("copy", "delete", "clear"))
+    serve(run, latest=("list",), controls=("copy", "delete", "clear"), background=("thumbnail",))

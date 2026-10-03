@@ -160,7 +160,7 @@ FocusScope {
                 iconName: "rotate-ccw"; text: "Restart shell in this tab"
                 onClicked: root.restartShell()
             }
-            Action {
+            IconButton {
                 id: commandsButton
                 objectName: "terminalCommands"
                 iconName: "play"; text: "Commands"

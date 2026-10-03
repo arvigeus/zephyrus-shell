@@ -1,6 +1,7 @@
 {
   "storefront": "us",
   "catalog_token": "",
+  "default_playlist": "",
   "providers": [],
   "lyrics_providers": [
     {

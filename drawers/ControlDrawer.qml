@@ -71,7 +71,6 @@ DrawerFrame {
                     }
                 }
                 HardwareSection { machine: machineService; onOpenPage: page => root.page = page }
-                Action { text: Attention.quiet ? "Do not disturb · On" : "Do not disturb · Off"; Layout.fillWidth: true; highlighted: Attention.quiet; onClicked: Attention.quiet = !Attention.quiet }
             }
         }
         Label { visible: text !== ""; text: machineService.error || Profiles.error || KeepAwake.error; color: Theme.danger; wrapMode: Text.Wrap; Layout.fillWidth: true }

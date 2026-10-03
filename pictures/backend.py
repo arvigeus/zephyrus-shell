@@ -39,7 +39,7 @@ BING_MARKETS = {
 PROVIDERS = {
     "wallhaven": {
         "id": "wallhaven", "name": "Wallhaven", "random": True, "search": True,
-        "defaultFilters": {"categories": "111", "sorting": "toplist", "topRange": "1M", "ratio": "", "resolution": "", "tagQuery": ""},
+        "defaultFilters": {"categories": "111", "sorting": "hot", "topRange": "1M", "ratio": "", "resolution": "", "tagQuery": ""},
         "filters": [
             {"key": "categories", "label": "Category", "width": 138, "options": [
                 {"label": "All categories", "value": "111"}, {"label": "General", "value": "100"},

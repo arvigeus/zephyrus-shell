@@ -10,9 +10,10 @@ each selected file to a catalogue song before import. Artist searches include
 the same playback queue as discovered songs.
 
 Music uses the Apple Music public catalog for search, artist discographies, album
-tracks, genres, and popularity charts. Discover opens on Apple's most-played song
-chart, optionally scoped by genre, in the same song table used for search results.
-This is popularity-ranked discovery rather than a global newest-releases feed.
+tracks, genres, popularity charts, and catalog playlists. Discover opens on the
+playlist set in `default_playlist`, when configured, otherwise Apple's most-played
+song chart. The playlist may be an Apple Music playlist ID or its share URL. The
+genre filter continues to show Apple's chart for the selected genre.
 The Filters button opens the fixed Songs, Artists, and Albums browser, where each
 column has its own search. Apple catalog search and chart pages load incrementally;
 selecting an artist loads its top songs and the first album page. Songs can then
@@ -63,6 +64,10 @@ with a `dev_token` or `token` property; JSON may also provide
 its expiry (or for five minutes when the response does not include an expiry).
 Apple catalog access does not use the user's personal library or provide audio
 playback. `storefront` is a two-letter country code and defaults to `us`.
+`default_playlist` is optional. Set it to a public Apple Music catalog playlist ID
+(such as `pl.2a86e272cf2349a99de68fd9cf7d4776`) or its `music.apple.com` share URL
+to use that playlist as Discover's default. Leave it empty to use most-played
+charts. Private library playlists are not available through the catalog token.
 
 `providers` is an ordered list of optional playback adapters. Each adapter uses
 GET requests for JSON search results and a URL template for the selected stream.
@@ -72,6 +77,7 @@ For example:
 {
   "storefront": "us",
   "catalog_token": "https://example.invalid/music-token",
+  "default_playlist": "",
   "providers": [
     {
       "name": "Audio service",

@@ -184,6 +184,13 @@ Item {
                         Layout.fillWidth: true
                     }
                     IconButton {
+                        iconName: "bell-off"
+                        iconSize: 18
+                        text: Attention.quiet ? "Turn off Do not disturb" : "Turn on Do not disturb"
+                        highlighted: Attention.quiet
+                        onClicked: Attention.quiet = !Attention.quiet
+                    }
+                    IconButton {
                         iconName: "trash-2"
                         iconSize: 18
                         text: "Clear all notifications"

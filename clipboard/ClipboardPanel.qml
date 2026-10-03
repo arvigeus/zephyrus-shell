@@ -13,7 +13,9 @@ Rectangle {
     property bool confirmClear: false
     property string errorText: ""
     property int generation: 0
-    readonly property var filtered: entries.filter(entry => entry.preview.toLowerCase().includes(search.text.trim().toLowerCase()))
+    property var thumbnailSources: ({})
+    property var thumbnailRequests: ({})
+    readonly property var filtered: entries.filter(entry => (entry.label + " " + entry.preview).toLowerCase().includes(search.text.trim().toLowerCase()))
     color: Theme.background; radius: Theme.radius; border.color: Theme.border
     focus: true
     Component.onCompleted: Qt.callLater(() => search.forceActiveFocus())
@@ -38,6 +40,29 @@ Rectangle {
             if (op === "copy") { root.closeRequested(); }
             else { confirmClear = false; refresh(); }
         });
+    }
+    function loadThumbnail(entry) {
+        const id = String(entry.id);
+        if (!entry.image || thumbnailRequests[id]) return;
+        const requested = Object.assign({}, thumbnailRequests);
+        requested[id] = true;
+        thumbnailRequests = requested;
+        service.request("thumbnail", {entry_id: id}, (result, error) => {
+            if (error || !result || !result.image) {
+                const pending = Object.assign({}, thumbnailRequests);
+                delete pending[id];
+                thumbnailRequests = pending;
+                return;
+            }
+            const sources = Object.assign({}, thumbnailSources);
+            sources[id] = result.source || "";
+            thumbnailSources = sources;
+        });
+    }
+    function forgetThumbnail(id) {
+        const next = Object.assign({}, thumbnailSources);
+        delete next[String(id)];
+        thumbnailSources = next;
     }
     ClipboardService { id: service; onReady: root.refresh() }
     Timer { id: resetClear; interval: 5000; onTriggered: root.confirmClear = false }
@@ -88,18 +113,34 @@ Rectangle {
                 required property var modelData
                 required property int index
                 width: history.width; spacing: 6
+                Component.onCompleted: root.loadThumbnail(modelData)
                 W.Action {
                     id: entryButton
                     Layout.fillWidth: true; implicitHeight: 64
                     enabled: !root.changing
                     highlighted: history.currentIndex === index
                     iconName: modelData.binary ? "image" : "clipboard"
-                    text: modelData.preview
-                    Accessible.name: "Copy " + modelData.preview
+                    text: modelData.label
+                    Accessible.name: "Copy " + modelData.label
                     onClicked: root.act("copy", modelData)
                     contentItem: RowLayout {
                         spacing: 12
-                        W.Icon { name: entryButton.iconName; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
+                        Item {
+                            readonly property string source: root.thumbnailSources[String(modelData.id)] || ""
+                            Layout.preferredWidth: source ? 72 : 20
+                            Layout.preferredHeight: source ? 50 : 20
+                            W.Icon { visible: !parent.source; anchors.centerIn: parent; width: 20; height: 20; name: entryButton.iconName }
+                            Image {
+                                anchors.fill: parent
+                                visible: !!parent.source
+                                source: parent.source
+                                sourceSize.width: 144
+                                sourceSize.height: 100
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                onStatusChanged: if (status === Image.Error) root.forgetThumbnail(modelData.id)
+                            }
+                        }
                         W.Label {
                             text: entryButton.text; Layout.fillWidth: true
                             color: entryButton.highlighted ? Theme.accent : Theme.text

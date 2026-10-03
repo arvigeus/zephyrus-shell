@@ -71,6 +71,7 @@ def music_config():
     storefront = str(parsed.get("storefront") or "us").strip().lower()
     if not re.fullmatch(r"[a-z]{2}", storefront):
         raise MusicError("The Apple Music storefront must be a two-letter country code.")
+    default_playlist = parse_playlist_id(parsed.get("default_playlist"))
     providers = parsed.get("providers") or []
     if not isinstance(providers, list):
         raise MusicError("Music providers must be a JSON array.")
@@ -97,6 +98,7 @@ def music_config():
     _music_config = {
         "storefront": storefront,
         "catalog_token": str(parsed.get("catalog_token") or "").strip(),
+        "default_playlist": default_playlist,
         "providers": providers,
         "lyrics_providers": [item for item in lyrics_providers[:8] if isinstance(item, dict)],
     }
@@ -297,6 +299,32 @@ def safe_catalog_id(value):
     value = str(value or "").strip()
     if not re.fullmatch(r"[0-9]{1,32}", value):
         raise MusicError("The selected catalog item has an invalid ID.")
+    return value
+
+
+def parse_playlist_id(value):
+    if value is None or value == "":
+        return ""
+    if not isinstance(value, str):
+        raise MusicError("default_playlist must be an Apple Music playlist ID or URL.")
+    value = value.strip()
+    if not value:
+        return ""
+    if "://" in value:
+        parsed = urllib.parse.urlsplit(value)
+        if parsed.scheme != "https" or parsed.netloc != "music.apple.com":
+            raise MusicError("default_playlist must be an Apple Music playlist ID or URL.")
+        parts = parsed.path.strip("/").split("/")
+        value = parts[-1] if parts else ""
+    if not re.fullmatch(r"pl\.[A-Za-z0-9._-]{1,120}", value):
+        raise MusicError("default_playlist must be an Apple Music playlist ID or URL.")
+    return value
+
+
+def safe_playlist_id(value):
+    value = str(value or "").strip()
+    if not re.fullmatch(r"pl\.[A-Za-z0-9._-]{1,120}", value):
+        raise MusicError("The configured Apple Music playlist ID is invalid.")
     return value
 
 
@@ -608,6 +636,90 @@ def chart_page(category, genre_id="", offset=0, limit=SEARCH_PAGE_SIZE):
     return items, raw_count, has_more
 
 
+def apple_playlist_page(playlist_id, offset=0, limit=SEARCH_PAGE_SIZE):
+    playlist_id = safe_playlist_id(playlist_id)
+    params = {"limit": min(100, max(1, int(limit)))}
+    if offset:
+        params["offset"] = max(0, int(offset))
+    response = apple_url("/playlists/" + playlist_id + "/tracks", params)
+    raw_items = response.get("data") or []
+    items = [item for raw in raw_items if (item := normalize_apple(raw, "songs"))]
+    cursor = str(response.get("next") or "")
+    return items, len(raw_items), bool(cursor), cursor
+
+
+def apple_playlist_cursor(playlist_id, cursor):
+    playlist_id = safe_playlist_id(playlist_id)
+    storefront = music_config()["storefront"]
+    url = urllib.parse.urljoin(APPLE_API + "/", str(cursor or ""))
+    parsed = urllib.parse.urlsplit(url)
+    expected = f"/v1/catalog/{storefront}/playlists/{playlist_id}/tracks"
+    if (parsed.scheme != "https" or parsed.netloc != "api.music.apple.com"
+            or parsed.path != expected or parsed.username or parsed.password):
+        raise MusicError("The Apple Music playlist returned an invalid page link.")
+    response = catalog_cache().load(
+        url, 900, lambda: request_json(url, {"Authorization": "Bearer " + apple_token()})
+    )
+    raw_items = response.get("data") or []
+    items = [item for raw in raw_items if (item := normalize_apple(raw, "songs"))]
+    next_cursor = str(response.get("next") or "")
+    return items, len(raw_items), bool(next_cursor), next_cursor
+
+
+def playlist_results():
+    playlist_id = music_config().get("default_playlist") or ""
+    if not playlist_id:
+        return chart_results()
+    songs, raw_count, has_more, cursor = apple_playlist_page(playlist_id, limit=SEARCH_PAGE_SIZE)
+    artists = []
+    albums = []
+    seen_artists = set()
+    seen_albums = set()
+    for song in songs:
+        artist_name = str(song.get("artist") or "").strip()
+        artist_key = normalized(artist_name)
+        if artist_name and artist_key not in seen_artists:
+            seen_artists.add(artist_key)
+            artist_ids = song.get("artistIds") or []
+            artists.append({
+                "kind": "artist",
+                "id": artist_ids[0] if artist_ids else "apple-name:" + artist_key,
+                "source": "apple",
+                "name": artist_name,
+                "cover": song.get("artistCover") or "",
+                "genres": song.get("genreNames") or [],
+            })
+        album_name = str(song.get("album") or "").strip()
+        album_key = str(song.get("albumId") or "") or (normalized(album_name) + "|" + artist_key)
+        if album_name and album_key not in seen_albums:
+            seen_albums.add(album_key)
+            albums.append({
+                "kind": "album",
+                "id": str(song.get("albumId") or "name:" + album_key),
+                "source": "apple",
+                "title": album_name,
+                "artist": artist_name or "Unknown Artist",
+                "artists": song.get("artists") or [artist_name],
+                "artistIds": song.get("artistIds") or [],
+                "artistCovers": [song.get("artistCover") or ""],
+                "cover": song.get("albumCover") or song.get("cover") or "",
+                "releaseDate": song.get("releaseDate") or "",
+            })
+    next_offset = raw_count
+    return {
+        "artists": artists,
+        "albums": albums,
+        "songs": songs,
+        "paging": {
+            "artists": {"limit": len(artists), "hasMore": False},
+            "albums": {"limit": len(albums), "hasMore": False},
+            "songs": {"limit": next_offset, "hasMore": has_more and next_offset < SEARCH_MAX_LIMIT,
+                      "cursor": cursor},
+        },
+        "playlistId": playlist_id,
+    }
+
+
 def chart_results(genre_id="", kind="all"):
     params = {"types": "songs,albums", "chart": "most-played", "limit": SEARCH_PAGE_SIZE}
     if genre_id:
@@ -665,6 +777,27 @@ def search_page(args):
     offset = max(0, int(args.get("offset") or 0))
     page_limit = min(SEARCH_MAX_LIMIT, max(SEARCH_PAGE_SIZE, int(args.get("limit") or SEARCH_PAGE_SIZE)))
     if not query:
+        playlist_id = music_config().get("default_playlist") or ""
+        if playlist_id and not genre_id:
+            if category != "songs" or offset >= page_limit:
+                return {"category": category, "items": [], "hasMore": False,
+                        "limit": min(page_limit, offset), "nextOffset": offset}
+            cursor = str(args.get("cursor") or "")
+            if cursor:
+                items, raw_count, has_more, next_cursor = apple_playlist_cursor(playlist_id, cursor)
+            else:
+                items, raw_count, has_more, next_cursor = apple_playlist_page(
+                    playlist_id, offset, min(SEARCH_PAGE_SIZE, page_limit - offset)
+                )
+            next_offset = offset + raw_count
+            return {
+                "category": category,
+                "items": items,
+                "hasMore": has_more and page_limit < SEARCH_MAX_LIMIT,
+                "limit": min(page_limit, next_offset),
+                "nextOffset": next_offset,
+                "cursor": next_cursor,
+            }
         items, raw_count, has_more = chart_page(category, genre_id, offset, SEARCH_PAGE_SIZE)
         next_offset = offset + raw_count
         return {
@@ -696,6 +829,8 @@ def search(args):
     genre_id = str(args.get("genreId") or "").strip()
     genre_name = str(args.get("genreName") or "").strip()
     if not query:
+        if music_config().get("default_playlist") and not genre_id:
+            return playlist_results()
         return chart_results(genre_id, kind)
 
     categories = ("songs",) if kind == "songs" else ("artists", "albums", "songs")

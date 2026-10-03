@@ -36,10 +36,10 @@ Item {
     property int browseGeneration: 0
     property int favoriteGeneration: 0
     property int page: 0
-    property var filters: ({categories:"111",sorting:"toplist",topRange:"1M",ratio:"",resolution:"",tagQuery:"",tagLabel:""})
-    property var pendingFilters: ({categories:"111",sorting:"toplist",topRange:"1M",ratio:"",resolution:"",tagQuery:"",tagLabel:""})
+    property var filters: ({categories:"111",sorting:"hot",topRange:"1M",ratio:"",resolution:"",tagQuery:"",tagLabel:""})
+    property var pendingFilters: ({categories:"111",sorting:"hot",topRange:"1M",ratio:"",resolution:"",tagQuery:"",tagLabel:""})
     property var providerFilters: ({
-        wallhaven:{categories:"111",sorting:"toplist",topRange:"1M",ratio:"",resolution:"",tagQuery:"",tagLabel:""},
+        wallhaven:{categories:"111",sorting:"hot",topRange:"1M",ratio:"",resolution:"",tagQuery:"",tagLabel:""},
         bing:{country:"US"}
     })
     property int tagSuggestionGeneration: 0

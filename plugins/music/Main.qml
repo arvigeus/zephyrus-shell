@@ -581,6 +581,7 @@ ColumnLayout {
             category: kind,
             offset: oldLimit,
             limit: limit,
+            cursor: state.cursor || "",
             genreId: globalSearch ? selectedGenreId : "",
             genreName: globalSearch ? selectedGenreName : "",
             includeReleaseMetadata: true
@@ -613,6 +614,7 @@ ColumnLayout {
                 }
                 current.limit = result && result.limit || limit;
                 current.hasMore = !!(result && result.hasMore) && current.limit < 500;
+                current.cursor = result && result.cursor || "";
                 if (!added.length) current.hasMore = false;
             }
             currentPaging[kind] = current;

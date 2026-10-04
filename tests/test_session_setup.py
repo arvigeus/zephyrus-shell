@@ -17,6 +17,50 @@ def setup_module():
 
 
 class SetupTests(unittest.TestCase):
+    def test_skeleton_provision_is_idempotent_and_emits_owned_inventory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            config = home / ".config"
+            strategies = home / "strategies.tsv"
+            module = setup_module()
+            module.provision(config, Path("/usr/share/zephyrus-shell"), strategies)
+            first = strategies.read_text().splitlines()
+            module.provision(config, Path("/usr/share/zephyrus-shell"))
+            module.check(config, Path("/usr/share/zephyrus-shell"))
+            self.assertIn(".config/systemd/user/hypridle.service.d/idle-policy.conf\treplace\tnever", first)
+            self.assertIn(".config/gtk-3.0/settings.ini\treplace\tunchanged", first)
+            self.assertEqual(len(first), len(module.session_files(config)[0]))
+            self.assertFalse(list(home.rglob("*.before-zephyrus")))
+            self.assertFalse((home / ".local/state").exists())
+            (config / "hypr/hyprland.lua").write_text("wrong")
+            with self.assertRaisesRegex(ValueError, "Incorrect session"):
+                module.check(config, Path("/usr/share/zephyrus-shell"))
+
+    def test_session_defaults_are_copied_and_restored(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config, state = root / "config", root / "state"
+            module = setup_module()
+            module.install(config, state, root / "checkout")
+            settings = config / "gtk-3.0/settings.ini"
+            self.assertFalse(settings.is_symlink())
+            self.assertEqual(settings.read_text(),
+                             (Path(__file__).resolve().parents[1] / "desktop/defaults/settings.ini").read_text())
+            settings.write_text("edited")
+            with self.assertRaisesRegex(ValueError, "edited"):
+                module.teardown(state)
+            settings.write_text((Path(__file__).resolve().parents[1] / "desktop/defaults/settings.ini").read_text())
+            module.teardown(state)
+            self.assertFalse(settings.exists())
+
+    def test_installed_session_path_is_used_by_generated_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            module = setup_module()
+            module.install(root / "config", root / "state", Path("/usr/share/zephyrus-shell"))
+            content = (root / "config/hypr/hyprland.lua").read_text()
+            self.assertIn("/usr/share/zephyrus-shell/hyprland/hyprland.lua", content)
+
     def test_install_repeat_teardown_preserves_existing_files_and_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

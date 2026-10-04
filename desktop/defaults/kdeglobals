@@ -1,0 +1,7 @@
+[General]
+ColorScheme=Zephyrus
+TerminalApplication=kitty
+TerminalService=kitty.desktop
+
+[Icons]
+Theme=breeze-dark

@@ -8,3 +8,9 @@ secrets/
 nextcloud-app-password
 nextcloud-music-password
 nextcloud.json
+
+# Arch package build output
+/src/
+/pkg/
+/zephyrus-shell/
+/*.pkg.tar.*

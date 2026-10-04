@@ -1,0 +1,6 @@
+[General]
+BrowseThroughArchives=true
+ShowFullPath=true
+
+[PreviewSettings]
+Plugins=appimagethumbnail,comicbookthumbnail,directorythumbnail,djvuthumbnail,exrthumbnail,ffmpegthumbs,imagethumbnail,jpegthumbnail,svgthumbnail,windowsexethumbnail,gsthumbnail,rawthumbnail,opendocumentthumbnail

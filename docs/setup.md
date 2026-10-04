@@ -1,28 +1,49 @@
 # System setup
 
-Run `scripts/setup-system.sh` once on Arch Linux after cloning the project and
-before the first launch. It installs the project's required runtime packages using
-`pacman`; it does not build project files or change the shell's per-launch command.
+Run `scripts/setup-system.sh` as your login user on Arch Linux after cloning the
+project and before the first run. It builds and installs the canonical
+`zephyrus-shell-git` package and the `zephyrus-shell-session-git` dependency
+package from this checkout, including the standard full-session
+integrations and surrounding desktop session tools.
+
+`PKGBUILD` owns the package dependencies and install paths. Its VCS versions are
+derived from the current Git checkout; `git` is the package build dependency.
+For direct upstream package work use `makepkg --syncdeps --install`; for the
+current working tree use `scripts/build-package.sh --syncdeps --install`. See
+[packaging](packaging.md) for the dependency audit and consumer contract.
+
+The metadata separates a required shell runtime (Quickshell/Qt, Python, audio metadata,
+systemd and XDG/GLib command helpers) from `zephyrus-shell-session-git`, which
+declares the full Hyprland-session integrations. The base package lists other
+optional integrations separately. Build tools and test tools do not become
+runtime dependencies. NetworkManager, Bluetooth and switcheroo-control may be
+installed as optional integrations, but their services require deliberate
+activation. I2C module loading and group membership are explicit host setup
+performed by `scripts/setup-system.sh` or the packaged hardware setup command;
+they never run as a package-install side effect.
 
 ```sh
 scripts/setup-system.sh
 ```
 
-The installer asks `pacman` to confirm package changes. Brightness, DDC, UWSM, hyprlock and hypridle are installed by default. The old
-`--with-optional-controls` flag remains accepted. GPU selection uses switcheroo-control; firmware GPU controls belong to ASUS tooling.
+The package manager asks before changing packages. Optional dependencies are
+listed in `PKGBUILD` with the feature each one enables. The full-session split package selects the standard session integrations;
+other optional features can be installed individually. `--with-optional-controls` remains
+accepted as a redundant full-session option. GPU selection uses switcheroo-control; firmware GPU
+controls belong to ASUS tooling.
 
-Setup loads `i2c-dev` for the current boot, records it for future boots, and adds
-your user to the `i2c` group using Arch's packaged device rules. Log out and back
-in after setup for group membership to apply. External monitors must support
+The explicit setup script loads `i2c-dev` for the current boot, records it for
+future boots, and adds your user to the `i2c` group using Arch's packaged device
+rules. Package installation does none of these host changes. Log out and back in
+after setup for group membership to apply. External monitors must support
 DDC/CI and have it enabled in their own menus. Settings matches the DRM connector
 to its I2C adapter automatically, including DisplayPort AUX/USB-C adapters; a bus
 can also be selected in Display settings. No root access is needed at runtime.
 
-Setup also installs the narrow CPU boost helper and its polkit action. Existing
-checkouts can install only this control with `sudo bash scripts/install-controls.sh`.
-It authorizes writes of 0 or 1 to the kernel's CPUFreq boost switch; it cannot
-write arbitrary sysfs paths. The UI requests administrator authentication when
-needed. An authentication agent must run in the desktop session (Hyprland uses
+The package provides the narrow CPU boost helper and its polkit action. It
+authorizes writes of 0 or 1 to the kernel's CPUFreq boost switch; it cannot write
+arbitrary sysfs paths. The UI requests administrator authentication when needed.
+An authentication agent must run in the desktop session (Hyprland uses
 hyprpolkitagent; Plasma supplies its own). Applications GPU choices require an
 active switcheroo-control service; on a hybrid GPU system enable it with
 `sudo systemctl enable --now switcheroo-control.service`.
@@ -56,9 +77,10 @@ Or enable them later with:
 sudo systemctl enable --now NetworkManager.service bluetooth.service
 ```
 
-The script supports Arch Linux only. On another distribution,
-install the packages listed in `scripts/setup-system.sh` using that distribution's
-package manager.
+The setup script and package support Arch Linux only. Other distributions can
+run the shell from a checkout if their Quickshell, Qt/QML and Python runtime
+packages provide the required APIs; this repository does not currently ship an
+RPM package.
 
 For a complete login session choose **Hyprland (uwsm-managed)**. After setup, start the shell from the repository root inside Hyprland:
 

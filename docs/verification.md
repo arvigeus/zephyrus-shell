@@ -1,5 +1,22 @@
 # Verification on this machine
 
+Packaging ownership, 2026-10-04: a local makepkg VCS snapshot produced both
+native split archives; metadata, payload exclusions, installed setup/provisioning,
+plugin discovery and public entry points passed the three packaging tests.
+Session/hardware setup checks passed. The full Python suite ran 390 tests with
+one existing clipboard expectation failure (`test_list_ignores_invalid_rows_and_preserves_ids_and_previews`);
+its test/backend are unchanged. Node's three tests and Hyprland configuration
+verification passed. Portable QML ran 50 passes and one existing MusicPagination
+capability assertion failure; its QML/backend/test are unchanged. Offscreen real
+module loading/release passed both in the checkout and an extracted package,
+including the system Qt 6 terminal widget without the checkout's ignored copy.
+Dotfiles' full tests passed, including external-recipe planning, local dirty
+snapshots, remote clone transport, split archives, version refresh and native
+installed-state/removal dispatch. Builds used `--nodeps --nocheck`; no pacman
+transaction, clean-chroot install, service activation, physical session/login,
+DDC or hardware/power behavior was exercised by these checks.
+
+
 Desktop/settings follow-up, 2026-10-03: the full 367-test Python suite passed.
 Native Qt 5/6 offscreen galleries verified palette, font, style and exact menu
 surface color in dark and light modes; GTK 3/4 CSS parsing passed. Theme smoke

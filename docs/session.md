@@ -5,6 +5,10 @@ generated `~/.config/hypr/hyprland.lua` shim. The installed entry already exists
 on this machine. Use it for the first live test; log out of Plasma first.
 The repository remains the source of configuration and QML edits.
 
+Installed-package setup uses `zephyrus-shell-session install`; see
+[packaging and provisioning](packaging.md). The commands below keep the
+source-checkout development workflow.
+
 ## Setup and teardown
 
 ```sh
@@ -145,7 +149,7 @@ opens controls rather than toggling a recording.
 The Clipboard icon beside Settings or Super+Shift+V toggles a searchable history popover below
 the bar. Selecting an entry copies it and closes the popover; Escape or clicking
 outside also closes it, returning to any open module. Its worker exists only
-while the popover is open; recording continues in the session. The dotfiles desktop
+while the popover is open; recording continues in the session. The upstream full-session
 package supplies Hyprshot, Satty, Kooha, cliphist and wl-clipboard. Development
 setup also installs session-owned text/image history services. Re-run
 `python3 scripts/setup-session.py install` and `systemctl --user daemon-reload`

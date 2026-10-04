@@ -5,16 +5,18 @@ Built for Quickshell 0.3.1 and Hyprland 0.56.2's Lua configuration.
 
 ## Try it
 
-Prepare the system once before the first run:
+Prepare an Arch system once before the first run:
 
 ```sh
 scripts/setup-system.sh
 ```
 
-For laptop brightness and external monitor brightness controls, add
-`--with-optional-controls`. The script installs packages with pacman and does not
-change system services unless you pass `--enable-services`; see
-[system setup](docs/setup.md) for details.
+The script builds and installs `zephyrus-shell-git` and its full-session
+dependency package from this checkout. Required and optional package metadata
+live in [`PKGBUILD`](PKGBUILD); this local build does not fetch the shell
+repository again. The script leaves NetworkManager,
+Bluetooth and switcheroo-control service state unchanged by default. Pass
+`--enable-services` to enable networking and Bluetooth; see [system setup](docs/setup.md).
 
 From this directory, inside a Hyprland session:
 
@@ -100,13 +102,18 @@ readings refresh on opening, actions, battery changes or manual refresh.
 
 ## Dependencies and boundaries
 
-The one-time setup script installs the required Arch Linux packages, including
-Quickshell, Hyprland, Qt Quick Controls, QMLTermWidget, Noto Sans Mono, Python 3,
-python-dateutil,
-PipeWire/WirePlumber, the PulseAudio compatibility service, NetworkManager, UPower,
-a polkit agent, and Bluetooth/audio bindings. Your existing Kitty and Dolphin bindings
-are retained. No external network or Bluetooth settings application is launched by
-the drawer. See [system setup](docs/setup.md) for optional packages and service setup.
+See [packaging and dependency ownership](docs/packaging.md) for local builds,
+consumer integration, updates and migration. The Arch packages' runtime
+dependencies are listed in [`PKGBUILD`](PKGBUILD).
+`zephyrus-shell-git` contains the shell and its core dependencies;
+`zephyrus-shell-session-git` supplies the full Hyprland session dependency set.
+`scripts/setup-system.sh` builds both packages from the current checkout, then
+installs the full-session dependency set. Package
+installation itself does not enable services or change I2C permissions. Those
+actions happen only through the explicit setup command;
+see [system setup](docs/setup.md). Your existing Kitty and Dolphin bindings are
+retained. No external network or Bluetooth settings application is launched by
+the drawer.
 
 The session uses hyprlock/hypridle for locking, idle blanking and locking before
 suspend. Super+L locks manually. Quickshell owns notifications; Hyprland and GTK

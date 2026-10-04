@@ -437,7 +437,7 @@ Item {
                 Layout.minimumWidth: 28
                 Layout.maximumWidth: 28
                 Layout.preferredHeight: 28
-                BusyIndicator { anchors.fill: parent; running: root.loading || root.randomLoading; visible: running }
+                W.BusySpinner { anchors.fill: parent; running: root.loading || root.randomLoading; visible: running }
             }
             W.IconButton {
                 objectName: "picturesSearchButton"
@@ -663,7 +663,7 @@ Item {
                             onClicked: Browser.open(root.selected.url, "pictures", "", root.host)
                         }
                     }
-                    BusyIndicator { visible: root.settingWallpaper; running: visible; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
+                    W.BusySpinner { visible: root.settingWallpaper; running: visible; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
                     W.Label {
                         visible: !!root.actionMessage
                         Layout.fillWidth: true

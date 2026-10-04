@@ -293,7 +293,7 @@ class DisplayTests(unittest.TestCase):
         self.assertEqual(machine.ddc_bus("DP-3", {"DP-3": {"ddcBus": 7}}, self.root), 7)
         self.assertIsNone(machine.ddc_bus("DP-9", {}, self.root))
 
-    def test_order_uses_logical_width_and_atomic_persistent_lua(self):
+    def test_order_uses_logical_width_and_atomic_persistent_profile(self):
         import json
 
         with patch.object(machine, "command", side_effect=self.command) as command:
@@ -303,7 +303,11 @@ class DisplayTests(unittest.TestCase):
         self.assertIn('position = "2560x0"', script[2])
         saved = self.root / "zephyrus-shell/display-settings.lua"
         self.assertIn('"DP-3"', saved.read_text())
-        self.assertEqual(len(list(saved.parent.iterdir())), 1)
+        self.assertEqual(
+            {p.name for p in saved.parent.iterdir()},
+            {"display-settings.lua", "display-profiles.json", ".display.lock"},
+        )
+        self.assertNotIn("hl.monitor", saved.read_text())
 
     def test_scale_reflows_neighbors_without_overlap(self):
         import json
@@ -357,7 +361,13 @@ class DisplayTests(unittest.TestCase):
             machine.action("display", json.dumps({"name": "eDP-2", "enabled": False}))
             self.monitors = [dict(self.monitors[0], disabled=True)]
             machine.recover_displays(wake=True)
-        self.assertTrue(machine.saved_monitor_rules()["eDP-2"]["disabled"])
+        profiles = machine.display_profiles()
+        _, _, laptop = machine.display_setup(self.monitors, profiles)
+        self.assertFalse(laptop["eDP-2"]["disabled"])
+        self.assertEqual(laptop["eDP-2"]["scale"], 1.25)
+        docked = [self.monitors[0], {"name": "DP-3"}]
+        _, _, dock = machine.display_setup(docked, profiles)
+        self.assertTrue(dock["eDP-2"]["disabled"])
 
     def test_last_display_cannot_be_disabled(self):
         import json
@@ -368,7 +378,7 @@ class DisplayTests(unittest.TestCase):
                 machine.action("display", json.dumps({"name": "eDP-2", "enabled": False}))
         self.assertEqual(command.call_count, 1)
 
-    def test_unplugging_external_recovers_disabled_internal_without_saving_rules(self):
+    def test_unplugging_external_recovers_and_remembers_internal_setup(self):
         self.monitors = [
             dict(self.monitors[0], disabled=True),
             {"name": "FALLBACK", "disabled": False},
@@ -382,7 +392,8 @@ class DisplayTests(unittest.TestCase):
         self.assertIn('output = "eDP-2"', command.call_args_list[1].args[0][2])
         self.assertIn("disabled = false", command.call_args_list[1].args[0][2])
         self.assertIn('monitor = "eDP-2"', command.call_args_list[2].args[0][2])
-        self.assertFalse((self.root / "zephyrus-shell/display-settings.lua").exists())
+        self.assertEqual(machine.saved_monitor_rules()["eDP-2"]["scale"], 1.25)
+        self.assertFalse(machine.saved_monitor_rules()["eDP-2"]["disabled"])
 
     def test_display_recovery_preserves_working_external_only_setup(self):
         self.monitors[0]["disabled"] = True
@@ -417,6 +428,137 @@ class DisplayTests(unittest.TestCase):
         ):
             machine.recover_displays()
         command.assert_not_called()
+
+    def test_recovery_restores_geometry_even_when_enabled_state_matches(self):
+        import json
+
+        with (
+            patch.dict(machine.os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": "test"}),
+            patch.object(machine, "command", side_effect=self.command) as command,
+        ):
+            machine.action("display-save", "")
+            self.monitors[0].update(scale=2, x=500, y=50, transform=1, refreshRate=75)
+            self.monitors[1].update(width=1920, height=1080, scale=1.5, x=2000)
+            command.reset_mock()
+            machine.action("recover-displays", "")
+        script = command.call_args.args[0][2]
+        self.assertIn('mode = "2560x1440@60"', script)
+        self.assertIn('position = "1536x0"', script)
+        self.assertIn("scale = 1.25", script)
+        self.assertEqual(
+            len(
+                json.loads((self.root / "zephyrus-shell/display-profiles.json").read_text())[
+                    "setups"
+                ]
+            ),
+            1,
+        )
+
+    def test_distinct_home_parents_and_laptop_layouts_survive_same_connector(self):
+        import json
+
+        internal, home = self.monitors
+        internal.update(make="Panel", model="Laptop", serial="")
+        home.update(make="Dell", model="Home", serial="home-serial")
+        with (
+            patch.dict(machine.os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": "test"}),
+            patch.object(machine, "command", side_effect=self.command) as command,
+        ):
+            machine.action("display", json.dumps({"name": "eDP-2", "enabled": False}))
+            # Hyprland may turn the panel on at its PPI-derived 200% fallback.
+            self.monitors = [dict(internal, disabled=False, scale=2, x=1536)]
+            command.reset_mock()
+            machine.recover_displays()
+            self.assertIn("scale = 1.25", command.call_args_list[1].args[0][2])
+            self.assertIn('position = "0x0"', command.call_args_list[1].args[0][2])
+            # A different physical screen on DP-3 must not inherit Dell rules.
+            parents = dict(home, make="LG", model="Parents", serial="parents-serial", disabled=True)
+            self.monitors = [dict(internal, disabled=False), parents]
+            command.reset_mock()
+            machine.recover_displays()
+            self.assertIn('mode = "preferred"', command.call_args.args[0][2])
+            self.assertIn('scale = "auto"', command.call_args.args[0][2])
+            parents.update(disabled=False, scale=1.5, x=0)
+            self.monitors[0].update(disabled=False, scale=1.25, x=1707, y=-80)
+            machine.action("display-save", "")
+            # Returning home restores external-only. Dock connector renumbering
+            # does not create a different profile for the same physical screen.
+            self.monitors = [
+                dict(internal, disabled=False, scale=2),
+                dict(home, name="DP-7", scale=2, x=999),
+            ]
+            command.reset_mock()
+            machine.recover_displays()
+            script = command.call_args.args[0][2]
+            self.assertIn('output = "DP-7"', script)
+            self.assertIn("disabled = true", script)
+            self.assertIn("scale = 1,", script)
+            self.assertLess(script.index('output = "DP-7"'), script.index('output = "eDP-2"'))
+            # Returning to parents restores its two-monitor offset and scale.
+            self.monitors = [
+                dict(internal, disabled=True),
+                dict(parents, name="DP-8", scale=1, x=900),
+            ]
+            command.reset_mock()
+            machine.recover_displays()
+            script = command.call_args.args[0][2]
+            self.assertIn('output = "DP-8"', script)
+            self.assertIn('position = "1707x-80"', script)
+            self.assertIn("scale = 1.5", script)
+            self.assertNotIn("disabled = true", script)
+        self.assertEqual(len(machine.display_profiles()["setups"]), 3)
+
+    def test_legacy_migration_keeps_panel_scale_when_disabled_snapshot_has_no_geometry(self):
+        import json
+
+        rules = {m["name"]: machine.monitor_rule(m) for m in self.monitors}
+        rules["eDP-2"]["disabled"] = True
+        machine.atomic_write(
+            self.root / "zephyrus-shell/display-settings.lua",
+            "-- Zephyrus display settings: " + json.dumps(rules) + "\n",
+        )
+        self.monitors[0].update(disabled=True, width=0, height=0, scale=1)
+        with (
+            patch.dict(machine.os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": "test"}),
+            patch.object(machine, "command", side_effect=self.command) as command,
+        ):
+            machine.recover_displays()
+            self.monitors = [self.monitors[0]]
+            command.reset_mock()
+            machine.recover_displays()
+        script = command.call_args_list[1].args[0][2]
+        self.assertIn('mode = "1920x1080@60"', script)
+        self.assertIn("scale = 1.25", script)
+        self.assertIn("disabled = false", script)
+
+    def test_repeated_recovery_does_not_rewrite_matching_profiles_or_reconfigure(self):
+        with (
+            patch.dict(machine.os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": "test"}),
+            patch.object(machine, "command", side_effect=self.command) as command,
+        ):
+            machine.action("display-save", "")
+            command.reset_mock()
+            with patch.object(machine, "atomic_write") as write:
+                machine.recover_displays()
+                machine.recover_displays()
+            write.assert_not_called()
+        self.assertEqual(command.call_count, 2)
+
+    def test_identical_serialless_monitors_are_not_collapsed(self):
+        monitors = [dict(m, make="Same", model="Same", serial="") for m in self.monitors]
+        identities = machine.display_identities(monitors)
+        self.assertEqual(len(set(identities.values())), 2)
+
+    def test_save_current_layout_keeps_disabled_monitor_geometry(self):
+        import json
+
+        with patch.object(machine, "command", side_effect=self.command):
+            machine.action("display", json.dumps({"name": "eDP-2", "enabled": False}))
+            self.monitors[0].update(disabled=True, width=0, height=0, scale=1)
+            self.monitors[1].update(x=-50, y=70)
+            machine.action("display-save", "")
+        self.assertEqual(machine.saved_monitor_rules()["eDP-2"]["scale"], 1.25)
+        self.assertEqual(machine.saved_monitor_rules()["DP-3"]["position"], "-50x70")
 
     def test_rejects_duplicate_order_and_unlisted_mode(self):
         import json

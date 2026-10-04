@@ -308,7 +308,7 @@ Item {
                 W.IconButton { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; width: 36; height: 36; visible: search.text.length > 0; iconName: "x"; text: "Clear book search"; onClicked: { search.clear(); search.forceActiveFocus(); } }
                 onAccepted: { searchDelay.stop(); root.browse(false, false); }
             }
-            Item { Layout.minimumWidth: 28; Layout.maximumWidth: 28; Layout.preferredHeight: 28; BusyIndicator { anchors.fill: parent; running: root.loading; visible: running } }
+            Item { Layout.minimumWidth: 28; Layout.maximumWidth: 28; Layout.preferredHeight: 28; W.BusySpinner { anchors.fill: parent; running: root.loading; visible: running } }
             W.IconButton { objectName: "searchButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; highlighted: root.searchOpen; iconName: "search"; text: root.searchOpen ? "Close book search" : "Search books"; onClicked: { root.searchOpen = !root.searchOpen; if (root.searchOpen) search.forceActiveFocus(); else search.text = ""; } }
             W.IconButton { objectName: "filtersButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; iconName: "sliders-horizontal"; text: "Book filters"; enabled: !root.favorites && !root.localMode; highlighted: root.filtersOpen; onClicked: { root.filtersOpen = !root.filtersOpen; if (root.filtersOpen) sortFilter.currentIndex = root.effectiveSortIndex(); } }
             W.IconButton { objectName: "layoutButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; iconName: root.gridMode ? "panels-top-left" : "layout-grid"; text: root.gridMode ? "Show cover rail" : "Show cover grid"; onClicked: { root.gridMode = !root.gridMode; preferences.setValue("catalogue/grid", root.gridMode); } }
@@ -415,7 +415,7 @@ Item {
                             }
                             W.IconButton { objectName: "favoriteButton"; iconName: root.personal.favorite ? "star-filled" : "star"; text: root.personal.favorite ? "Remove from Favorites" : "Add to Favorites"; onClicked: root.saveFavorite(!root.personal.favorite) }
                             W.IconButton { iconName: "refresh-cw"; text: "Refresh book details"; onClicked: root.refreshBook() }
-                            BusyIndicator { objectName: "titleLoadingIndicator"; running: root.titleLoading; visible: running; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
+                            W.BusySpinner { objectName: "titleLoadingIndicator"; running: root.titleLoading; visible: running; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
                         }
                         Flow {
                             Layout.fillWidth: true; spacing: 2
@@ -481,7 +481,7 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         W.Label { Layout.fillWidth: true; text: root.selected.editionCount ? root.selected.editionCount + " editions" : "Editions"; font.bold: true }
-                        BusyIndicator { visible: root.editionsLoading; running: visible; Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
+                        W.BusySpinner { visible: root.editionsLoading; running: visible; Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
                     }
                     W.Label { visible: !!root.editionsError; Layout.fillWidth: true; text: root.editionsError; color: Theme.danger; wrapMode: Text.Wrap }
                     ListView {
@@ -538,7 +538,7 @@ Item {
                         Layout.fillWidth: true
                         W.Label { Layout.fillWidth: true; text: root.authorDetails.name || root.author.name || "Unknown author"; font.family: Theme.font; font.pixelSize: Theme.sp(23); font.bold: true; wrapMode: Text.Wrap; maximumLineCount: 2 }
                         W.Label { Layout.fillWidth: true; text: [root.authorDetails.birthDate, root.authorDetails.deathDate ? "– " + root.authorDetails.deathDate : ""].filter(Boolean).join("   ·   "); color: Theme.muted; wrapMode: Text.Wrap }
-                        BusyIndicator { visible: root.authorLoading; running: visible; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
+                        W.BusySpinner { visible: root.authorLoading; running: visible; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
                     }
                 }
                 W.Label { visible: !!root.authorError; Layout.fillWidth: true; text: root.authorError; color: Theme.danger; wrapMode: Text.Wrap; maximumLineCount: 2 }

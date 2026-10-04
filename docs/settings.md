@@ -89,11 +89,29 @@ displays use monitor-off. Its name selects the shell's primary brightness target
 The last enabled display cannot be disabled. Hyprland does not have a global
 primary-monitor concept. This preference is stored in XDG state. Resolution,
 refresh rate, scale, order, and enabled/disabled choices are saved in
-`$XDG_CONFIG_HOME/zephyrus-shell/display-settings.lua` and restored on reload,
-login, hotplug and wake. Enabling a disabled display restores saved geometry, or its preferred mode at
-automatic position and scale when no previous geometry is available. Disconnecting
-the last external display re-enables the internal panel if necessary, while
-Hyprland transfers the removed display's workspaces and apps to an enabled output.
+`$XDG_CONFIG_HOME/zephyrus-shell/display-profiles.json` and restored on reload,
+login, hotplug and wake after the connected outputs settle. Each connected set
+has its own layout: laptop-only, home monitor and another docked monitor can keep
+different enabled displays, positions and scales. Monitors are identified by
+make/model/serial, falling back to description or connector when unavailable;
+changing a USB-C port does not lose a uniquely identified monitor's settings.
+Identical displays without unique serial numbers require their original connectors.
+
+Changes in Display settings save the entire connected setup automatically.
+**Remember current layout** also captures arrangements made with other tools,
+including vertical offsets and rotation. New setups reuse known monitors' settings
+with automatic placement; new physical monitors start with preferred mode and
+automatic scale rather than inheriting a previous monitor's connector settings.
+Existing `display-settings.lua` preferences migrate for the connected displays on
+first use. That file subsequently contains only a diagnostic snapshot; the shell
+owns profile selection rather than applying stale connector rules on reload.
+
+Enabling a disabled display restores its saved geometry. Disconnecting the last
+external display re-enables the internal panel if necessary, using its saved scale
+and mode at the origin. This laptop-only layout does not overwrite the docked
+layout's disabled-panel preference. At least one attached output always remains
+enabled. Hyprland transfers the removed display's workspaces and apps to an enabled
+output; profiles restore display geometry, not individual application positions.
 
 `config/displays.json` maps connector names to aliases and optional DDC buses:
 

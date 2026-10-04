@@ -1,11 +1,11 @@
 import QtQuick
-import QtQuick.Controls.Basic as Basic
+import QtQuick.Controls.Material as MaterialControls
 import "../core/theme"
 
-Basic.BusyIndicator {
-    // Keep loading feedback readable regardless of the desktop's control style.
+MaterialControls.BusyIndicator {
+    // Use the rotating ring consistently, independent of the desktop's style.
     property color color: Theme.text
-    palette.dark: color
+    MaterialControls.Material.accent: color
     padding: 0
     implicitWidth: 28
     implicitHeight: 28

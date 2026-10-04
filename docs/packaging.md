@@ -75,22 +75,20 @@ allowing edited appearance defaults. Consumers do not enumerate internal paths.
 
 DDC setup is separate: `sudo zephyrus-shell-hardware configure-ddc --user USER`.
 It changes host permissions and loads the module; never run that operation while
-merely building a package. Dotfiles owns this machine policy itself and does not
-load modules in its candidate namespace.
+merely building a package. External system provisioning tools may manage this
+policy separately.
 
 ## Updates and migration
 
-Dotfiles' selected Hyprland leaf consumes this repository's root PKGBUILD through
-its Git source provider. Every bootstrap/rebuild fetches the current public
-branch, so dependency/layout changes and new commits are consumed together.
-Both packages and generated skeleton defaults are refreshed through normal
-package installation and home reconciliation. Pacman `-Syu` alone cannot update
-a private VCS recipe that is absent from repository databases; use the dotfiles
-rebuild or rerun the local build/install command for a mutable running root.
-Publish the upstream PKGBUILD and payload changes before a remote rebuild.
+Consumers can build the root PKGBUILD through their own package workflow.
+Refresh the source checkout before rebuilding so metadata and payload changes
+are consumed together. Pacman `-Syu` alone cannot update a local VCS package
+that is absent from configured repositories; rebuild it through your package
+workflow or rerun the local build/install command.
+Publish upstream payload changes before a remote rebuild.
 
-The old dotfiles recipe's `zephyrus-shell` package conflicts with the new
-`-git` package; pacman will require its replacement. Old dotfiles overlays may
+An older `zephyrus-shell` package conflicts with the new
+`-git` package; pacman will require its replacement. Older manual installations may
 also have created unowned color-scheme/session files. On an existing mutable
 root inspect `pacman -Qo /usr/share/color-schemes/Zephyrus.colors` and
 `pacman -Qo /usr/share/wayland-sessions/zephyrus.desktop`; back up/remove only
@@ -117,13 +115,3 @@ Validation lives in `tests/test_packaging.py`, `tests/test_session_setup.py` and
 `.gitignore`, `README.md`, `docs/setup.md`, `docs/session.md`,
 `docs/verification.md` and this document. Some packaging/setup files were already
 uncommitted when this task began; that work was preserved and completed.
-
-In `dotfiles-linux`, changed files are `modules/desktop/hyprland/module.sh`, its
-new `sources/arch/git-pkgbuild.sh`, `sources/arch/pkgbuild.sh`,
-`installer/modules.sh`, `tests/git-pkgbuild.sh`, `tests/module-graph.sh`,
-`tests/run.sh`, `README.md`, `docs/design.md`, `docs/desktops.md`,
-`docs/hyprland-desktop-kit.md`, `packages/README.md` and `sources/README.md`.
-The leaf's old `packages/arch/zephyrus-shell/{PKGBUILD,update.sh}` and its six
-copied color-scheme/session/appearance files below `files/usr/share/` are removed.
-Machine-owned `files/etc/greetd/config.toml` and
-`files/etc/xdg/hyprland-mimeapps.list` remain legitimate system choices.

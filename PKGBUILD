@@ -96,6 +96,9 @@ package_zephyrus-shell-git() {
 		'networkmanager: network controls (enable NetworkManager.service explicitly)'
 		'bluez: Bluetooth controls (enable bluetooth.service explicitly)'
 		'switcheroo-control: per-application GPU selection (enable switcheroo-control.service explicitly)'
+		'fcitx5: Vietnamese input through a configured language provider'
+		'fcitx5-unikey: Vietnamese Telex engine'
+		'noto-fonts-emoji: language flags'
 		'mpv: music and radio playback'
 		'ffmpeg: media conversion and stream probing'
 	)
@@ -117,7 +120,7 @@ package_zephyrus-shell-session-git() {
 		'wl-clipboard' 'cliphist' 'libnotify'
 		'hyprshot' 'satty' 'kooha'
 		'brightnessctl' 'ddcutil' 'i2c-tools' 'pciutils'
-		'kitty' 'dolphin' 'mpv' 'noto-fonts'
+		'kitty' 'dolphin' 'mpv' 'noto-fonts' 'noto-fonts-emoji'
 		'qt5-wayland' 'breeze-icons' 'breeze-gtk' 'plasma-integration' 'plasma5-integration'
 	)
 }

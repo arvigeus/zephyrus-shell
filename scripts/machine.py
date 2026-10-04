@@ -1,5 +1,6 @@
 """On-demand hardware snapshot and allowlisted actions. No resident polling daemon."""
 
+import fcntl
 import json
 import math
 import os
@@ -9,7 +10,9 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 
 def command(args, strict=False, timeout=8):
@@ -140,28 +143,148 @@ def saved_monitor_rules():
     )
 
 
-def apply_monitor_rules(rules, persist=True):
-    command(["hyprctl", "eval", "; ".join(lua_rule(rule) for rule in rules)], True)
-    if not persist:
-        return
-    path = config_directory() / "display-settings.lua"
-    prefix = "-- Zephyrus display settings: "
-    saved = saved_monitor_rules()
-    for rule in rules:
-        saved[rule["output"]] = rule
-    # One atomic file contains both editable state and reloadable Lua rules.
+@contextmanager
+def display_lock():
+    directory = config_directory()
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / ".display.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def display_identities(monitors):
+    identities = {}
+    for monitor in monitors:
+        details = [monitor.get(field, "") for field in ("make", "model", "serial")]
+        if not any(details):
+            details = [monitor.get("description") or monitor["name"]]
+        identities[monitor["name"]] = json.dumps(details, ensure_ascii=True)
+    # Identical displays without unique serials can only be distinguished by
+    # their connector. Never silently collapse two outputs into one profile.
+    return {
+        name: identity
+        if list(identities.values()).count(identity) == 1
+        else json.dumps([identity, name])
+        for name, identity in identities.items()
+    }
+
+
+def display_profiles() -> dict[str, Any] | None:
+    path = config_directory() / "display-profiles.json"
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def display_setup(monitors, profiles):
+    identities = display_identities(monitors)
+    key = json.dumps(sorted(identities.values()))
+    if profiles is not None and key in profiles["setups"]:
+        return (
+            identities,
+            key,
+            {
+                m["name"]: dict(profiles["setups"][key][identities[m["name"]]], output=m["name"])
+                for m in monitors
+            },
+        )
+    legacy = saved_monitor_rules() if profiles is None else {}
+    rules = {}
+    for monitor in monitors:
+        name = monitor["name"]
+        remembered = (profiles or {}).get("monitors", {}).get(identities[name])
+        rule: dict[str, Any]
+        if remembered:
+            rule = dict(remembered, output=name)
+        elif name in legacy:
+            rule = dict(legacy[name])
+        elif profiles is not None:
+            # Old connector rules may still be active in the compositor. A new
+            # physical monitor must not inherit their mode/scale/disabled state.
+            rule = {
+                "output": name,
+                "mode": "preferred",
+                "position": "auto",
+                "scale": "auto",
+                "transform": 0,
+                "disabled": False,
+            }
+        elif monitor.get("width") and monitor.get("height"):
+            rule = monitor_rule(monitor, disabled=bool(monitor.get("disabled")))
+        else:
+            rule = {
+                "output": name,
+                "mode": "preferred",
+                "position": "auto",
+                "scale": "auto",
+                "transform": 0,
+                "disabled": bool(monitor.get("disabled")),
+            }
+        rules[name] = rule
+    # A new topology inherits each physical monitor's settings, with a fresh
+    # layout. Dock coordinates must not leave gaps/overlaps in laptop-only use.
+    if profiles is not None:
+        enabled = [rule for rule in rules.values() if not rule.get("disabled")]
+        for rule in enabled:
+            rule["position"] = "0x0" if len(enabled) == 1 else "auto"
+    return identities, key, rules
+
+
+def save_display_setup(monitors, rules, profiles: dict[str, Any] | None = None):
+    identities = display_identities(monitors)
+    key = json.dumps(sorted(identities.values()))
+    if profiles is None:
+        profiles = {"version": 1, "monitors": {}, "setups": {}}
+    setup = {
+        identities[name]: {k: v for k, v in rule.items() if k != "output"}
+        for name, rule in rules.items()
+    }
+    profiles["setups"][key] = setup
+    profiles["monitors"].update(setup)
     atomic_write(
-        path,
-        prefix
-        + json.dumps(saved)
-        + "\n"
-        + "\n".join(lua_rule(rule) for rule in saved.values())
-        + "\n",
+        config_directory() / "display-profiles.json", json.dumps(profiles, indent=2) + "\n"
+    )
+    # Retain the old file's JSON header for migration/debugging. Its connector
+    # rules must not run at login/reload: the connected set determines which
+    # layout is safe, and a USB-C connector can now hold a different monitor.
+    atomic_write(
+        config_directory() / "display-settings.lua",
+        "-- Zephyrus display settings: " + json.dumps(rules) + "\n"
+        "-- Layout restored by the shell from display-profiles.json.\n",
     )
 
 
+def apply_monitor_rules(rules, persist=True, monitors=None):
+    command(["hyprctl", "eval", "; ".join(lua_rule(rule) for rule in rules)], True)
+    if not persist:
+        return
+    profiles = display_profiles()
+    _, _, saved = display_setup(monitors, profiles)
+    for rule in rules:
+        saved[rule["output"]] = rule
+    save_display_setup(monitors, saved, profiles)
+
+
 def display_action(name, value):
+    with display_lock():
+        return _display_action(name, value)
+
+
+def _display_action(name, value):
     monitors = json.loads(command(["hyprctl", "monitors", "all", "-j"], True))
+    monitors = [m for m in monitors if m["name"] != "FALLBACK"]
+    if name == "display-save":
+        if not any(not m.get("disabled") for m in monitors):
+            raise ValueError("Keep at least one display enabled")
+        profiles = display_profiles()
+        _, _, saved = display_setup(monitors, profiles)
+        for monitor in monitors:
+            if monitor.get("width") and monitor.get("height"):
+                saved[monitor["name"]] = monitor_rule(
+                    monitor, disabled=bool(monitor.get("disabled"))
+                )
+            else:
+                saved[monitor["name"]]["disabled"] = bool(monitor.get("disabled"))
+        save_display_setup(monitors, saved, profiles)
+        return
     data = json.loads(value) if name != "primary" else {"name": value}
     if name == "display-order":
         enabled = [m for m in monitors if not m.get("disabled")]
@@ -174,7 +297,7 @@ def display_action(name, value):
             rules.append(monitor_rule(monitor, position=f"{x}x0"))
             width = monitor["height"] if monitor.get("transform", 0) % 2 else monitor["width"]
             x += round(width / monitor.get("scale", 1))
-        apply_monitor_rules(rules)
+        apply_monitor_rules(rules, monitors=monitors)
         return
     monitor = next((m for m in monitors if m["name"] == data.get("name")), None)
     if not monitor or not re.fullmatch(r"[A-Za-z0-9_-]+", monitor["name"]):
@@ -204,13 +327,12 @@ def display_action(name, value):
             raise ValueError("Keep at least one display enabled")
         # Keep geometry along with the preference, including when an output is
         # disabled and Hyprland no longer reports its original mode/scale.
-        rule = saved_monitor_rules().get(connector) or (
-            monitor_rule(monitor)
-            if monitor.get("width")
-            else {"output": connector, "mode": "preferred", "scale": "auto", "position": "auto"}
-        )
+        _, _, saved = display_setup(monitors, display_profiles())
+        rule = saved[connector]
+        if not monitor.get("disabled"):
+            rule = monitor_rule(monitor)
         rule = dict(rule, disabled=not data["enabled"])
-        apply_monitor_rules([rule])
+        apply_monitor_rules([rule], monitors=monitors)
     elif name in ("display-mode", "display-scale"):
         if monitor.get("disabled"):
             raise ValueError("Enable the display first")
@@ -233,7 +355,7 @@ def display_action(name, value):
             rules.append(monitor_rule(item, position=f"{x}x0"))
             width = item["height"] if item.get("transform", 0) % 2 else item["width"]
             x += round(width / item.get("scale", 1))
-        apply_monitor_rules(rules)
+        apply_monitor_rules(rules, monitors=monitors)
 
 
 def primary_monitor(monitors):
@@ -245,6 +367,64 @@ def primary_monitor(monitors):
     ).get("name", "")
 
 
+def monitor_rule_matches(monitor, rule):
+    if bool(monitor.get("disabled")) != bool(rule.get("disabled")):
+        return False
+    if rule.get("disabled"):
+        return True
+    # Symbolic defaults have no numeric value to compare with a snapshot.
+    # Reassert them on topology events so a reused connector cannot retain a
+    # previous monitor's explicit mode or scale.
+    if (
+        rule.get("scale") == "auto"
+        or rule.get("position") == "auto"
+        or rule.get("mode") in ("preferred", "highres", "highrr")
+    ):
+        return False
+    if rule.get("scale") != "auto" and abs(monitor.get("scale", 1) - rule.get("scale", 1)) > 0.001:
+        return False
+    if monitor.get("transform", 0) != rule.get("transform", 0):
+        return False
+    if (
+        rule.get("position") != "auto"
+        and rule.get("position") != f"{monitor.get('x', 0)}x{monitor.get('y', 0)}"
+    ):
+        return False
+    mode = re.fullmatch(r"(\d+)x(\d+)@([\d.]+)(?:Hz)?", rule.get("mode", "preferred"))
+    return not mode or (
+        monitor.get("width") == int(mode[1])
+        and monitor.get("height") == int(mode[2])
+        and abs(monitor.get("refreshRate", 0) - float(mode[3])) < 0.1
+    )
+
+
+def restore_display_setup():
+    monitors = json.loads(command(["hyprctl", "monitors", "all", "-j"], True))
+    real = [m for m in monitors if m["name"] != "FALLBACK"]
+    if not real:
+        return []
+    profiles = display_profiles()
+    _, key, saved = display_setup(real, profiles)
+    desired = [m for m in real if not saved[m["name"]].get("disabled")]
+    if not desired:
+        destination = next(
+            (m for m in real if m["name"].startswith(("eDP", "LVDS", "DSI"))), real[0]
+        )
+        # Preserve mode/scale/rotation when making the last attached screen
+        # usable. This belongs to the laptop-only setup, not its docked one.
+        saved[destination["name"]] = dict(
+            saved[destination["name"]], disabled=False, position="0x0"
+        )
+        desired = [destination]
+    changes = [saved[m["name"]] for m in real if not monitor_rule_matches(m, saved[m["name"]])]
+    if changes:
+        # Enable destinations before disabling the temporary fallback output.
+        apply_monitor_rules(sorted(changes, key=lambda r: bool(r.get("disabled"))), persist=False)
+    if profiles is None or key not in profiles["setups"]:
+        save_display_setup(real, saved, profiles)
+    return desired
+
+
 def recover_displays(wake=False):
     """Recover a laptop output after a topology change, never during idle polling.
 
@@ -253,46 +433,8 @@ def recover_displays(wake=False):
     """
     if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
         return
-    monitors = json.loads(command(["hyprctl", "monitors", "all", "-j"], True))
-    real = [m for m in monitors if m["name"] != "FALLBACK"]
-    saved = saved_monitor_rules()
-    # Reassert preferences after hotplug/resume, but never disable the last
-    # usable attached display. The safety fallback does not erase preferences.
-    desired = [
-        m for m in real if not saved.get(m["name"], {}).get("disabled", m.get("disabled", False))
-    ]
-    if desired:
-        changes = [
-            saved[m["name"]]
-            for m in real
-            if m["name"] in saved
-            and "disabled" in saved[m["name"]]
-            and bool(m.get("disabled")) != saved[m["name"]]["disabled"]
-        ]
-        if changes:
-            apply_monitor_rules(changes, persist=False)
-            real = [
-                dict(m, disabled=saved.get(m["name"], {}).get("disabled", m.get("disabled", False)))
-                for m in real
-            ]
-    enabled = [m for m in real if not m.get("disabled")]
-    if not enabled:
-        internal = next((m for m in real if m["name"].startswith(("eDP", "LVDS", "DSI"))), None)
-        destination = internal or next(iter(real), None)
-        if destination:
-            apply_monitor_rules(
-                [
-                    {
-                        "output": destination["name"],
-                        "mode": "preferred",
-                        "scale": "auto",
-                        "position": "auto",
-                        "disabled": False,
-                    }
-                ],
-                persist=False,
-            )
-            enabled = [destination]
+    with display_lock():
+        enabled = restore_display_setup()
     # A disabled output and DPMS blanking are different states. Wake the sole
     # internal panel if the external screen has disappeared while it was blank.
     if wake:
@@ -815,6 +957,7 @@ def action(name, value):
         "display-scale",
         "display-order",
         "display-ddc",
+        "display-save",
     ):
         display_action(name, value)
     elif name == "brightness":

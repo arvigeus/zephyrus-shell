@@ -426,7 +426,7 @@ Item {
                 text: root.missingRoot ? "Projects folder does not exist yet. Create a project to begin." : search.text ? "No projects match your search." : "No projects in this folder yet."
                 color: Theme.muted
             }
-            BusyIndicator { anchors.centerIn: parent; visible: root.loading; running: visible }
+            W.BusySpinner { anchors.centerIn: parent; visible: root.loading; running: visible }
         }
     }
 
@@ -630,7 +630,7 @@ Item {
             RowLayout {
                 visible: root.busy && !!root.clonePhase
                 Layout.fillWidth: true
-                BusyIndicator { running: parent.visible; Layout.preferredWidth: 30; Layout.preferredHeight: 30 }
+                W.BusySpinner { running: parent.visible; Layout.preferredWidth: 30; Layout.preferredHeight: 30 }
                 W.Label {
                     Layout.fillWidth: true
                     text: root.clonePhase + (root.clonePercent === null ? "…" : "… " + root.clonePercent + "%")
@@ -801,7 +801,7 @@ Item {
                 color: Theme.muted; wrapMode: Text.Wrap
             }
             W.Label { visible: !!root.actionError; Layout.fillWidth: true; text: root.actionError; color: Theme.danger; wrapMode: Text.Wrap }
-            BusyIndicator { visible: root.actionBusy; running: visible; Layout.alignment: Qt.AlignHCenter }
+            W.BusySpinner { visible: root.actionBusy; running: visible; Layout.alignment: Qt.AlignHCenter }
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }

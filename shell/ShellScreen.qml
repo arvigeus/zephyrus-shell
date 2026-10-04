@@ -33,7 +33,7 @@ Scope {
         function onPanelChanged() { Qt.callLater(root.syncModuleSurface); }
     }
     readonly property bool selected: !!screen && (ShellState.monitor === screenName || (!Quickshell.screens.some(s => s.name === ShellState.monitor) && screen === Quickshell.screens[0]))
-    readonly property bool popupOpen: root.selected && ["center", "clipboard"].includes(ShellState.panel)
+    readonly property bool popupOpen: languageButton.menuVisible || (root.selected && ["center", "clipboard"].includes(ShellState.panel))
     PanelWindow {
         screen: root.screen
         anchors { top: true; bottom: true; left: true; right: true }
@@ -58,7 +58,8 @@ Scope {
         WlrLayershell.namespace: "zephyrus-shell-bar"
         // Hyprland restricts pointer input to exclusive-focus surfaces. Keep the
         // bar in that set alongside the module, whose hit region starts below it.
-        WlrLayershell.keyboardFocus: root.screenName === ShellState.pluginMonitor && (ShellState.panel === "module" || root.popupOpen)
+        WlrLayershell.keyboardFocus: languageButton.restoringInputFocus ? WlrKeyboardFocus.Exclusive
+            : root.screenName === ShellState.pluginMonitor && (ShellState.panel === "module" || root.popupOpen)
             ? WlrKeyboardFocus.Exclusive
             : root.popupOpen ? WlrKeyboardFocus.OnDemand
             : WlrKeyboardFocus.None
@@ -66,7 +67,8 @@ Scope {
             sequence: "Escape"
             enabled: (root.screenName === ShellState.pluginMonitor && ShellState.panel === "module") || root.popupOpen
             onActivated: {
-                if (ShellState.panel === "center") {
+                if (languageButton.menuVisible) languageButton.menuVisible = false;
+                else if (ShellState.panel === "center") {
                     if (attentionContent.item) attentionContent.item.dismiss();
                     else ShellState.dismissPanel();
                 } else if (ShellState.panel === "clipboard") ShellState.dismissPanel();
@@ -99,7 +101,8 @@ Scope {
             id: rightPills
             anchors.right: parent.right; anchors.rightMargin: 14; y: Theme.pillVerticalPadding
             spacing: 8
-            TrayPill { id: tray; window: bar; maximumWidth: Math.max(0, bar.width - 14 - right.width - clipboardButton.width - center.x - center.width - 24) }
+            TrayPill { id: tray; window: bar; maximumWidth: Math.max(0, bar.width - 14 - right.width - clipboardButton.width - languageButton.width - center.x - center.width - 24) }
+            LanguageButton { id: languageButton; barWindow: bar }
             ClipboardButton { id: clipboardButton; screenName: root.screenName }
             StatusPill {
                 id: right

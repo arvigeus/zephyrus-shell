@@ -89,6 +89,13 @@ ShellRoot {
                     AttentionData.forecast = {current:{icon:"cloud-sun", temperature:29, description:"Partly cloudy"}};
                     saved.page = "display"; step = 3; ticks = 0;
                 } else if (step === 3 && ticks > 4) {
+                    const display = find(saved, "display-page");
+                    const remember = find(saved, "display-save");
+                    if (!display || !remember || !remember.enabled) { fail("Display layout control missing"); return; }
+                    safeMachine.snapshot = HardwareSnapshot.data;
+                    display.machine = safeMachine;
+                    remember.clicked();
+                    if (lastAction !== "display-save") { fail("Remember layout did not use display backend"); return; }
                     canvas.grabToImage(result => {
                         if (!result.saveToFile(Paths.file("tests/artifacts/settings-displays.png"))) { fail("Capture failed"); return; }
                         saved.page = "cpu";

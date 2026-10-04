@@ -15,7 +15,17 @@ cat > "$desktop_test_root/bin/wl-copy" <<'PY'
 import os
 from pathlib import Path
 import sys
-Path(os.environ['ZEPHYRUS_COPY_CAPTURE']).write_bytes(sys.stdin.buffer.read())
+import time
+capture = Path(os.environ['ZEPHYRUS_COPY_CAPTURE'])
+capture.write_bytes(sys.stdin.buffer.read())
+# Reproduce wl-copy's background owner retaining stdout/stderr after its
+# parent exits. Copy must settle and close the popover while this is alive.
+if os.fork() == 0:
+    deadline = time.monotonic() + 20
+    while capture.parent.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    os._exit(0)
+os._exit(0)
 PY
 chmod +x "$desktop_test_root/bin/wl-copy"
 export ZEPHYRUS_COPY_CAPTURE="$desktop_test_root/copied"

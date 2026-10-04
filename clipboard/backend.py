@@ -20,18 +20,26 @@ def command(name, *args, data=None):
         raise ValueError(
             "Clipboard history needs cliphist and wl-clipboard. Install the desktop utilities and log in again."
         )
-    try:
-        result = subprocess.run(
-            [executable, *args],
-            input=data,
-            capture_output=True,
-            check=False,
-            timeout=10,
+    # wl-copy forks a clipboard owner that outlives this request. Neither of
+    # its output streams may be a pipe: communicate would wait for that owner
+    # to close them, even after the launching process has successfully exited.
+    with tempfile.TemporaryFile() as errors:
+        try:
+            result = subprocess.run(
+                [executable, *args],
+                input=data,
+                stdout=subprocess.DEVNULL if name == "wl-copy" else subprocess.PIPE,
+                stderr=errors,
+                check=False,
+                timeout=10,
+            )
+        except subprocess.TimeoutExpired:
+            raise ValueError("Clipboard operation timed out. Try again.") from None
+        errors.seek(0)
+        diagnostic = (
+            errors.read().decode("utf-8", errors="replace").strip() if result.returncode else ""
         )
-    except subprocess.TimeoutExpired:
-        raise ValueError("Clipboard operation timed out. Try again.") from None
     if result.returncode:
-        diagnostic = result.stderr.decode("utf-8", errors="replace").strip()
         # cliphist returns failure for a new (or wiped) database. This is an
         # empty history, not a missing package or a broken clipboard.
         if (
@@ -41,7 +49,7 @@ def command(name, *args, data=None):
         ):
             return b""
         raise ValueError("Clipboard operation failed: " + (diagnostic or "Refresh and try again."))
-    return result.stdout
+    return result.stdout or b""
 
 
 def entries():

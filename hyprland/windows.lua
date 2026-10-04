@@ -12,7 +12,9 @@ hl.config({
     },
 })
 -- Super+V remains an escape hatch for a window that needs to float.
-hl.window_rule({ name = "center-floating-windows", match = { float = true }, center = true })
+-- XWayland menus and tooltips are also floating windows; preserve their
+-- application-supplied positions instead of centering them like dialogs.
+hl.window_rule({ name = "center-floating-windows", match = { float = true, xwayland = false }, center = true })
 
 -- Execute a drop atomically against current layout geometry, rather than relying
 -- on the bar's cached positions. The list uses this through native Lua IPC.

@@ -57,7 +57,9 @@ systemd-inhibit --list
 ```
 
 Display mode, scale and left-to-right order are saved in
-`$XDG_CONFIG_HOME/zephyrus-shell/display-settings.lua`. Personal bus overrides live
+`$XDG_CONFIG_HOME/zephyrus-shell/display-profiles.json`, with separate layouts for
+each connected monitor set. Settings migrates the connected displays' old
+`display-settings.lua` preferences automatically. Personal bus overrides live
 in `zephyrus-shell/displays.json`. Turning off an output removes it from the
 layout for the current session; at least one output remains enabled. Monitor
 orientation is preserved when changing scale or order.

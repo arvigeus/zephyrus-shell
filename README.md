@@ -52,6 +52,7 @@ migration are already prepared. The scrolling layout needs no plugins. See
 ## What works
 
 - Shared colors and typography for the shell, KDE/Qt, GTK, Kitty and supported editors, with automatic theme-file updates and a common light/dark preference. See [desktop appearance](docs/theme.md) for app coverage and restoration.
+- A language switcher on the right, with a neutral English globe and labeled dropdown: Alt+Shift uses English/Bulgarian phonetic by default. Explicitly selecting Vietnamese starts Telex and changes the pair to English/Vietnamese; selecting Bulgarian stops it. See [input languages](docs/input-languages.md).
 - Separate pills for Spaces, running windows, the clock, the tray and Settings; empty lists hide, and gaps pass pointer input through.
 - Left and right overlay drawers; opening a panel closes the previous one. Escape closes it.
 - One drawer on one monitor at a time, with pills on every monitor.
@@ -188,6 +189,7 @@ bash scripts/check-retained.sh
 bash scripts/check-tray.sh
 bash scripts/check-spaces.sh
 bash scripts/check-desktop.sh
+bash scripts/check-language.sh
 python3 scripts/check-performance.py
 # Briefly opens the actual panels on your current Wayland desktop:
 bash scripts/check-wayland.sh

@@ -14,3 +14,5 @@ singleton HardwareSnapshot 1.0 HardwareSnapshot.qml
 singleton KeepAwake 1.0 KeepAwake.qml
 singleton WindowList 1.0 WindowList.qml
 singleton SessionLock 1.0 SessionLock.qml
+
+singleton InputLanguage 1.0 InputLanguage.qml

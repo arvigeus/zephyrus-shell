@@ -10,9 +10,7 @@ verification passed. Portable QML ran 50 passes and one existing MusicPagination
 capability assertion failure; its QML/backend/test are unchanged. Offscreen real
 module loading/release passed both in the checkout and an extracted package,
 including the system Qt 6 terminal widget without the checkout's ignored copy.
-Dotfiles' full tests passed, including external-recipe planning, local dirty
-snapshots, remote clone transport, split archives, version refresh and native
-installed-state/removal dispatch. Builds used `--nodeps --nocheck`; no pacman
+Builds used `--nodeps --nocheck`; no pacman
 transaction, clean-chroot install, service activation, physical session/login,
 DDC or hardware/power behavior was exercised by these checks.
 
@@ -61,8 +59,7 @@ keyboard focus unchanged. Wheel input scrolled an inactive native window by
 320 pixels while the other window retained keyboard focus; clicking then focused
 the hovered window. Both Win keys, search typing, tooltip right-clicks and Super
 mouse dragging passed again. A native capture confirmed light task, calendar and
-bell artwork. Dotfiles consumes public Git HEAD directly and records the commit
-actually packaged, with no local session patch.
+bell artwork.
 
 Popup dismissal follow-up, 2026-10-01: Attention now uses a native popup anchored
 to its clock pill's bar, with a Hyprland focus grab activated after the popup's
@@ -279,8 +276,7 @@ cancellation (including a zero exit without an image), active-window selection
 and Kooha process ownership after overlay dismissal. The Settings lifecycle
 smoke test and all 12 component preview captures passed. Visual inspection at
 1280×800 verified both capture actions fit above the hardware details.
-`Hyprland --verify-config` accepted the updated shortcuts. The dotfiles package
-graph and static contracts passed with Satty and Kooha selected from Arch extra.
+`Hyprland --verify-config` accepted the updated shortcuts.
 Satty options/configuration were checked against upstream v0.22.0. The capture
 applications were not installed on the host; real screenshot annotation and
 portal recording/audio still need a live session check.

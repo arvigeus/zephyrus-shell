@@ -556,7 +556,7 @@ Item {
                 Keys.onEscapePressed: { if (text.length) clear(); else focus = false; }
             }
             Item { Layout.minimumWidth: 28; Layout.maximumWidth: 28; Layout.preferredHeight: 28
-                BusyIndicator { anchors.fill: parent; running: root.initializing || root.loading; visible: running }
+                W.BusySpinner { anchors.fill: parent; running: root.initializing || root.loading; visible: running }
             }
             W.IconButton { objectName: "gamesSearchButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; highlighted: root.searchOpen; iconName: "search"; text: "Search games"; onClicked: { root.searchOpen = !root.searchOpen; if (root.searchOpen) search.forceActiveFocus(); else { search.clear(); root.browse(false); } } }
             W.IconButton { objectName: "gamesFiltersButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; enabled: !root.favorites && !root.localMode && !root.libraryMode && !!root.catalogState.configured; highlighted: root.filtersOpen; iconName: "sliders-horizontal"; text: "Filters"; onClicked: { root.filtersOpen = !root.filtersOpen; if (root.filtersOpen) root.loadFilterOptions(); } }
@@ -759,7 +759,7 @@ Item {
                                 }
                                 onClicked: if (root.compatibility.url) Browser.open(root.compatibility.url, "games", "", root.host)
                             }
-                            BusyIndicator {
+                            W.BusySpinner {
                                 visible: root.compatibilityLoading
                                 running: visible
                                 Layout.preferredWidth: 20
@@ -1097,7 +1097,7 @@ Item {
             ColumnLayout {
                 anchors.centerIn: parent
                 visible: root.initializing && !root.titles.length
-                BusyIndicator { running: parent.visible; Layout.alignment: Qt.AlignHCenter }
+                W.BusySpinner { running: parent.visible; Layout.alignment: Qt.AlignHCenter }
                 W.Label { text: "Checking the local libraries…"; color: Theme.muted; Layout.alignment: Qt.AlignHCenter }
             }
         }

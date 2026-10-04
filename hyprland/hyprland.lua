@@ -2,6 +2,6 @@
 local directory = debug.getinfo(1, "S").source:sub(2):match("(.*/)")
 package.path = directory .. "?.lua;" .. package.path
 -- dofile avoids require's cache when a live session reloads its configuration.
-for _, module in ipairs({ "environment", "monitors", "appearance", "animations", "windows", "bindings", "session" }) do
+for _, module in ipairs({ "environment", "monitors", "appearance", "input-method", "animations", "windows", "bindings", "session" }) do
     dofile(directory .. module .. ".lua")
 end

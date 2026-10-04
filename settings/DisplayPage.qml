@@ -6,6 +6,7 @@ import "../core"
 
 ScrollArea {
     id: root
+    objectName: "display-page"
     required property var machine
     readonly property var monitors: machine.snapshot.monitors || []
     readonly property var enabledMonitors: monitors.filter(m => !m.disabled)
@@ -20,6 +21,8 @@ ScrollArea {
     contentWidth: availableWidth; clip: true
     ColumnLayout {
         width: root.availableWidth; spacing: 16
+        Label { text: "Display changes are remembered for this monitor setup."; color: Theme.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Action { objectName: "display-save"; text: "Remember current layout"; iconName: "save"; Layout.fillWidth: true; enabled: root.enabledMonitors.length > 0 && !root.machine.busy; onClicked: root.machine.run("display-save") }
         Heading { text: "Monitor order" }
         Repeater {
             model: root.enabledMonitors

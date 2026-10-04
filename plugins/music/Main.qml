@@ -982,7 +982,7 @@ ColumnLayout {
             Accessible.name: "Genre filter: " + text
             onClicked: root.showGenrePopup()
         }
-        BusyIndicator {
+        W.BusySpinner {
             visible: root.section === "discover" && root.loading
             running: visible
             Layout.preferredWidth: visible ? 28 : 0
@@ -1252,7 +1252,7 @@ ColumnLayout {
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                BusyIndicator {
+                W.BusySpinner {
                     anchors.centerIn: parent
                     running: root.lyricsLoading
                     visible: running
@@ -1366,7 +1366,7 @@ ColumnLayout {
                 visible: root.artistInfoLoading
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                BusyIndicator { running: parent.visible; Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter }
+                W.BusySpinner { running: parent.visible; Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter }
             }
             W.Label {
                 visible: !root.artistInfoLoading && !!root.artistInfoError

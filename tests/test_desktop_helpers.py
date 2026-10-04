@@ -1,4 +1,6 @@
 import importlib.util
+import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -28,12 +30,17 @@ class ClipboardTests(unittest.TestCase):
             (b"opening db: please store something first\n", True),
             (b"opening db: permission denied\n", False),
         ):
+
+            def execute(args, diagnostic=diagnostic, **kwargs):
+                kwargs["stderr"].write(diagnostic)
+                return subprocess.CompletedProcess(args, 1, b"", None)
+
             with (
                 patch.object(clipboard.shutil, "which", return_value="/usr/bin/cliphist"),
                 patch.object(
                     clipboard.subprocess,
                     "run",
-                    return_value=subprocess.CompletedProcess([], 1, b"", diagnostic),
+                    side_effect=execute,
                 ),
             ):
                 if empty:
@@ -79,6 +86,67 @@ class ClipboardTests(unittest.TestCase):
         self.assertEqual(command.call_args_list[1].kwargs["data"], b"42\tFixture\n")
         self.assertEqual(command.call_args_list[2].args, ("wl-copy", "--type", "image/png"))
         self.assertEqual(command.call_args_list[2].kwargs["data"], data)
+
+    def test_copy_worker_settles_while_background_clipboard_owner_is_alive(self):
+        data = b"\x89PNG\r\n\x1a\n\x00binary-image"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cliphist = root / "cliphist"
+            cliphist.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "if sys.argv[1] == 'list':\n"
+                "    sys.stdout.buffer.write(b'42\\tFixture\\n')\n"
+                "elif sys.argv[1] == 'decode':\n"
+                "    assert sys.stdin.buffer.read() == b'42\\tFixture\\n'\n"
+                f"    sys.stdout.buffer.write(bytes.fromhex('{data.hex()}'))\n"
+            )
+            copy = root / "wl-copy"
+            copy.write_text(
+                "#!/usr/bin/env python3\n"
+                "import os, sys, time\n"
+                "from pathlib import Path\n"
+                "root = Path(__file__).parent\n"
+                "assert sys.argv[1:] == ['--type', 'image/png']\n"
+                "(root / 'copied').write_bytes(sys.stdin.buffer.read())\n"
+                "if os.fork() == 0:\n"
+                "    deadline = time.monotonic() + 5\n"
+                "    while not (root / 'release').exists() and time.monotonic() < deadline:\n"
+                "        time.sleep(0.01)\n"
+                "    os._exit(0)\n"
+                "os._exit(0)\n"
+            )
+            for executable in (cliphist, copy):
+                executable.chmod(0o755)
+            worker = subprocess.Popen(
+                [sys.executable, str(ROOT / "clipboard/backend.py")],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env={**os.environ, "PATH": directory + os.pathsep + os.environ["PATH"]},
+            )
+            try:
+                output, errors = worker.communicate(
+                    b'{"id":1,"op":"copy","entry_id":"42"}\n', timeout=2
+                )
+                self.assertEqual(worker.returncode, 0, errors.decode())
+                self.assertEqual(json.loads(output), {"id": 1, "result": {"copied": True}})
+                self.assertEqual((root / "copied").read_bytes(), data)
+            finally:
+                (root / "release").touch()
+                if worker.poll() is None:
+                    worker.kill()
+                worker.communicate(timeout=5)
+
+    def test_copy_failure_preserves_diagnostic(self):
+        with patch.object(clipboard.shutil, "which", return_value=sys.executable):
+            with self.assertRaisesRegex(ValueError, "Clipboard operation failed: unavailable seat"):
+                clipboard.command(
+                    "wl-copy",
+                    "-c",
+                    "import sys; sys.stderr.write('unavailable seat\\n'); sys.exit(1)",
+                    data=b"Fixture",
+                )
 
     def test_invalid_identifier_cannot_trigger_a_command(self):
         with patch.object(clipboard, "command") as command:

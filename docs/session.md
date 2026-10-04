@@ -77,6 +77,10 @@ hl.monitor({ output = "eDP-2", mode = "preferred", position = "auto", scale = 1.
 Choose an output name from `hyprctl monitors`, edit that personal file and run
 `hyprctl reload`. Other outputs retain the automatic fallback. Scaling affects
 both applications and the shell; no per-widget scaling workaround is needed.
+Display settings remembers each physical monitor and connected layout in
+`$XDG_CONFIG_HOME/zephyrus-shell/display-profiles.json`. The shell reapplies the
+matching layout after startup, reload, hotplug and wake, including saved scaling
+when the laptop panel becomes the only remaining output. See [display settings](settings.md#displays).
 
 The windows list groups by monitor and workspace, then follows scrolling columns
 from left to right. New windows and moved columns update the list; floating

@@ -300,7 +300,7 @@ ColumnLayout {
                 height: (root.controller.hasMoreFor("songs") || !!(root.controller.paging.songs || {}).loading) ? 42 : 0
                 RowLayout {
                     anchors.centerIn: parent
-                    BusyIndicator {
+                    W.BusySpinner {
                         visible: !!(root.controller.paging.songs || {}).loading
                         running: visible
                         Layout.preferredWidth: 22

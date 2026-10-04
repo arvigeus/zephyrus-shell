@@ -2,10 +2,12 @@
 """Capture from Hyprland into XDG Pictures/Screenshots and the clipboard."""
 
 import argparse
+import math
 import os
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -18,9 +20,11 @@ def report_error(title, error):
     print(str(error), file=sys.stderr)
 
 
-def capture(mode, *, edit=False, active=False):
+def capture(mode, *, edit=False, active=False, delay=0):
     if mode not in ("region", "window", "output"):
         raise ValueError("Choose area, window or screen capture.")
+    if not math.isfinite(delay) or delay < 0:
+        raise ValueError("Screenshot delay must be a finite, non-negative number of seconds.")
     executable = shutil.which("hyprshot")
     if not executable:
         raise ValueError("Install hyprshot to take screenshots.")
@@ -29,6 +33,9 @@ def capture(mode, *, edit=False, active=False):
         raise ValueError("Install satty to annotate screenshots.")
     if active and mode != "window":
         raise ValueError("Active selection is only needed for window capture.")
+    freeze = mode == "region" and delay > 0
+    if freeze and not shutil.which("hyprpicker"):
+        raise ValueError("Install hyprpicker to freeze the screen for delayed area screenshots.")
     result = subprocess.run(["xdg-user-dir", "PICTURES"], capture_output=True, text=True, timeout=5)
     pictures = (
         Path(result.stdout.strip())
@@ -43,6 +50,12 @@ def capture(mode, *, edit=False, active=False):
         command += ["-m", "active"]
     if edit:
         command += ["--silent"]
+    if freeze:
+        command += ["--freeze"]
+    # Wait first, then let Hyprshot freeze the screen with Hyprpicker before
+    # opening its usual area selector. Hyprshot owns saving and the clipboard.
+    if delay:
+        time.sleep(delay)
     result = subprocess.run(command, timeout=180)
     if result.returncode != 0:
         return None
@@ -71,11 +84,17 @@ if __name__ == "__main__":
     parser.add_argument("mode", choices=("region", "window", "output"))
     parser.add_argument("--edit", action="store_true", help="Open the capture in Satty")
     parser.add_argument(
+        "--delay",
+        type=float,
+        default=0,
+        help="Wait before capture or area selection; delayed areas use Hyprshot's freeze mode",
+    )
+    parser.add_argument(
         "--active", action="store_true", help="Capture the active window without selection"
     )
     args = parser.parse_args()
     try:
-        capture(args.mode, edit=args.edit, active=args.active)
+        capture(args.mode, edit=args.edit, active=args.active, delay=args.delay)
     except (OSError, ValueError, subprocess.TimeoutExpired) as error:
         report_error("Screenshot", error)
         sys.exit(1)

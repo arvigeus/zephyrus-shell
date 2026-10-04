@@ -41,6 +41,7 @@ ShellRoot {
             property string lastAction: ""
             property string lastValue: ""
             property double checked: 0
+            property bool screenshotCaptured: false
             function fail(message) { console.error("SETTINGS FAIL", message); stop(); Qt.quit(); }
             function find(item, name) {
                 if (item.objectName === name) return item;
@@ -56,6 +57,26 @@ ShellRoot {
                     if (Profiles.startup || Profiles.applying || Profiles.settle.running) return;
                     if (!HardwareSnapshot.checkedAt || HardwareSnapshot.events.running || HardwareSnapshot.refreshPending) return;
                     saved = drawer.item;
+                    const screenshot = find(saved, "screenshot-capture");
+                    const screenshotOptions = find(saved, "screenshot-options");
+                    const screenshotAction = find(saved, "screenshot-action");
+                    const screenshotMenu = screenshotAction ? screenshotAction.popup : null;
+                    if (!screenshot || !screenshotOptions || !screenshotMenu || screenshotMenu.count !== 3) { fail("Screenshot delay controls missing"); return; }
+                    screenshotOptions.clicked();
+                    if (!screenshotMenu.visible) { fail("Screenshot delay menu did not open"); return; }
+                    for (let index = 0; index < 3; index++) {
+                        if (screenshotMenu.itemAt(index).text !== "Select area in " + [3, 5, 10][index] + " s") { fail("Screenshot delay option missing"); return; }
+                    }
+                    if (!screenshotCaptured) {
+                        canvas.grabToImage(result => {
+                            if (!result.saveToFile(Paths.file("tests/artifacts/settings-capture.png"))) { fail("Settings capture failed"); return; }
+                            screenshotMenu.close();
+                            screenshotCaptured = true;
+                            test.start();
+                        });
+                        stop(); return;
+                    }
+                    screenshotMenu.close();
                     checked = HardwareSnapshot.checkedAt;
                     button = find(saved, "session-action-poweroff");
                     if (!button || button.holdDuration !== 2000) { fail("Power action does not require a 2s hold"); return; }
@@ -123,7 +144,7 @@ ShellRoot {
                     step = 8; ticks = 0;
                 } else if (step === 8 && ticks > 1) {
                     if (find(saved, "cpu-boost-toggle").enabled) { fail("Boost control enabled without installed helper"); return; }
-                    console.log("SETTINGS PASS: retained drawer, snapshot reuse, hidden hold cancellation, displays, weather, state-driven CPU boost toggle");
+                    console.log("SETTINGS PASS: screenshot delay menu, retained drawer, snapshot reuse, hidden hold cancellation, displays, weather, state-driven CPU boost toggle");
                     stop(); Qt.quit();
                 }
             }

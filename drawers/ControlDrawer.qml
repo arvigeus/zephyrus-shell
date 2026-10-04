@@ -59,11 +59,11 @@ DrawerFrame {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    Action {
-                        iconName: "camera"; text: "Screenshot"; Layout.fillWidth: true
-                        onClicked: {
-                            External.launch(["python3", Paths.file("scripts/screenshot.py"), "region", "--edit"], null);
-                        }
+                    // Use the file URL so a running engine can load this newly
+                    // added component without a cached directory type lookup.
+                    Loader {
+                        Layout.fillWidth: true
+                        source: Qt.resolvedUrl("../settings/ScreenshotAction.qml")
                     }
                     Action {
                         iconName: "video"; text: "Screen recording"; Layout.fillWidth: true

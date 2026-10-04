@@ -148,14 +148,22 @@ Lucide icons. A shared, cached calendar snapshot refreshes every 15 minutes even
 when Attention is closed; browsing another month does not change today's icons.
 
 Print or Super+Shift+S selects a screenshot area and opens Satty for annotation.
-Screenshot shortcuts and Settings' capture actions leave open drawers and
-modules visible while capturing.
+Screenshot shortcuts and Settings' immediate capture action leave open drawers
+and modules visible while capturing.
 Enter saves the annotated image, copies it and closes Satty; Escape keeps the
 original capture. Super+Shift+Print captures an area directly, Super+Print
 captures the active window, Super+Ctrl+Print selects a window, and Shift+Print
 captures the active output. Captures go to XDG Pictures/Screenshots and the
-clipboard. The Settings drawer's Screenshot action also opens Satty. Its
-configuration lives in `config/satty.toml`, without installing another user
+clipboard. The Settings drawer's Screenshot action also opens Satty. The arrow
+beside it offers area selection after a 3, 5 or 10 second delay. Settings closes;
+open the context menu during the delay. When the delay ends, Hyprshot's
+`--freeze` mode uses Hyprpicker to freeze the screen before opening the usual
+area selector. Select the area from that frozen image, then annotate in Satty.
+Delayed area screenshots require `hyprpicker` (`sudo pacman -S hyprpicker` on
+Arch); it is included in the full session dependency set.
+The helper also accepts `--delay SECONDS`, for example
+`python3 scripts/screenshot.py region --delay 5 --edit`.
+Satty's configuration lives in `config/satty.toml`, without installing another user
 configuration link.
 
 Super+Alt+R or Settings' Screen recording action opens Kooha and leaves open

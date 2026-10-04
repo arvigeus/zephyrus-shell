@@ -16,6 +16,19 @@ hl.config({
 -- application-supplied positions instead of centering them like dialogs.
 hl.window_rule({ name = "center-floating-windows", match = { float = true, xwayland = false }, center = true })
 
+-- Firefox PiP stays visible across workspaces, above ordinary windows.
+-- Move overrides dialog centering; do not combine it with a center effect.
+-- Move expressions see the client's original size, so use the target size here.
+-- https://wiki.hypr.land/configuring/core/rules/window-rules/
+hl.window_rule({
+    name = "firefox-picture-in-picture",
+    match = { class = "^(firefox|org.mozilla.firefox)$", title = "^Picture-in-Picture$" },
+    float = true,
+    pin = true,
+    size = { 480, 270 },
+    move = { "monitor_w-480-20", "monitor_h-270-20" },
+})
+
 -- Execute a drop atomically against current layout geometry, rather than relying
 -- on the bar's cached positions. The list uses this through native Lua IPC.
 zephyrus = zephyrus or {}

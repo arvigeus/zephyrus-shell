@@ -39,6 +39,24 @@ packages, migrated Nextcloud configuration or credentials. Log out of the
 Zephyrus session before teardown. The installer does not replace the system
 login-manager desktop entry or your old `hyprland.conf`.
 
+## Firefox Picture-in-Picture
+
+`windows.lua` matches Firefox's `Picture-in-Picture` window title and native or
+Flatpak app ID. The window floats above ordinary windows, is pinned across
+workspaces on its monitor, and opens 20 logical pixels from the bottom-right
+edge. It opens at 480 × 270 logical pixels instead of accepting the initial size
+requested by Firefox, and it can still be moved or resized manually. The PiP
+rule follows and overrides floating-dialog centering using only `move`. Do not
+add `center = false`: Hyprland's center effect clears the explicit move position.
+Move expressions use the target 480 × 270 dimensions because `window_w` and
+`window_h` still reflect the client's original size when the move is calculated.
+
+Reload with `hyprctl reload config-only`, then close and reopen PiP: floating,
+pinning, size and initial placement are static rules applied when the window opens.
+If a localized Firefox title differs, inspect `hyprctl clients` and adjust the
+PiP title matcher. Ordinary browser windows remain tiled. See the official
+[Hyprland window-rule reference](https://wiki.hypr.land/configuring/core/rules/window-rules/).
+
 ## Native scrolling desktop
 
 `windows.lua` selects Hyprland's built-in scrolling layout. New ordinary windows

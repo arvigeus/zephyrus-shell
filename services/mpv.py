@@ -1,10 +1,11 @@
 """IPC transport for module-owned mpv players; no process or playback state."""
+
 import json
 import os
-from pathlib import Path
 import re
 import socket
 import tempfile
+from pathlib import Path
 
 
 class MpvIpc:

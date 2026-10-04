@@ -1,16 +1,16 @@
 """Open-Meteo forecast for the location configured in attention.json."""
 
 import json
-import os
-from collections import Counter
-from pathlib import Path
 import time
+from collections import Counter
 from datetime import datetime
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from services.storage import atomic_write
 
 API = "https://api.open-meteo.com/v1/forecast"
 CACHE_AGE = 15 * 60
@@ -53,8 +53,13 @@ def condition_group(code):
         return "cloud"
     if code in (56, 57, 66, 67):
         return "freezing"
-    return {"cloud-fog": "fog", "cloud-drizzle": "drizzle", "cloud-rain": "rain",
-            "cloud-snow": "snow", "cloud-lightning": "storm"}.get(condition(code)[1], "cloud")
+    return {
+        "cloud-fog": "fog",
+        "cloud-drizzle": "drizzle",
+        "cloud-rain": "rain",
+        "cloud-snow": "snow",
+        "cloud-lightning": "storm",
+    }.get(condition(code)[1], "cloud")
 
 
 def daily_outlook(rows, fallback_code):
@@ -76,27 +81,61 @@ def daily_outlook(rows, fallback_code):
         if primary in wet_groups or day_counts[primary] < len(daylight) * 0.6:
             primary = "mixed" if day_counts["sun"] + day_counts["mixed"] else "cloud"
 
-    descriptions = {"sun": "Mostly sunny", "mixed": "A mix of sun and cloud", "cloud": "Mostly cloudy",
-                    "fog": "Mostly foggy", "drizzle": "Drizzle for much of the day",
-                    "rain": "Rain for much of the day", "snow": "Snow for much of the day",
-                    "storm": "Thunderstorms for much of the day", "freezing": "Freezing rain for much of the day"}
-    icons = {"sun": "sun", "mixed": "cloud-sun", "cloud": "cloud", "fog": "cloud-fog",
-             "drizzle": "cloud-drizzle", "rain": "cloud-rain", "snow": "cloud-snow",
-             "storm": "cloud-lightning", "freezing": "cloud-rain"}
+    descriptions = {
+        "sun": "Mostly sunny",
+        "mixed": "A mix of sun and cloud",
+        "cloud": "Mostly cloudy",
+        "fog": "Mostly foggy",
+        "drizzle": "Drizzle for much of the day",
+        "rain": "Rain for much of the day",
+        "snow": "Snow for much of the day",
+        "storm": "Thunderstorms for much of the day",
+        "freezing": "Freezing rain for much of the day",
+    }
+    icons = {
+        "sun": "sun",
+        "mixed": "cloud-sun",
+        "cloud": "cloud",
+        "fog": "cloud-fog",
+        "drizzle": "cloud-drizzle",
+        "rain": "cloud-rain",
+        "snow": "cloud-snow",
+        "storm": "cloud-lightning",
+        "freezing": "cloud-rain",
+    }
     description = descriptions[primary]
     # Include short hazardous spells even when they do not determine the day's icon.
-    secondary_groups = [group for group in (*wet_groups, "fog") if group != primary and counts[group]]
+    secondary_groups = [
+        group for group in (*wet_groups, "fog") if group != primary and counts[group]
+    ]
     details = []
     for secondary in secondary_groups:
         affected = [row for row in rows if row["group"] == secondary]
-        periods = {"overnight" if row["hour"] < 6 or row["hour"] >= 22 else
-                   "in the morning" if row["hour"] < 12 else
-                   "in the afternoon" if row["hour"] < 18 else "in the evening" for row in affected}
-        name = {"storm": "thunderstorms", "freezing": "freezing rain", "snow": "snow",
-                "rain": "rain", "drizzle": "drizzle", "fog": "fog"}[secondary]
-        details.append(name + " " + next(iter(periods)) if len(periods) == 1 else name + " at times")
+        periods = {
+            "overnight"
+            if row["hour"] < 6 or row["hour"] >= 22
+            else "in the morning"
+            if row["hour"] < 12
+            else "in the afternoon"
+            if row["hour"] < 18
+            else "in the evening"
+            for row in affected
+        }
+        name = {
+            "storm": "thunderstorms",
+            "freezing": "freezing rain",
+            "snow": "snow",
+            "rain": "rain",
+            "drizzle": "drizzle",
+            "fog": "fog",
+        }[secondary]
+        details.append(
+            name + " " + next(iter(periods)) if len(periods) == 1 else name + " at times"
+        )
     if details:
-        description += ", with " + (", ".join(details[:-1]) + " and " + details[-1] if len(details) > 1 else details[0])
+        description += ", with " + (
+            ", ".join(details[:-1]) + " and " + details[-1] if len(details) > 1 else details[0]
+        )
     if primary in wet_groups:
         if day_counts["sun"]:
             description += " and sunny breaks" if details else ", with sunny breaks"
@@ -127,18 +166,31 @@ def normalize(payload, location):
     for i, timestamp in enumerate(times):
         code = hourly["weather_code"][i]
         if code is not None and hourly["is_day"][i] is not None:
-            day_hours.setdefault(timestamp[:10], []).append({"group": condition_group(int(code)),
-                "hour": int(timestamp[11:13]), "is_day": bool(hourly["is_day"][i])})
+            day_hours.setdefault(timestamp[:10], []).append(
+                {
+                    "group": condition_group(int(code)),
+                    "hour": int(timestamp[11:13]),
+                    "is_day": bool(hourly["is_day"][i]),
+                }
+            )
         if timestamp <= current["time"]:
             continue
         if len(hours) == 24:
             continue
         if hourly["temperature_2m"][i] is None or hourly["weather_code"][i] is None:
             continue
-        hour_description, hour_icon = condition(hourly["weather_code"][i], bool(hourly["is_day"][i]))
-        hours.append({"time": timestamp, "temperature": hourly["temperature_2m"][i],
-                      "icon": hour_icon, "description": hour_description,
-                      "precipitation_probability": hourly["precipitation_probability"][i]})
+        hour_description, hour_icon = condition(
+            hourly["weather_code"][i], bool(hourly["is_day"][i])
+        )
+        hours.append(
+            {
+                "time": timestamp,
+                "temperature": hourly["temperature_2m"][i],
+                "icon": hour_icon,
+                "description": hour_description,
+                "precipitation_probability": hourly["precipitation_probability"][i],
+            }
+        )
     return {
         "location": location["name"],
         "observed_at": current["time"],
@@ -180,14 +232,31 @@ def fetch(location, cache_path, *, opener=urlopen, now=time.time):
     cached = None
     try:
         cached = json.loads(cache_path.read_text())
-        if cached.get("key") != key:
+        if (
+            not isinstance(cached, dict)
+            or cached.get("key") != key
+            or not isinstance(cached.get("fetched_at"), (int, float))
+            or not isinstance(cached.get("forecast"), dict)
+            or not isinstance(cached["forecast"].get("days"), list)
+            or not cached["forecast"]["days"]
+            or any(
+                not isinstance(day, dict) or not isinstance(day.get("date"), str)
+                for day in cached["forecast"]["days"]
+            )
+        ):
             cached = None
     except (OSError, ValueError, AttributeError):
-        pass
-    local_today = datetime.fromtimestamp(now(), ZoneInfo(timezone)).date().isoformat()
-    if (cached and cached.get("version") == CACHE_VERSION
-            and now() - cached.get("fetched_at", 0) < CACHE_AGE
-            and cached["forecast"]["days"][0]["date"] == local_today):
+        cached = None
+    try:
+        local_today = datetime.fromtimestamp(now(), ZoneInfo(timezone)).date().isoformat()
+    except (ZoneInfoNotFoundError, ValueError) as error:
+        raise WeatherError("Set a valid IANA timezone in attention.json.") from error
+    if (
+        cached
+        and cached.get("version") == CACHE_VERSION
+        and now() - cached.get("fetched_at", 0) < CACHE_AGE
+        and cached["forecast"]["days"][0]["date"] == local_today
+    ):
         return dict(cached["forecast"], local_date=local_today)
 
     params = {
@@ -199,19 +268,25 @@ def fetch(location, cache_path, *, opener=urlopen, now=time.time):
         "daily": "weather_code,temperature_2m_max,temperature_2m_min",
         "hourly": "temperature_2m,weather_code,is_day,precipitation_probability",
     }
-    request = Request(API + "?" + urlencode(params), headers={"User-Agent": "ZephyrusShell/1.0", "Accept": "application/json"})
+    request = Request(
+        API + "?" + urlencode(params),
+        headers={"User-Agent": "ZephyrusShell/1.0", "Accept": "application/json"},
+    )
     try:
         with opener(request, timeout=15) as response:
             forecast = normalize(json.load(response), location)
     except (HTTPError, URLError, OSError, ValueError, KeyError, TypeError) as error:
         if cached:
             return dict(cached["forecast"], stale=True, local_date=local_today)
-        raise WeatherError("Weather is unavailable. Check your connection and try again.") from error
+        raise WeatherError(
+            "Weather is unavailable. Check your connection and try again."
+        ) from error
 
     forecast["local_date"] = local_today
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = cache_path.with_suffix(".tmp")
-    temporary.write_text(json.dumps({"version": CACHE_VERSION, "key": key, "fetched_at": now(), "forecast": forecast}))
-    os.chmod(temporary, 0o600)
-    temporary.replace(cache_path)
+    atomic_write(
+        cache_path,
+        json.dumps(
+            {"version": CACHE_VERSION, "key": key, "fetched_at": now(), "forecast": forecast}
+        ),
+    )
     return forecast

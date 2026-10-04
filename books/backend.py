@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Low-volume Open Library worker and Books-specific persistence boundary."""
-from contextlib import contextmanager
+
 import json
 import math
 import os
-from pathlib import Path
 import re
 import sqlite3
 import sys
@@ -13,7 +12,12 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
+from functools import cached_property
+from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from media.local import LocalLibrary
 
 ROOT = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "zephyrus-shell"
 CONFIG = ROOT / "books.json"
@@ -25,11 +29,24 @@ EDITION_PAGE_SIZE = 24
 CATALOGUE_TTL = 6 * 60 * 60
 SEARCH_TTL = 24 * 60 * 60
 DETAIL_TTL = 30 * 24 * 60 * 60
-FIELDS = ",".join((
-    "key", "title", "author_name", "author_key", "first_publish_year", "cover_i",
-    "cover_edition_key", "edition_count", "subject", "ratings_average", "ratings_count",
-    "language", "ebook_access", "has_fulltext",
-))
+FIELDS = ",".join(
+    (
+        "key",
+        "title",
+        "author_name",
+        "author_key",
+        "first_publish_year",
+        "cover_i",
+        "cover_edition_key",
+        "edition_count",
+        "subject",
+        "ratings_average",
+        "ratings_count",
+        "language",
+        "ebook_access",
+        "has_fulltext",
+    )
+)
 WORK_ID = re.compile(r"^(?:/works/)?(OL\d+W)$")
 AUTHOR_ID = re.compile(r"^(?:/authors/)?(OL\d+A)$")
 
@@ -64,11 +81,25 @@ def _merge_authors(*groups):
             if not identifier and not name:
                 continue
             normalized_name = " ".join(name.casefold().split())
-            existing = next((candidate for candidate in authors if (
-                (identifier and candidate["id"] == identifier)
-                or (normalized_name and " ".join(candidate["name"].casefold().split()) == normalized_name
-                    and (not identifier or not candidate["id"] or candidate["id"] == identifier))
-            )), None)
+            existing = next(
+                (
+                    candidate
+                    for candidate in authors
+                    if (
+                        (identifier and candidate["id"] == identifier)
+                        or (
+                            normalized_name
+                            and " ".join(candidate["name"].casefold().split()) == normalized_name
+                            and (
+                                not identifier
+                                or not candidate["id"]
+                                or candidate["id"] == identifier
+                            )
+                        )
+                    )
+                ),
+                None,
+            )
             if existing is None:
                 authors.append({"id": identifier, "name": name})
                 continue
@@ -81,7 +112,7 @@ def _merge_authors(*groups):
 
 def escape_search_term(value):
     """Keep free-text input literal within Open Library's Lucene query syntax."""
-    return re.sub(r'([+\-&|!(){}\[\]^"~*?:\\/])', r'\\\1', str(value or ""))
+    return re.sub(r'([+\-&|!(){}\[\]^"~*?:\\/])', r"\\\1", str(value or ""))
 
 
 def work_id(value):
@@ -125,7 +156,9 @@ def normalize_work(doc):
         name = _text(value)
         key_value = raw_keys[index] if index < len(raw_keys) else ""
         key_match = AUTHOR_ID.fullmatch(str(key_value or ""))
-        authors = _merge_authors(authors, [{"id": key_match.group(1) if key_match else "", "name": name}])
+        authors = _merge_authors(
+            authors, [{"id": key_match.group(1) if key_match else "", "name": name}]
+        )
     for item in _items(doc.get("authors")):
         author = item.get("author", item) if isinstance(item, dict) else {}
         if isinstance(author, dict):
@@ -137,7 +170,14 @@ def normalize_work(doc):
         cover_id = next((cover for cover in covers if cover not in (None, "")), None)
     cover_edition = doc.get("cover_edition_key") or doc.get("coverEditionKey") or ""
     small, large = cover_urls(cover_id, cover_edition)
-    subjects = [name for name in (_text(value) for value in _items(doc.get("subject", doc.get("subjects"))) if _text(value))]
+    subjects = [
+        name
+        for name in (
+            _text(value)
+            for value in _items(doc.get("subject", doc.get("subjects")))
+            if _text(value)
+        )
+    ]
     languages = []
     for value in _items(doc.get("language", doc.get("languages"))):
         language = str(value or "").rsplit("/", 1)[-1].lower()
@@ -172,7 +212,9 @@ def normalize_work(doc):
         "authors": authors[:12],
         "firstPublishYear": first_year,
         "coverId": str(cover_id) if cover_id not in (None, "") else "",
-        "coverEditionKey": str(cover_edition) if cover_edition else str(doc.get("coverEditionKey") or ""),
+        "coverEditionKey": str(cover_edition)
+        if cover_edition
+        else str(doc.get("coverEditionKey") or ""),
         "coverSmall": small or str(doc.get("coverSmall") or ""),
         "coverLarge": large or str(doc.get("coverLarge") or ""),
         "subjects": subjects[:12],
@@ -205,7 +247,9 @@ def normalize_edition(doc):
         if normalized:
             languages.append(normalized)
     publishers = [name for name in (_text(item) for item in _items(doc.get("publishers"))) if name]
-    isbn = [str(value) for field in ("isbn_13", "isbn_10") for value in _items(doc.get(field)) if value]
+    isbn = [
+        str(value) for field in ("isbn_13", "isbn_10") for value in _items(doc.get(field)) if value
+    ]
     publish_date = _text(doc.get("publish_date"))
     year_match = re.search(r"\b(?:1[0-9]{3}|20[0-9]{2}|21[0-9]{2})\b", publish_date)
     pages = doc.get("number_of_pages")
@@ -260,9 +304,13 @@ class BooksBackend:
         self._last_request = 0.0
         self._request_override = request
         with self.db(self.data_db) as db:
-            db.execute("CREATE TABLE IF NOT EXISTS favorites (work_id TEXT PRIMARY KEY, value TEXT NOT NULL, updated REAL NOT NULL)")
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS favorites (work_id TEXT PRIMARY KEY, value TEXT NOT NULL, updated REAL NOT NULL)"
+            )
         with self.db(self.cache_db) as db:
-            db.execute("CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated REAL NOT NULL)")
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated REAL NOT NULL)"
+            )
 
     @contextmanager
     def db(self, path):
@@ -301,10 +349,14 @@ class BooksBackend:
             self._last_request = time.monotonic()
         url = BASE + path
         if params:
-            url += "?" + urllib.parse.urlencode({key: value for key, value in params.items() if value is not None}, doseq=True)
+            url += "?" + urllib.parse.urlencode(
+                {key: value for key, value in params.items() if value is not None}, doseq=True
+            )
         contact = self.contact()
         user_agent = "Zephyrus Shell Books/1.0" + (f" ({contact})" if contact else "")
-        request = urllib.request.Request(url, headers={"User-Agent": user_agent, "Accept": "application/json"})
+        request = urllib.request.Request(
+            url, headers={"User-Agent": user_agent, "Accept": "application/json"}
+        )
         try:
             with urllib.request.urlopen(request, timeout=18) as response:
                 payload = json.load(response)
@@ -319,10 +371,14 @@ class BooksBackend:
             if code == 404:
                 raise BooksError("Open Library does not have this record.") from None
             if code == 422:
-                raise BooksError("Open Library could not interpret this search. Adjust the query or filters.") from None
+                raise BooksError(
+                    "Open Library could not interpret this search. Adjust the query or filters."
+                ) from None
             raise BooksError(f"Open Library returned HTTP {code}. Try again later.") from None
         except (OSError, ValueError):
-            raise BooksError("Cannot reach Open Library. Check your connection and retry.") from None
+            raise BooksError(
+                "Cannot reach Open Library. Check your connection and retry."
+            ) from None
 
     def get_cache(self, key, ttl=None):
         with self.db(self.cache_db) as db:
@@ -339,14 +395,17 @@ class BooksBackend:
 
     def put_cache(self, key, value):
         with self._write_lock, self.db(self.cache_db) as db:
-            db.execute("INSERT OR REPLACE INTO cache VALUES (?,?,?)", (key, json.dumps(value, ensure_ascii=False), time.time()))
+            db.execute(
+                "INSERT OR REPLACE INTO cache VALUES (?,?,?)",
+                (key, json.dumps(value, ensure_ascii=False), time.time()),
+            )
         return value
 
     def _stored_favorites(self):
         with self.db(self.data_db) as db:
             rows = db.execute("SELECT work_id,value FROM favorites").fetchall()
         records = []
-        for identifier, payload in rows:
+        for _identifier, payload in rows:
             try:
                 book = json.loads(payload)
             except ValueError:
@@ -358,7 +417,9 @@ class BooksBackend:
 
     def _is_favorite(self, identifier):
         with self.db(self.data_db) as db:
-            row = db.execute("SELECT 1 FROM favorites WHERE work_id=?", (work_id(identifier),)).fetchone()
+            row = db.execute(
+                "SELECT 1 FROM favorites WHERE work_id=?", (work_id(identifier),)
+            ).fetchone()
         return bool(row)
 
     def _save_favorite(self, book, favorite):
@@ -370,7 +431,9 @@ class BooksBackend:
         if isinstance(cached, dict):
             normalized = merge_book(normalized, cached)
         with self._write_lock, self.db(self.data_db) as db:
-            row = db.execute("SELECT value FROM favorites WHERE work_id=?", (identifier,)).fetchone()
+            row = db.execute(
+                "SELECT value FROM favorites WHERE work_id=?", (identifier,)
+            ).fetchone()
             if row:
                 try:
                     normalized = merge_book(json.loads(row[0]), normalized)
@@ -378,7 +441,10 @@ class BooksBackend:
                     pass
             if favorite:
                 normalized["favorite"] = True
-                db.execute("INSERT OR REPLACE INTO favorites VALUES (?,?,?)", (identifier, json.dumps(normalized, ensure_ascii=False), time.time()))
+                db.execute(
+                    "INSERT OR REPLACE INTO favorites VALUES (?,?,?)",
+                    (identifier, json.dumps(normalized, ensure_ascii=False), time.time()),
+                )
             else:
                 db.execute("DELETE FROM favorites WHERE work_id=?", (identifier,))
         return {"favorite": bool(favorite)}
@@ -391,7 +457,17 @@ class BooksBackend:
             terms = query.casefold()
             items = self._stored_favorites()
             if terms:
-                items = [book for book in items if terms in " ".join([book.get("title", ""), *[a.get("name", "") for a in book.get("authors", [])]]).casefold()]
+                items = [
+                    book
+                    for book in items
+                    if terms
+                    in " ".join(
+                        [
+                            book.get("title", ""),
+                            *[a.get("name", "") for a in book.get("authors", [])],
+                        ]
+                    ).casefold()
+                ]
             return {"items": items, "next": "", "total": len(items)}
 
         key = browse_cache_key(query, filters, offset)
@@ -405,7 +481,9 @@ class BooksBackend:
             return self.put_cache(key, result)
         except BooksError:
             if stale:
-                return stale | {"warning": "Open Library is temporarily unavailable. Showing saved results."}
+                return stale | {
+                    "warning": "Open Library is temporarily unavailable. Showing saved results."
+                }
             raise
 
     def _fetch_browse(self, query, filters, offset):
@@ -413,7 +491,7 @@ class BooksBackend:
         if query:
             clauses.append(f"({escape_search_term(query)})")
         else:
-            clauses.append("*:*" )
+            clauses.append("*:*")
         subject = str(filters.get("subject") or "").strip()
         if subject:
             quoted = subject.replace("\\", "\\\\").replace('"', '\\"')
@@ -421,16 +499,26 @@ class BooksBackend:
         language = str(filters.get("language") or "").strip().lower()
         if language:
             if not re.fullmatch(r"[a-z]{3}", language):
-                raise BooksError("Use a three-letter ISO 639-2 code for language, such as eng or spa.")
+                raise BooksError(
+                    "Use a three-letter ISO 639-2 code for language, such as eng or spa."
+                )
             clauses.append(f"language:{language}")
-        low, high = str(filters.get("minYear") or "").strip(), str(filters.get("maxYear") or "").strip()
+        low, high = (
+            str(filters.get("minYear") or "").strip(),
+            str(filters.get("maxYear") or "").strip(),
+        )
         if low or high:
             for value in (low, high):
                 if value and not re.fullmatch(r"\d{4}", value):
                     raise BooksError("Publication years must be four digits.")
             clauses.append(f"first_publish_year:[{low or '*'} TO {high or '*'}]")
         sort = str(filters.get("sort") or ("relevance" if query else "trending"))
-        sort_value = {"trending": "trending", "newest": "new", "oldest": "old", "relevance": ""}.get(sort)
+        sort_value = {
+            "trending": "trending",
+            "newest": "new",
+            "oldest": "old",
+            "relevance": "",
+        }.get(sort)
         if sort_value is None:
             sort, sort_value = "trending", "trending"
         params = {
@@ -452,8 +540,16 @@ class BooksBackend:
             total = int(payload.get("num_found", payload.get("numFound", 0)))
         except (TypeError, ValueError):
             total = 0
-        next_offset = offset + PAGE_SIZE if len(docs or []) >= PAGE_SIZE and offset + len(docs or []) < total else None
-        return {"items": items, "next": str(next_offset) if next_offset is not None else "", "total": total}
+        next_offset = (
+            offset + PAGE_SIZE
+            if len(docs or []) >= PAGE_SIZE and offset + len(docs or []) < total
+            else None
+        )
+        return {
+            "items": items,
+            "next": str(next_offset) if next_offset is not None else "",
+            "total": total,
+        }
 
     def snapshot(self, request):
         if request.get("favorites"):
@@ -476,7 +572,9 @@ class BooksBackend:
             details = normalize_work(payload | {"key": identifier}) or {}
             details["description"] = _text(payload.get("description"))
             details["first_sentence"] = _text(payload.get("first_sentence"))
-            details["workType"] = _text((payload.get("type") or {}).get("key", "")).rsplit("/", 1)[-1]
+            details["workType"] = _text((payload.get("type") or {}).get("key", "")).rsplit("/", 1)[
+                -1
+            ]
             details = merge_book(normalize_work(selected) or {}, details)
             result = self.put_cache(key, details)
             if self._is_favorite(identifier):
@@ -484,7 +582,9 @@ class BooksBackend:
             return result
         except BooksError:
             if stale:
-                return merge_book(normalize_work(selected) or {}, stale) | {"warning": "Showing saved book details."}
+                return merge_book(normalize_work(selected) or {}, stale) | {
+                    "warning": "Showing saved book details."
+                }
             raise
 
     def author_details(self, request):
@@ -507,19 +607,27 @@ class BooksBackend:
         person = request.get("author") or {}
         identifier = author_id(person.get("id"))
         offset = max(0, int(request.get("offset") or 0))
+
         def with_author(result):
             known = self.get_any_cache("author:" + identifier) or person
             name = _text(known.get("name")) or _text(person.get("name"))
             context = [{"id": identifier, "name": name}]
-            return result | {"items": [book | {"authors": _merge_authors(book.get("authors"), context)}
-                                        for book in result.get("items", [])]}
+            return result | {
+                "items": [
+                    book | {"authors": _merge_authors(book.get("authors"), context)}
+                    for book in result.get("items", [])
+                ]
+            }
+
         key = f"author-works:{identifier}:{offset}"
         cached = self.get_cache(key, SEARCH_TTL)
         if cached and not request.get("refresh"):
             return with_author(cached)
         stale = self.get_any_cache(key)
         try:
-            payload = self.request(f"/authors/{identifier}/works.json", {"limit": PAGE_SIZE, "offset": offset})
+            payload = self.request(
+                f"/authors/{identifier}/works.json", {"limit": PAGE_SIZE, "offset": offset}
+            )
             rows = payload.get("entries", payload.get("docs", []))
             rows = rows if isinstance(rows, list) else []
             items = [book for book in (normalize_work(row) for row in rows) if book]
@@ -531,7 +639,16 @@ class BooksBackend:
             count = len(rows) if isinstance(rows, list) else 0
             has_more = offset + count < size if size else count >= PAGE_SIZE
             next_offset = offset + count if count and has_more else None
-            return self.put_cache(key, with_author({"items": items, "next": str(next_offset) if next_offset is not None else "", "total": size}))
+            return self.put_cache(
+                key,
+                with_author(
+                    {
+                        "items": items,
+                        "next": str(next_offset) if next_offset is not None else "",
+                        "total": size,
+                    }
+                ),
+            )
         except BooksError:
             if stale:
                 return with_author(stale) | {"warning": "Showing saved author works."}
@@ -546,7 +663,9 @@ class BooksBackend:
             return cached
         stale = self.get_any_cache(key)
         try:
-            payload = self.request(f"/works/{identifier}/editions.json", {"limit": EDITION_PAGE_SIZE, "offset": offset})
+            payload = self.request(
+                f"/works/{identifier}/editions.json", {"limit": EDITION_PAGE_SIZE, "offset": offset}
+            )
             rows = payload.get("entries", payload.get("docs", []))
             rows = rows if isinstance(rows, list) else []
             items = [edition for edition in (normalize_edition(row) for row in rows) if edition]
@@ -558,7 +677,14 @@ class BooksBackend:
             count = len(rows) if isinstance(rows, list) else 0
             has_more = offset + count < size if size else count >= EDITION_PAGE_SIZE
             next_offset = offset + count if count and has_more else None
-            return self.put_cache(key, {"items": items, "next": str(next_offset) if next_offset is not None else "", "total": size})
+            return self.put_cache(
+                key,
+                {
+                    "items": items,
+                    "next": str(next_offset) if next_offset is not None else "",
+                    "total": size,
+                },
+            )
         except BooksError:
             if stale:
                 return stale | {"warning": "Showing saved editions."}
@@ -568,8 +694,16 @@ class BooksBackend:
         identifier = work_id((request.get("book") or {}).get("id"))
         return {"favorite": self._is_favorite(identifier)}
 
+    @cached_property
+    def local(self):
+        return LocalLibrary(self.data.parent / "media")
+
     def handle(self, request):
         op = request.get("op", "")
+        if op == "local_list":
+            return self.local.list("book")
+        if op == "local_files":
+            return self.local.files(request["title"])
         if op == "init":
             contact = self.contact()
             return {"pageSize": PAGE_SIZE, "contactConfigured": bool(contact)}
@@ -614,17 +748,27 @@ def merge_book(base, update):
 
 def browse_cache_key(query, filters, offset):
     query_text = str(query or "").strip()
-    safe_filters = {key: str(value) for key, value in sorted((filters or {}).items()) if value not in (None, "")}
+    safe_filters = {
+        key: str(value) for key, value in sorted((filters or {}).items()) if value not in (None, "")
+    }
     if not safe_filters.get("sort"):
         safe_filters["sort"] = "relevance" if query_text else "trending"
-    return "browse:" + json.dumps([query_text, safe_filters, int(offset)], sort_keys=True, ensure_ascii=False)
+    return "browse:" + json.dumps(
+        [query_text, safe_filters, int(offset)], sort_keys=True, ensure_ascii=False
+    )
 
 
 def main():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from services.worker import serve
+
     backend = BooksBackend()
-    serve(backend.handle, errors=(BooksError,), latest=("browse", "details", "authorDetails", "authorWorks", "editions", "personal"), controls=("save",))
+    serve(
+        backend.handle,
+        errors=(BooksError, ValueError, OSError),
+        latest=("browse", "details", "authorDetails", "authorWorks", "editions", "personal"),
+        controls=("save",),
+    )
 
 
 if __name__ == "__main__":

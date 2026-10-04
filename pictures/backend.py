@@ -1,9 +1,8 @@
 """Pictures providers, favorites, and desktop wallpaper worker."""
+
 import argparse
-from html.parser import HTMLParser
 import json
 import os
-from pathlib import Path
 import random
 import re
 import shlex
@@ -12,9 +11,14 @@ import subprocess
 import sys
 import tempfile
 import time
+from html.parser import HTMLParser
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from services.storage import atomic_write
 
 API_ROOT = "https://wallhaven.cc/api/v1"
 BING_FEED_ROOT = "https://www.bing.com/HPImageArchive.aspx"
@@ -32,63 +36,168 @@ ALLOWED_RANGES = {"1d", "3d", "1w", "1M", "3M", "6M", "1y"}
 ALLOWED_RATIOS = {"16x9", "16x10", "21x9", "32x9", "9x16", "10x16", "1x1", "3x2", "4x3", "5x4"}
 ALLOWED_RESOLUTIONS = {"", "1920x1080", "2560x1440", "3840x2160"}
 BING_MARKETS = {
-    "US": "en-US", "GB": "en-GB", "CA": "en-CA", "AU": "en-AU",
-    "IN": "en-IN", "VN": "vi-VN", "DE": "de-DE", "FR": "fr-FR", "ES": "es-ES",
-    "IT": "it-IT", "JP": "ja-JP", "BR": "pt-BR", "MX": "es-MX",
+    "US": "en-US",
+    "GB": "en-GB",
+    "CA": "en-CA",
+    "AU": "en-AU",
+    "IN": "en-IN",
+    "VN": "vi-VN",
+    "DE": "de-DE",
+    "FR": "fr-FR",
+    "ES": "es-ES",
+    "IT": "it-IT",
+    "JP": "ja-JP",
+    "BR": "pt-BR",
+    "MX": "es-MX",
 }
 PROVIDERS = {
     "wallhaven": {
-        "id": "wallhaven", "name": "Wallhaven", "random": True, "search": True,
-        "defaultFilters": {"categories": "111", "sorting": "hot", "topRange": "1M", "ratio": "", "resolution": "", "tagQuery": ""},
+        "id": "wallhaven",
+        "name": "Wallhaven",
+        "random": True,
+        "search": True,
+        "defaultFilters": {
+            "categories": "111",
+            "sorting": "hot",
+            "topRange": "1M",
+            "ratio": "",
+            "resolution": "",
+            "tagQuery": "",
+        },
         "filters": [
-            {"key": "categories", "label": "Category", "width": 138, "options": [
-                {"label": "All categories", "value": "111"}, {"label": "General", "value": "100"},
-                {"label": "Anime", "value": "010"}, {"label": "People", "value": "001"}]},
-            {"key": "tagQuery", "label": "Any tag", "type": "tags", "width": 220, "placeholder": "Search Wallhaven tags…", "options": [
-                {"label": "Any tag", "value": ""}, {"label": "Nature", "value": "nature"},
-                {"label": "Landscape", "value": "landscape"}, {"label": "Anime", "value": "anime"},
-                {"label": "City", "value": "city"}, {"label": "Space", "value": "space"},
-                {"label": "Minimalism", "value": "minimalism"}, {"label": "Fantasy", "value": "fantasy"},
-                {"label": "Abstract", "value": "abstract"}, {"label": "Architecture", "value": "architecture"},
-                {"label": "Mountains", "value": "mountains"}, {"label": "Ocean", "value": "ocean"},
-                {"label": "Forest", "value": "forest"}, {"label": "Sunset", "value": "sunset"},
-                {"label": "Cyberpunk", "value": "cyberpunk"}, {"label": "Cars", "value": "cars"},
-                {"label": "Video games", "value": "video games"}, {"label": "Animals", "value": "animals"},
-                {"label": "Flowers", "value": "flowers"}, {"label": "Night", "value": "night"},
-                {"label": "Beach", "value": "beach"}, {"label": "Rain", "value": "rain"},
-                {"label": "Water", "value": "water"}, {"label": "Clouds", "value": "clouds"},
-                {"label": "Dark", "value": "dark"}, {"label": "Music", "value": "music"}]},
-            {"key": "sorting", "label": "Sort", "width": 142, "options": [
-                {"label": "Toplist", "value": "toplist"}, {"label": "Date added", "value": "date_added"},
-                {"label": "Most viewed", "value": "views"}, {"label": "Most favorited", "value": "favorites"},
-                {"label": "Hot", "value": "hot"}, {"label": "Relevance", "value": "relevance"}]},
-            {"key": "topRange", "label": "Toplist period", "width": 118, "when": {"key": "sorting", "value": "toplist"}, "options": [
-                {"label": "1 day", "value": "1d"}, {"label": "3 days", "value": "3d"},
-                {"label": "1 week", "value": "1w"}, {"label": "1 month", "value": "1M"},
-                {"label": "3 months", "value": "3M"}, {"label": "6 months", "value": "6M"},
-                {"label": "1 year", "value": "1y"}]},
-            {"key": "ratio", "label": "Aspect ratio", "width": 135, "options": [
-                {"label": "Any ratio", "value": ""}, {"label": "16:9", "value": "16x9"},
-                {"label": "16:10", "value": "16x10"}, {"label": "21:9", "value": "21x9"},
-                {"label": "32:9", "value": "32x9"}, {"label": "9:16", "value": "9x16"},
-                {"label": "10:16", "value": "10x16"}, {"label": "1:1", "value": "1x1"},
-                {"label": "3:2", "value": "3x2"}, {"label": "4:3", "value": "4x3"}, {"label": "5:4", "value": "5x4"}]},
-            {"key": "resolution", "label": "Minimum resolution", "width": 152, "options": [
-                {"label": "Any resolution", "value": ""}, {"label": "1920 × 1080+", "value": "1920x1080"},
-                {"label": "2560 × 1440+", "value": "2560x1440"}, {"label": "3840 × 2160+", "value": "3840x2160"}]},
+            {
+                "key": "categories",
+                "label": "Category",
+                "width": 138,
+                "options": [
+                    {"label": "All categories", "value": "111"},
+                    {"label": "General", "value": "100"},
+                    {"label": "Anime", "value": "010"},
+                    {"label": "People", "value": "001"},
+                ],
+            },
+            {
+                "key": "tagQuery",
+                "label": "Any tag",
+                "type": "tags",
+                "width": 220,
+                "placeholder": "Search Wallhaven tags…",
+                "options": [
+                    {"label": "Any tag", "value": ""},
+                    {"label": "Nature", "value": "nature"},
+                    {"label": "Landscape", "value": "landscape"},
+                    {"label": "Anime", "value": "anime"},
+                    {"label": "City", "value": "city"},
+                    {"label": "Space", "value": "space"},
+                    {"label": "Minimalism", "value": "minimalism"},
+                    {"label": "Fantasy", "value": "fantasy"},
+                    {"label": "Abstract", "value": "abstract"},
+                    {"label": "Architecture", "value": "architecture"},
+                    {"label": "Mountains", "value": "mountains"},
+                    {"label": "Ocean", "value": "ocean"},
+                    {"label": "Forest", "value": "forest"},
+                    {"label": "Sunset", "value": "sunset"},
+                    {"label": "Cyberpunk", "value": "cyberpunk"},
+                    {"label": "Cars", "value": "cars"},
+                    {"label": "Video games", "value": "video games"},
+                    {"label": "Animals", "value": "animals"},
+                    {"label": "Flowers", "value": "flowers"},
+                    {"label": "Night", "value": "night"},
+                    {"label": "Beach", "value": "beach"},
+                    {"label": "Rain", "value": "rain"},
+                    {"label": "Water", "value": "water"},
+                    {"label": "Clouds", "value": "clouds"},
+                    {"label": "Dark", "value": "dark"},
+                    {"label": "Music", "value": "music"},
+                ],
+            },
+            {
+                "key": "sorting",
+                "label": "Sort",
+                "width": 142,
+                "options": [
+                    {"label": "Toplist", "value": "toplist"},
+                    {"label": "Date added", "value": "date_added"},
+                    {"label": "Most viewed", "value": "views"},
+                    {"label": "Most favorited", "value": "favorites"},
+                    {"label": "Hot", "value": "hot"},
+                    {"label": "Relevance", "value": "relevance"},
+                ],
+            },
+            {
+                "key": "topRange",
+                "label": "Toplist period",
+                "width": 118,
+                "when": {"key": "sorting", "value": "toplist"},
+                "options": [
+                    {"label": "1 day", "value": "1d"},
+                    {"label": "3 days", "value": "3d"},
+                    {"label": "1 week", "value": "1w"},
+                    {"label": "1 month", "value": "1M"},
+                    {"label": "3 months", "value": "3M"},
+                    {"label": "6 months", "value": "6M"},
+                    {"label": "1 year", "value": "1y"},
+                ],
+            },
+            {
+                "key": "ratio",
+                "label": "Aspect ratio",
+                "width": 135,
+                "options": [
+                    {"label": "Any ratio", "value": ""},
+                    {"label": "16:9", "value": "16x9"},
+                    {"label": "16:10", "value": "16x10"},
+                    {"label": "21:9", "value": "21x9"},
+                    {"label": "32:9", "value": "32x9"},
+                    {"label": "9:16", "value": "9x16"},
+                    {"label": "10:16", "value": "10x16"},
+                    {"label": "1:1", "value": "1x1"},
+                    {"label": "3:2", "value": "3x2"},
+                    {"label": "4:3", "value": "4x3"},
+                    {"label": "5:4", "value": "5x4"},
+                ],
+            },
+            {
+                "key": "resolution",
+                "label": "Minimum resolution",
+                "width": 152,
+                "options": [
+                    {"label": "Any resolution", "value": ""},
+                    {"label": "1920 × 1080+", "value": "1920x1080"},
+                    {"label": "2560 × 1440+", "value": "2560x1440"},
+                    {"label": "3840 × 2160+", "value": "3840x2160"},
+                ],
+            },
         ],
     },
     "bing": {
-        "id": "bing", "name": "Bing Daily", "random": True, "search": True,
+        "id": "bing",
+        "name": "Bing Daily",
+        "random": True,
+        "search": True,
         "defaultFilters": {"country": "US"},
-        "filters": [{"key": "country", "label": "Country", "width": 170, "options": [
-            {"label": "United States", "value": "US"}, {"label": "United Kingdom", "value": "GB"},
-            {"label": "Canada", "value": "CA"}, {"label": "Australia", "value": "AU"},
-            {"label": "India", "value": "IN"}, {"label": "Vietnam", "value": "VN"},
-            {"label": "Germany", "value": "DE"},
-            {"label": "France", "value": "FR"}, {"label": "Spain", "value": "ES"},
-            {"label": "Italy", "value": "IT"}, {"label": "Japan", "value": "JP"},
-            {"label": "Brazil", "value": "BR"}, {"label": "Mexico", "value": "MX"}]}],
+        "filters": [
+            {
+                "key": "country",
+                "label": "Country",
+                "width": 170,
+                "options": [
+                    {"label": "United States", "value": "US"},
+                    {"label": "United Kingdom", "value": "GB"},
+                    {"label": "Canada", "value": "CA"},
+                    {"label": "Australia", "value": "AU"},
+                    {"label": "India", "value": "IN"},
+                    {"label": "Vietnam", "value": "VN"},
+                    {"label": "Germany", "value": "DE"},
+                    {"label": "France", "value": "FR"},
+                    {"label": "Spain", "value": "ES"},
+                    {"label": "Italy", "value": "IT"},
+                    {"label": "Japan", "value": "JP"},
+                    {"label": "Brazil", "value": "BR"},
+                    {"label": "Mexico", "value": "MX"},
+                ],
+            }
+        ],
     },
 }
 
@@ -111,7 +220,12 @@ def favorite_file():
 
 def allowed_remote_url(value, hosts):
     parsed = urlparse(str(value or ""))
-    if parsed.scheme != "https" or parsed.hostname not in hosts or parsed.username or parsed.password:
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in hosts
+        or parsed.username
+        or parsed.password
+    ):
         return ""
     return parsed.geturl()
 
@@ -127,7 +241,10 @@ def clean_wallhaven_item(raw):
     thumbs = raw.get("thumbs") if isinstance(raw.get("thumbs"), dict) else {}
     small = allowed_remote_url(raw.get("thumbSmall") or thumbs.get("small"), {"th.wallhaven.cc"})
     large = allowed_remote_url(raw.get("thumbLarge") or thumbs.get("large"), {"th.wallhaven.cc"})
-    preview = allowed_remote_url(raw.get("preview") or thumbs.get("original"), {"th.wallhaven.cc"}) or large
+    preview = (
+        allowed_remote_url(raw.get("preview") or thumbs.get("original"), {"th.wallhaven.cc"})
+        or large
+    )
     if not path:
         return None
     try:
@@ -141,9 +258,17 @@ def clean_wallhaven_item(raw):
     category = str(raw.get("category") or "")
     purity = str(raw.get("purity") or "sfw")
     created_at = str(raw.get("created_at") or raw.get("createdAt") or "")
-    category_label = {"100": "General", "010": "Anime", "001": "People"}.get(category, category.title())
-    purity_label = {"100": "SFW", "110": "SFW + Sketchy", "111": "SFW + Sketchy + NSFW",
-                    "sfw": "SFW", "sketchy": "Sketchy", "nsfw": "NSFW"}.get(purity.lower(), purity)
+    category_label = {"100": "General", "010": "Anime", "001": "People"}.get(
+        category, category.title()
+    )
+    purity_label = {
+        "100": "SFW",
+        "110": "SFW + Sketchy",
+        "111": "SFW + Sketchy + NSFW",
+        "sfw": "SFW",
+        "sketchy": "Sketchy",
+        "nsfw": "NSFW",
+    }.get(purity.lower(), purity)
     raw_tags = raw.get("tags", [])
     tags = []
     if isinstance(raw_tags, list):
@@ -180,7 +305,10 @@ def clean_wallhaven_item(raw):
         "preview": preview,
         "width": width,
         "height": height,
-        "resolution": str(raw.get("resolution") or (f"{width}x{height}" if width and height else "Unknown resolution")),
+        "resolution": str(
+            raw.get("resolution")
+            or (f"{width}x{height}" if width and height else "Unknown resolution")
+        ),
         "fileSize": size,
         "fileType": str(raw.get("file_type") or raw.get("fileType") or "image/unknown"),
         "category": category,
@@ -188,7 +316,13 @@ def clean_wallhaven_item(raw):
         "views": views,
         "favorites": favorites,
         "createdAt": created_at,
-        "colors": [color for color in raw.get("colors", [])[:8] if isinstance(color, str) and re.fullmatch(r"#[0-9A-Fa-f]{6}", color)] if isinstance(raw.get("colors"), list) else [],
+        "colors": [
+            color
+            for color in raw.get("colors", [])[:8]
+            if isinstance(color, str) and re.fullmatch(r"#[0-9A-Fa-f]{6}", color)
+        ]
+        if isinstance(raw.get("colors"), list)
+        else [],
         "tags": tags,
         "metadata": metadata,
         "attribution": "",
@@ -211,7 +345,9 @@ def clean_bing_item(raw):
     path = allowed_remote_url(raw.get("path"), {"www.bing.com", "bing.com"})
     if not path:
         return None
-    page = allowed_remote_url(raw.get("url"), {"www.bing.com", "bing.com"}) or "https://www.bing.com/"
+    page = (
+        allowed_remote_url(raw.get("url"), {"www.bing.com", "bing.com"}) or "https://www.bing.com/"
+    )
     try:
         width = max(0, int(raw.get("width", 1920)))
         height = max(0, int(raw.get("height", 1080)))
@@ -325,7 +461,9 @@ class WallhavenTagParser(HTMLParser):
 
     def handle_data(self, data):
         if self.current is not None:
-            self.current["text"].append(data)
+            text = self.current["text"]
+            assert isinstance(text, list)
+            text.append(data)
 
     def handle_endtag(self, tag):
         if tag == "a" and self.current is not None:
@@ -356,7 +494,7 @@ def search_wallhaven_tags(args):
     try:
         with urlopen(request, timeout=10) as response:
             page = response.read(2 * 1024 * 1024 + 1).decode("utf-8", "replace")
-        page = page[:2 * 1024 * 1024]
+        page = page[: 2 * 1024 * 1024]
     except (HTTPError, URLError, TimeoutError, OSError):
         return {"query": query, "tags": []}
 
@@ -420,12 +558,27 @@ def selected_provider(args):
 
 def item_search_text(item):
     metadata = item.get("metadata", [])
-    metadata_text = " ".join(
-        str(part.get("value", "")) for part in metadata if isinstance(part, dict)
-    ) if isinstance(metadata, list) else ""
-    return " ".join(str(item.get(key, "")) for key in (
-        "id", "title", "providerName", "category", "purity", "resolution", "attribution"
-    )) + " " + metadata_text
+    metadata_text = (
+        " ".join(str(part.get("value", "")) for part in metadata if isinstance(part, dict))
+        if isinstance(metadata, list)
+        else ""
+    )
+    return (
+        " ".join(
+            str(item.get(key, ""))
+            for key in (
+                "id",
+                "title",
+                "providerName",
+                "category",
+                "purity",
+                "resolution",
+                "attribution",
+            )
+        )
+        + " "
+        + metadata_text
+    )
 
 
 def browse_favorites(args):
@@ -445,8 +598,11 @@ def browse_wallhaven(args):
     except (TypeError, ValueError):
         current_page = last_page = 1
     items = [item for value in data["data"] if (item := clean_wallhaven_item(value))]
-    return {"items": items, "next": current_page + 1 if current_page < last_page else 0,
-            "total": max(0, int(meta.get("total", 0) or 0))}
+    return {
+        "items": items,
+        "next": current_page + 1 if current_page < last_page else 0,
+        "total": max(0, int(meta.get("total", 0) or 0)),
+    }
 
 
 def bing_market(args):
@@ -477,18 +633,20 @@ def bing_feed(market, index):
         raw_path = str(record.get("url") or "")
         image_url = "https://www.bing.com" + raw_path if raw_path.startswith("/") else raw_path
         copyright_url = str(record.get("copyrightlink") or "")
-        item = clean_bing_item({
-            "provider": "bing",
-            "id": f"{record.get('startdate', '')}-{market}",
-            "date": record.get("startdate", ""),
-            "market": market,
-            "title": record.get("title", ""),
-            "path": image_url,
-            "url": copyright_url,
-            "attribution": record.get("copyright", ""),
-            "width": 1920,
-            "height": 1080,
-        })
+        item = clean_bing_item(
+            {
+                "provider": "bing",
+                "id": f"{record.get('startdate', '')}-{market}",
+                "date": record.get("startdate", ""),
+                "market": market,
+                "title": record.get("title", ""),
+                "path": image_url,
+                "url": copyright_url,
+                "attribution": record.get("copyright", ""),
+                "width": 1920,
+                "height": 1080,
+            }
+        )
         if item:
             result.append(item)
     return result
@@ -586,17 +744,22 @@ def save_favorites(args):
     if is_favorite:
         favorites.insert(0, item)
     path = favorite_file()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(favorites[:2000], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary, path)
-    return {"favorite": is_favorite, "count": len(favorites) if is_favorite else max(0, len(favorites))}
+    atomic_write(path, json.dumps(favorites[:2000], ensure_ascii=False, indent=2) + "\n")
+    return {
+        "favorite": is_favorite,
+        "count": len(favorites) if is_favorite else max(0, len(favorites)),
+    }
 
 
 def wallpaper_file(item):
     suffix = Path(urlparse(item["path"]).path).suffix.lower()
     if suffix not in {".jpg", ".jpeg", ".png", ".webp", ".avif"}:
-        suffix = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/avif": ".avif"}.get(item["fileType"].lower(), ".jpg")
+        suffix = {
+            "image/jpeg": ".jpg",
+            "image/png": ".png",
+            "image/webp": ".webp",
+            "image/avif": ".avif",
+        }.get(item["fileType"].lower(), ".jpg")
     folder = data_root() / "zephyrus-shell" / "wallpapers"
     folder.mkdir(parents=True, exist_ok=True)
     safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", item["id"])
@@ -618,7 +781,9 @@ def download_wallpaper(item):
             length = response.headers.get("Content-Length")
             if length and int(length) > MAX_IMAGE_BYTES:
                 raise ValueError("This wallpaper is too large to download.")
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{item['provider']}-", suffix=".download", delete=False) as output:
+            with tempfile.NamedTemporaryFile(
+                dir=path.parent, prefix=f".{item['provider']}-", suffix=".download", delete=False
+            ) as output:
                 temporary = Path(output.name)
                 total = 0
                 while True:
@@ -655,8 +820,9 @@ def apply_shell_wallpaper(path):
     setting.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=setting.parent,
-                                         prefix=".wallpaper-", delete=False) as output:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=setting.parent, prefix=".wallpaper-", delete=False
+        ) as output:
             temporary = Path(output.name)
             json.dump({"image": path.resolve().as_uri()}, output)
             output.write("\n")
@@ -678,12 +844,16 @@ def run_wallpaper_command(command, path, timeout=15):
 def apply_hyprpaper(hyprctl, path):
     monitors = []
     try:
-        result = subprocess.run([hyprctl, "monitors", "-j"], capture_output=True, text=True,
-                                timeout=2, check=False)
+        result = subprocess.run(
+            [hyprctl, "monitors", "-j"], capture_output=True, text=True, timeout=2, check=False
+        )
         if result.returncode == 0:
             values = json.loads(result.stdout or "[]")
-            monitors = [str(value.get("name")) for value in values
-                        if isinstance(value, dict) and value.get("name")]
+            monitors = [
+                str(value.get("name"))
+                for value in values
+                if isinstance(value, dict) and value.get("name")
+            ]
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
         monitors = []
     targets = monitors or [""]
@@ -694,7 +864,9 @@ def apply_hyprpaper(hyprctl, path):
         ok, detail = run_wallpaper_command(command, path, timeout=5)
         if not ok:
             # Older hyprpaper versions require the image to be preloaded first.
-            preload, preload_error = run_wallpaper_command([hyprctl, "hyprpaper", "preload", str(path)], path, timeout=5)
+            preload, preload_error = run_wallpaper_command(
+                [hyprctl, "hyprpaper", "preload", str(path)], path, timeout=5
+            )
             if preload:
                 ok, detail = run_wallpaper_command(command, path, timeout=5)
             if not ok:
@@ -722,7 +894,9 @@ def apply_wallpaper(path):
     swww = shutil.which("swww")
     if swww:
         try:
-            ok, detail = run_wallpaper_command([swww, "img", str(path), "--transition-type", "simple"], path, timeout=5)
+            ok, detail = run_wallpaper_command(
+                [swww, "img", str(path), "--transition-type", "simple"], path, timeout=5
+            )
             if ok:
                 return "swww"
             failures.append(detail or "swww could not reach its daemon")
@@ -752,13 +926,31 @@ def apply_wallpaper(path):
     gsettings = shutil.which("gsettings")
     if gsettings:
         try:
-            result = subprocess.run([gsettings, "set", "org.gnome.desktop.background", "picture-uri", path.as_uri()],
-                                    capture_output=True, text=True, timeout=10, check=False)
+            result = subprocess.run(
+                [gsettings, "set", "org.gnome.desktop.background", "picture-uri", path.as_uri()],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
             if result.returncode == 0:
-                subprocess.run([gsettings, "set", "org.gnome.desktop.background", "picture-uri-dark", path.as_uri()],
-                               capture_output=True, text=True, timeout=10, check=False)
+                subprocess.run(
+                    [
+                        gsettings,
+                        "set",
+                        "org.gnome.desktop.background",
+                        "picture-uri-dark",
+                        path.as_uri(),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
                 return "GNOME"
-            failures.append((result.stderr or result.stdout).strip() or "GNOME did not accept the wallpaper")
+            failures.append(
+                (result.stderr or result.stdout).strip() or "GNOME did not accept the wallpaper"
+            )
         except (OSError, subprocess.SubprocessError) as error:
             failures.append(str(error))
 
@@ -771,6 +963,7 @@ def apply_wallpaper(path):
 
 def apply_lock_wallpaper(path):
     from services.wallpaper import update_lock_background
+
     update_lock_background(path, config_root())
 
 
@@ -784,7 +977,11 @@ def set_wallpaper(args):
     path = download_wallpaper(item)
     service = apply_shell_wallpaper(path) if target == "shell" else apply_wallpaper(path)
     apply_lock_wallpaper(path)
-    return {"path": str(path), "service": service, "message": "Wallpaper set using " + service + ". Lock screen updated."}
+    return {
+        "path": str(path),
+        "service": service,
+        "message": "Wallpaper set using " + service + ". Lock screen updated.",
+    }
 
 
 def run(request):
@@ -806,11 +1003,26 @@ def run(request):
 
 def command_line():
     parser = argparse.ArgumentParser(description="Set a random wallpaper from Pictures providers.")
-    parser.add_argument("--random", action="store_true", help="download and apply a random wallpaper")
-    parser.add_argument("--target", choices=("shell", "desktop"), default="shell",
-                        help="apply to Zephyrus Shell (default) or an external desktop service")
-    parser.add_argument("--provider", choices=tuple(PROVIDERS), help="choose a provider; default: choose one at random")
-    parser.add_argument("--country", choices=tuple(BING_MARKETS), default="US", help="Bing market country (default: US)")
+    parser.add_argument(
+        "--random", action="store_true", help="download and apply a random wallpaper"
+    )
+    parser.add_argument(
+        "--target",
+        choices=("shell", "desktop"),
+        default="shell",
+        help="apply to Zephyrus Shell (default) or an external desktop service",
+    )
+    parser.add_argument(
+        "--provider",
+        choices=tuple(PROVIDERS),
+        help="choose a provider; default: choose one at random",
+    )
+    parser.add_argument(
+        "--country",
+        choices=tuple(BING_MARKETS),
+        default="US",
+        help="Bing market country (default: US)",
+    )
     args = parser.parse_args()
     if not args.random:
         parser.error("use --random to apply a random wallpaper")
@@ -828,10 +1040,14 @@ def command_line():
                 result = set_wallpaper({"wallpaper": item, "target": args.target})
                 break
             except ValueError as error:
-                if attempt == 11 or not str(error).startswith("No supported wallpaper service responded."):
+                if attempt == 11 or not str(error).startswith(
+                    "No supported wallpaper service responded."
+                ):
                     raise
                 time.sleep(1)
-        print(f"Set {item['providerName']} wallpaper {item['id']} using {result['service']}: {result['path']}")
+        print(
+            f"Set {item['providerName']} wallpaper {item['id']} using {result['service']}: {result['path']}"
+        )
     except Exception as error:
         print(str(error), file=sys.stderr)
         return 1
@@ -841,7 +1057,13 @@ def command_line():
 def worker():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from services.worker import serve
-    serve(run, latest=("browse", "tagSearch"), controls=("favorite", "set"), scope=lambda r: (r["op"], bool(r.get("favorites"))))
+
+    serve(
+        run,
+        latest=("browse", "tagSearch"),
+        controls=("favorite", "set"),
+        scope=lambda r: (r["op"], bool(r.get("favorites"))),
+    )
 
 
 if __name__ == "__main__":

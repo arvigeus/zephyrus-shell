@@ -154,8 +154,9 @@ TV Series, also keep it visible above their content.
 
 ## Extend and customize
 
-Read [docs/plugins.md](docs/plugins.md) to add a space. The shell discovers
-modules from manifests. Desktop is built in.
+Read [docs/plugins.md](docs/plugins.md) to add a built-in space. The ordered list
+lives in `core/Modules.qml`; components are declared in `shell/ModuleOverlay.qml`.
+Instances and their workers are created only when needed. Desktop is built in.
 
 Read [docs/architecture.md](docs/architecture.md) for the file map. Colors, spacing,
 and typography live in `core/Theme.qml`; individual machine sections live in
@@ -167,6 +168,11 @@ See [audio naming](docs/audio-names.md) for per-monitor/per-device JSON rules, a
 ## Check changes
 
 ```sh
+make check
+# Individual checks:
+ruff check .
+ruff format --check .
+ty check
 python3 -m unittest discover -s tests -v
 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software /usr/lib/qt6/bin/qmltestrunner -input tests/qml -import .
 node --test tests/*.test.cjs
@@ -176,6 +182,7 @@ bash scripts/check-apps.sh
 bash scripts/check-media.sh
 bash scripts/check-books.sh
 bash scripts/check-games.sh
+bash scripts/check-workers.sh
 bash scripts/check-modules.sh
 bash scripts/check-retained.sh
 bash scripts/check-tray.sh

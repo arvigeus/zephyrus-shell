@@ -1,124 +1,50 @@
-# A space is a directory
+# Built-in spaces
 
-Copy `templates/plugin/` into `plugins/your-name/`. Change the manifest's `id` and
-`name`, then press **Reload spaces** in the left drawer. You do not edit shell code.
+This is a personal shell with a fixed set of modules. There is no runtime plugin
+scan, manifest format, registration process, or reload button.
 
-```json
-{
-  "apiVersion": 1,
-  "id": "books",
-  "name": "Books",
-  "icon": "monitor",
-  "order": 40,
-  "entry": "Main.qml",
-  "enabled": true
-}
-```
+To add a space:
 
-IDs use lowercase letters, digits and hyphens, beginning with a letter. `order` is
-an integer. `entry` must resolve inside the plugin directory to an existing QML
-file. Set `enabled` to false or remove the directory and reload to remove a space.
-Modules can request to remain open through `host.requestKeepRunning(id, true)`.
-Without a request, selecting Desktop or another module destroys the current
-module. Call `host.requestKeepRunning(id, false)` when the background work ends.
-The Spaces drawer gives retained modules a Close button. Escape and
-`host.close()` stop the selected module. Older `keepRunning` manifest values
-remain accepted but no longer retain a module automatically.
-Invalid manifests produce visible errors without stopping other entries.
+1. Add its entry point under `plugins/<id>/Main.qml`.
+2. Add `{id, name, icon}` to `core/Modules.qml` in drawer order. `icon` is a bundled
+   Lucide name without `.svg`.
+3. Import the entry point by an alias in `shell/ModuleOverlay.qml`, declare its
+   `Component`, and add it to the component map.
+4. Exercise the real entry point through `ShellState.openPlugin(id)` in a smoke
+   harness. Restart the shell to pick up the source change.
 
-## The entire host contract
+The components are known at compile time. Their instances, native resources and
+workers remain lazy. Creation waits for drawers to close and uses the shared
+asynchronous loader. Escape cancels loading or closes the active module.
 
-Your root is a QtQuick Item (ColumnLayout, Rectangle, FocusScope, etc.). Declare
-`property var host`. The shell assigns it after creating the component:
+## Host contract
 
-- `host.apiVersion`: currently 1.
-- `host.close()`: destroys this plugin, including while retained behind another space.
-- `host.back()`: destroys this plugin and returns to the space list when selected;
-  a hidden plugin stops without changing the foreground space.
-- `host.requestKeepRunning(id, enabled)`: retain this module while hidden, or
-  release it when background work ends. Pass the module's manifest ID.
-- `host.openPlugin(id, payload)`: open an installed module; returns false if the
-  destination is unavailable. The optional payload is opaque to the shell.
-- Optional `function handleOpen(payload)`: receives the latest navigation payload
-  once the destination is loaded, has its host, and is selected. Selecting another
-  space, Desktop, or closing cancels an undelivered payload. Normal activation
-  without a payload does not call this function.
-- Optional `function activate()`: called after host injection; focus your search field here.
+Every root exposes `property var host`. Its host belongs to that instance:
 
-The host is scoped to the module instance. Retention requests for another ID are
-ignored. Keep feature-specific destination choices and payload validation inside
-the participating modules; the shell must not interpret title, store, or provider
-records. A destination without `handleOpen` simply opens normally.
+- `host.close()` stops that instance, including when hidden.
+- `host.back()` stops it and opens Spaces when it is the foreground module.
+- `host.requestKeepRunning(id, enabled)` retains only its own ID while background
+  work continues. Release it when that work ends.
+- `host.openPlugin(id, payload)` validates the destination and opens it. The
+  destination's optional `handleOpen(payload)` interprets the opaque payload.
+- An optional `activate()` method restores focus when the module becomes visible.
 
-The Loader sizes the root to the available desktop overlay area below the top pills. Import `../../widgets`
-and `../../core` for shared controls and theme tokens. The included Apps plugin
-is a complete working example.
+Selecting Desktop or another space destroys modules without a retention request.
+Retained instances keep their owned workers and playback. Explicit Close and
+Escape always stop the selected module. Lifecycle records live in
+`core/ShellState.qml`; loading, hosts, and payload delivery live in
+`shell/ModuleOverlay.qml`.
 
-## Lifetime and resource ownership
+The overlay extends behind the 42 px bar. Content begins below it without a
+shared heading or navigation controls. Backgrounds default to translucent. An
+optional root `property url backgroundImage` supplies an opaque image background;
+`backgroundImageOpacity` and `backgroundImageWidth` tune its display and decoding.
 
-Startup and Reload read JSON only. Opening the library list does not load plugin
-QML. Selecting one creates its root Item after the drawer closes. Switching
-spaces destroys a module unless it requested retention. A retained module remains
-alive until it releases that request, Escape, `host.close()`, or the drawer’s
-Close control stops it.
-Quickshell/Qt may retain compiled QML code in
-their cache; the promise is no live plugin UI, timers, or owned workers while closed,
-not literally zero bytes of metadata or cached code.
+Workers belong to module instances. Use `services/Worker.qml` for JSON-lines
+backends. Set `startOnDemand: true` for services only used by optional actions;
+requests are buffered until startup and settle on reply, timeout, or exit. Do not
+make optional module services core singletons. Register ordered mutations and
+superseded reads through `services.worker.serve` in the backend.
 
-Put timers, models, signal Connections, and Quickshell Process objects underneath
-your root. Do not create a plugin singleton or import a module with permanent
-background work. Use owned Process objects for workers, never detached execution;
-explicitly stop any external resources in Component.onDestruction when needed.
-Launching a user application is intentionally detached and may survive the drawer.
-Use `External.launch(command, host)` for these launches, or
-`Browser.open(url, moduleId, command, host)` for browser links (`command` may be
-an empty string to use the configured browser). Both close the owning module
-after handing off, removing its overlay and releasing keyboard focus. Pass the
-same host to nested controls that open external applications.
-
-Persist important state to a plugin-specific XDG data directory before destruction.
-State held only in QML is lost on close. Avoid polling when a service offers signals.
-
-Plugins are trusted local QML, **not a security sandbox**. A plugin can execute code
-with your account's permissions. Manifest validation is correctness checking, not
-isolation. Only install code you trust.
-
-## Reload from a terminal
-
-```sh
-quickshell -p /absolute/path/to/zephyrus-shell ipc call shell reloadPlugins
-```
-
-The directory intentionally has no persistent filesystem watcher. Changes appear
-when reloaded, and normal Quickshell source hot reload handles QML edits.
-
-## Presentation and icons
-
-The Spaces drawer lists Desktop and the installed modules. Selecting one closes the drawer and opens
-a full desktop overlay behind the pills, with content starting below the 46 px
-pill bar. The pills remain visible and clickable. The host has no heading or
-navigation buttons: Escape closes the visible module; Desktop hides it while
-the module has an active retention request.
-
-The default background is translucent. A module may declare
-`property url backgroundImage: Qt.resolvedUrl("background.jpg")` on its root.
-The host crops this image to fill the desktop over an opaque base, so the desktop
-does not show through, even if the image has alpha or fails to load. Omit the
-property (or set it to an empty URL) to use the default background.
-
-Use Lucide for interface icons: `widgets/Icon.qml` or `Action.iconName`. Manifest
-`icon` is a bundled name from `assets/lucide/`, without `.svg` (for example,
-`monitor`). Unknown values fall back to `monitor`. Add official
-Lucide SVG assets when a new icon is needed; do not use emoji or text glyphs as
-interface icons. Application and brand artwork can retain their native icons.
-
-Module creation waits for the drawer exit animation and uses an asynchronous
-Loader with a shared loading indicator. Escape cancels loading; Desktop hides
-retained modules while their initialization finishes.
-Module content is destroyed on close, including when creation is in progress.
-
-Dynamic module entries are resolved by `ModuleOverlay.qml` using the discovered
-`entryPath`, relative to `plugins/`. Do not load entries through their filesystem
-URL: they must share the shell's Quickshell URL and singleton instances. Include
-an on-disk `qmldir` index in component directories used only by dynamic modules;
-list sibling QML types there so late loading does not depend on the startup scan.
+Check lifecycle changes with `bash scripts/check-workers.sh`,
+`bash scripts/check-modules.sh`, and `bash scripts/check-retained.sh`.

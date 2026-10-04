@@ -21,7 +21,6 @@ ScrollArea {
     ColumnLayout {
         width: root.availableWidth; spacing: 16
         Heading { text: "Monitor order" }
-        Label { text: "Arrange enabled displays from left to right. Resolution, scale and order are saved for your next login."; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.muted }
         Repeater {
             model: root.enabledMonitors
             RowLayout {
@@ -68,9 +67,11 @@ ScrollArea {
                         displayText: modelData.ddcBus === null ? "Automatic · No bus detected" : "Detected bus " + modelData.ddcBus
                         Layout.fillWidth: true; enabled: !root.machine.busy
                         Accessible.name: "DDC bus for " + modelData.label
+                        ToolTip.visible: hovered || activeFocus
+                        ToolTip.text: "Automatic uses the monitor connector. Enable DDC/CI in the monitor menu."
+                        ToolTip.delay: 800
                         onActivated: index => root.machine.run("display-ddc", JSON.stringify({name: modelData.name, bus: index === 0 ? null : buses[index - 1]}))
                     }
-                    Label { text: "Automatic uses the monitor's connector. Enable DDC/CI in its built-in menu."; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
                 }
             }
         }

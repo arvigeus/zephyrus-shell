@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Control automatic locking for the current compositor session only."""
+
 import argparse
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from services.idle import lock_on_lid, run_idle, set_paused, state

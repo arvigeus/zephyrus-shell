@@ -1,11 +1,12 @@
 """Session-scoped automatic locking, using the existing hypridle service."""
+
 import fcntl
 import os
-from pathlib import Path
 import re
 import subprocess
+from pathlib import Path
 
-from services.theme import atomic_write
+from services.storage import atomic_write
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,8 +21,10 @@ def session_directory():
 
 def state():
     directory = session_directory()
-    return {"available": directory is not None,
-            "paused": bool(directory and (directory / "unlocked").exists())}
+    return {
+        "available": directory is not None,
+        "paused": bool(directory and (directory / "unlocked").exists()),
+    }
 
 
 def configuration(paused):
@@ -32,10 +35,18 @@ def configuration(paused):
     # locking and timed suspend are omitted while this session is unlocked.
     content = re.sub(r"^\s*before_sleep_cmd = .*\n", "", content, flags=re.M)
     content = content.replace("inhibit_sleep = 3", "inhibit_sleep = 1")
+
     def listener(match):
         block = match.group()
-        return "" if ("on-timeout = loginctl lock-session" in block or
-                       "on-timeout = systemctl --check-inhibitors=yes suspend" in block) else block
+        return (
+            ""
+            if (
+                "on-timeout = loginctl lock-session" in block
+                or "on-timeout = systemctl --check-inhibitors=yes suspend" in block
+            )
+            else block
+        )
+
     return re.sub(r"^listener \{\n.*?^\}\n", listener, content, flags=re.M | re.S)
 
 
@@ -53,8 +64,13 @@ def set_paused(paused):
         else:
             marker.unlink(missing_ok=True)
         try:
-            subprocess.run(["systemctl", "--user", "restart", "hypridle.service"],
-                           check=True, capture_output=True, text=True, timeout=15)
+            subprocess.run(
+                ["systemctl", "--user", "restart", "hypridle.service"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
         except (OSError, subprocess.SubprocessError) as error:
             if previous:
                 atomic_write(marker, "Session-only automatic lock pause\n")
@@ -62,8 +78,13 @@ def set_paused(paused):
                 marker.unlink(missing_ok=True)
             # A restart may have stopped the old process before failing.
             try:
-                subprocess.run(["systemctl", "--user", "restart", "hypridle.service"],
-                               check=True, capture_output=True, text=True, timeout=15)
+                subprocess.run(
+                    ["systemctl", "--user", "restart", "hypridle.service"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
             except (OSError, subprocess.SubprocessError):
                 pass
             raise ValueError("Could not change automatic locking: " + str(error)) from error

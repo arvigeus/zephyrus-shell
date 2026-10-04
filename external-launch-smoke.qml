@@ -36,7 +36,7 @@ ShellRoot {
                 const action = cases[index];
                 if (phase === 0) {
                     const id = action === "series-web" || action === "subtitles" ? "series" : "movies";
-                    if (!Plugins.find(id)) return;
+                    if (!Modules.find(id)) return;
                     ShellState.openPlugin(id); phase = 1;
                 } else if (phase === 1) {
                     const loader = find(overlay.item, item => item.objectName === "moduleContent");

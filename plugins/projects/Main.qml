@@ -269,25 +269,8 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.leftMargin: Theme.moduleMargin
-        anchors.rightMargin: Theme.moduleMargin
-        anchors.topMargin: 22
-        anchors.bottomMargin: Theme.moduleMargin
         spacing: 16
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 16
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 3
-                W.Heading { text: "WORKSPACE" }
-                W.Label { text: "Projects"; font.family: Theme.font; font.pixelSize: Theme.sp(28); font.bold: true }
-                W.Label { text: root.projectsPath || "Your XDG Projects folder"; color: Theme.muted; elide: Text.ElideMiddle; Layout.fillWidth: true }
-            }
-            W.Action { text: "Git Clone"; iconName: "folder-git-2"; enabled: !root.busy; onClicked: root.showForm("clone") }
-            W.Action { text: "New Project"; iconName: "folder-plus"; enabled: !root.busy; onClicked: root.showForm("create") }
-        }
         RowLayout {
             Layout.fillWidth: true
             spacing: 12
@@ -301,15 +284,13 @@ Item {
                 text: root.loading ? "Loading…" : root.matches.length + (root.matches.length === 1 ? " project" : " projects")
                 color: Theme.muted
             }
+            W.Action { text: "Clone"; iconName: "folder-git-2"; enabled: !root.busy; onClicked: root.showForm("clone") }
+            W.Action { text: "New project"; iconName: "folder-plus"; enabled: !root.busy; onClicked: root.showForm("create") }
             W.IconButton { iconName: "refresh-cw"; text: "Refresh projects and technologies"; onClicked: root.refresh(true) }
-        }
-        RowLayout {
-            Layout.fillWidth: true
-            W.Label { text: "Recent Projects"; font.family: Theme.font; font.pixelSize: Theme.sp(17); font.bold: true; Layout.fillWidth: true }
             W.IconButton {
                 id: recentOptions
                 iconName: "ellipsis-vertical"; iconSize: 18
-                text: "Recent Projects options"
+                text: "Project tools"
                 onClicked: root.openMenu(recentOptions, recentMenu)
                 Menu {
                     id: recentMenu
@@ -344,8 +325,9 @@ Item {
                 required property var modelData
                 required property int index
                 width: ListView.view.width
-                height: 106
+                height: 88
                 text: modelData.name
+                toolTip: modelData.path + (modelData.opened ? "\n" + root.openedLabel(modelData.opened) : "")
                 enabled: !root.busy
                 highlighted: list.activeFocus && list.currentIndex === index
                 onClicked: root.openProject(modelData)
@@ -390,8 +372,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: 5
                         W.Label { text: card.modelData.name; font.family: Theme.font; font.pixelSize: Theme.sp(17); font.bold: true; Layout.fillWidth: true }
-                        W.Label { text: card.modelData.path; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); elide: Text.ElideMiddle; Layout.fillWidth: true }
-                        W.Label { text: root.openedLabel(card.modelData.opened); color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
+                        W.Label { visible: !!card.modelData.opened; text: root.openedLabel(card.modelData.opened); color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
                     }
                     Row {
                         spacing: 6

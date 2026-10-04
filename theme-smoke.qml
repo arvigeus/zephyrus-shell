@@ -60,7 +60,7 @@ ShellRoot {
         onTriggered: {
             if (++root.attempts > 150) { root.fail("Timed out at step " + root.step + ": " + Theme.error + " mode=" + Theme.mode + " font=" + Theme.fontSize + " " + root.waitReason + " busy=" + ThemeRuntime.busy + " source=" + input.text().slice(0, 100)); return; }
             if (root.step === 0 && Theme.loaded && !ThemeRuntime.busy) {
-                if (!Plugins.find("projects")) return;
+                if (!Modules.find("projects")) return;
                 if (!ShellState.pluginId) { ShellState.openPlugin("projects"); return; }
                 if (!root.projectColors()) return;
                 if (Theme.error || Theme.mode !== (root.coldLight ? "light" : "dark")) { root.fail("Initial theme"); return; }

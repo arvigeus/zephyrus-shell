@@ -1,16 +1,16 @@
 import importlib.util
 import json
 import os
-from pathlib import Path
-import subprocess
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
-
+from pathlib import Path
+from unittest.mock import patch
 
 
 def setup_module():
-    spec = importlib.util.spec_from_file_location("session_setup", Path(__file__).resolve().parents[1] / "scripts/setup-session.py")
+    spec = importlib.util.spec_from_file_location(
+        "session_setup", Path(__file__).resolve().parents[1] / "scripts/setup-session.py"
+    )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -27,7 +27,9 @@ class SetupTests(unittest.TestCase):
             first = strategies.read_text().splitlines()
             module.provision(config, Path("/usr/share/zephyrus-shell"))
             module.check(config, Path("/usr/share/zephyrus-shell"))
-            self.assertIn(".config/systemd/user/hypridle.service.d/idle-policy.conf\treplace\tnever", first)
+            self.assertIn(
+                ".config/systemd/user/hypridle.service.d/idle-policy.conf\treplace\tnever", first
+            )
             self.assertIn(".config/gtk-3.0/settings.ini\treplace\tunchanged", first)
             self.assertEqual(len(first), len(module.session_files(config)[0]))
             self.assertFalse(list(home.rglob("*.before-zephyrus")))
@@ -44,12 +46,16 @@ class SetupTests(unittest.TestCase):
             module.install(config, state, root / "checkout")
             settings = config / "gtk-3.0/settings.ini"
             self.assertFalse(settings.is_symlink())
-            self.assertEqual(settings.read_text(),
-                             (Path(__file__).resolve().parents[1] / "desktop/defaults/settings.ini").read_text())
+            self.assertEqual(
+                settings.read_text(),
+                (Path(__file__).resolve().parents[1] / "desktop/defaults/settings.ini").read_text(),
+            )
             settings.write_text("edited")
             with self.assertRaisesRegex(ValueError, "edited"):
                 module.teardown(state)
-            settings.write_text((Path(__file__).resolve().parents[1] / "desktop/defaults/settings.ini").read_text())
+            settings.write_text(
+                (Path(__file__).resolve().parents[1] / "desktop/defaults/settings.ini").read_text()
+            )
             module.teardown(state)
             self.assertFalse(settings.exists())
 
@@ -76,7 +82,12 @@ class SetupTests(unittest.TestCase):
             self.assertIn("repo with space/hyprland/hyprland.lua", original.read_text())
             self.assertEqual((hypr / "hyprland.lua.before-zephyrus").read_text(), "old-config")
             policy = config / "systemd/user/hypridle.service.d/idle-policy.conf"
-            self.assertIn('ExecStart=/usr/bin/python3 "' + str(root / "repo with space/scripts/idle.py") + '" run', policy.read_text())
+            self.assertIn(
+                'ExecStart=/usr/bin/python3 "'
+                + str(root / "repo with space/scripts/idle.py")
+                + '" run',
+                policy.read_text(),
+            )
             module.install(config, state, root / "repo with space")
             module.teardown(state)
             self.assertEqual(original.read_text(), "old-config")
@@ -136,10 +147,12 @@ class SetupTests(unittest.TestCase):
             path = config / "hypr/hyprland.lua"
             path.write_text("preserve")
             original = Path.write_text
+
             def write(path, *args, **kwargs):
                 if path.name == "dev-session.json":
                     raise OSError("failed manifest")
                 return original(path, *args, **kwargs)
+
             with patch.object(Path, "write_text", write), self.assertRaises(OSError):
                 setup_module().install(config, state, root / "repo")
             self.assertEqual(path.read_text(), "preserve")
@@ -149,6 +162,7 @@ class SetupTests(unittest.TestCase):
 class LockBackgroundTests(unittest.TestCase):
     def test_startup_migrates_existing_wallpaper_with_spaces_and_preserves_new_choice(self):
         from services.wallpaper import sync_lock_background, update_lock_background
+
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory)
             folder = config / "zephyrus-shell"
@@ -166,11 +180,14 @@ class LockBackgroundTests(unittest.TestCase):
 
     def test_missing_or_remote_background_does_not_create_broken_link(self):
         from services.wallpaper import sync_lock_background
+
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory)
             self.assertFalse(sync_lock_background(config))
             folder = config / "zephyrus-shell"
             folder.mkdir()
-            (folder / "wallpaper.json").write_text(json.dumps({"image": "https://example.com/image.png"}))
+            (folder / "wallpaper.json").write_text(
+                json.dumps({"image": "https://example.com/image.png"})
+            )
             self.assertFalse(sync_lock_background(config))
             self.assertFalse((folder / "lock-wallpaper").is_symlink())

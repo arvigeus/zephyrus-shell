@@ -1,9 +1,9 @@
 import json
 import os
-from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from services import idle
@@ -14,8 +14,10 @@ class IdlePolicyTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.runtime = Path(self.temporary.name)
-        self.environment = patch.dict(os.environ, {
-            "XDG_RUNTIME_DIR": str(self.runtime), "HYPRLAND_INSTANCE_SIGNATURE": "session-one"})
+        self.environment = patch.dict(
+            os.environ,
+            {"XDG_RUNTIME_DIR": str(self.runtime), "HYPRLAND_INSTANCE_SIGNATURE": "session-one"},
+        )
         self.environment.start()
         self.addCleanup(self.environment.stop)
 
@@ -27,7 +29,9 @@ class IdlePolicyTests(unittest.TestCase):
                 self.assertFalse(idle.state()["paused"])
             self.assertFalse(idle.set_paused(False)["paused"])
         self.assertEqual(restart.call_count, 2)
-        self.assertEqual(restart.call_args.args[0], ["systemctl", "--user", "restart", "hypridle.service"])
+        self.assertEqual(
+            restart.call_args.args[0], ["systemctl", "--user", "restart", "hypridle.service"]
+        )
 
     def test_paused_profile_keeps_blanking_manual_lock_and_resume_only(self):
         normal = idle.configuration(False)

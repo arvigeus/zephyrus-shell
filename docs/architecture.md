@@ -30,7 +30,9 @@ in its module backend, so the shell only handles navigation and lifetime.
 | Shared module overlay and host contract | `shell/ModuleOverlay.qml` |
 | Panel selection | `core/ShellState.qml` |
 | Colors and type | `core/theme/Theme.qml`, with the `core/Theme.qml` compatibility facade |
-| Plugin registry | `core/Plugins.qml`, `scripts/plugins.py` |
+| Ordered built-in spaces | `core/Modules.qml` |
+| Pure provider record normalization | `media/records.py`, `plugins/music/records.py` |
+| Atomic state replacement | `services/storage.py` |
 | Notification server | `core/Attention.qml` |
 | Weather/calendar in-memory snapshot | `core/AttentionData.qml` (passive cache); requests owned by `attention/AttentionPanel.qml` |
 | Owned worker transport and scheduling | `services/Worker.qml`, `services/worker.py` |
@@ -49,7 +51,7 @@ in its module backend, so the shell only handles navigation and lifetime.
 | Independent library entries | `plugins/<id>/` |
 | Scrolling layout, optional floating and shortcuts | `hyprland/` |
 
-`ShellScreen` creates a bar and overlay windows per monitor. Its bar reserves 46 px
+`ShellScreen` creates a bar and overlay windows per monitor. Its bar reserves 42 px
 for windows and uses an input mask containing only the pills and app icons. Drawers
 ignore the exclusive zone and sit above the bar, covering the corresponding pill
 without rearranging desktop windows. They touch the top, bottom, and side edges
@@ -77,10 +79,10 @@ the insertion marker and edge scrolling. A completed drop goes through
 current workspace/monitor geometry and uses native scrolling-column swaps.
 
 Drawer windows stay declared but their Loader is inactive while hidden. The Spaces
-drawer lists Desktop first, then plugin metadata. Opening it leaves the current
+drawer lists Desktop first, then built-in spaces. Opening it leaves the current
 module visible. Selecting Desktop hides the overlay and reveals the Hyprland
-session. The shared module overlay owns an asynchronous loader slot for each
-module. Music and Radio request retention while playback is active, so switching
+session. The shared module overlay creates an asynchronous loader slot for each
+running module using statically declared components. Music and Radio request retention while playback is active, so switching
 modules can leave playback running. Escape or the drawer’s
 Close control destroys the selected module. Core services are shared across
 monitors. A retained module stays owned by the monitor where it opened; opening
@@ -91,9 +93,9 @@ surface. Removing that surface reparents the loader onto a surviving screen;
 the loaded module objects and their workers keep their lifetime.
 
 `ShellState` is the sole writer of module lifetime bookkeeping: running IDs,
-monitor ownership, retention, and pending navigation. Registry reload passes
-installed IDs to `ShellState.reconcilePlugins`; registry and visual components
-must not independently rewrite those maps. `ShellState.reconcileScreens` moves
+monitor ownership, retention, and pending navigation. Visual components never
+rewrite those maps. There is no runtime module scan, manifest parsing, or registry
+reload. Unopened modules have no instances, workers, or loader delegates. `ShellState.reconcileScreens` moves
 ownership when a screen disappears. `ModuleLoader` supports the shared live-shell
 host and individual preview hosts; `ModuleOverlay` gates creation until drawers finish closing.
 Each module receives its own host, so a hidden module can close itself without
@@ -104,8 +106,13 @@ availability and delivers once, while the modules interpret the payload. See
 
 `services/` contains reusable infrastructure, not automatically resident services.
 `Worker.qml` owns a process and settles callbacks on response, timeout, or exit.
+Startup requests wait for the process to start. Optional torrent/subtitle workers
+start on their first request; unused services have no process or polling timer.
+Books and Games read their local library through their existing catalogue worker.
 `worker.py` bounds pending work, serializes mutation operations, and emits a reply
-even for superseded reads. Backend generation filtering does not cancel a read
+even for superseded reads. Read queues reserve capacity for controls, and
+supersession bookkeeping is bounded by pending work. Unexpected backend exceptions
+are logged to stderr and still settle the request. Backend generation filtering does not cancel a read
 already in progress: views still guard selections and browse results against
 late replies. Module adapters define their operations, mutation lanes, provider
 rules, and errors. Shared mpv code owns only socket validation, framing, and
@@ -121,12 +128,11 @@ similar rails and SQLite tables.
 
 Attention views bind to the passive `AttentionData` snapshot without assigning
 local copies. Panel loading flags, request generations, month selection, and
-editor state are transient UI state. The worker and refresh timers currently
-exist only while the panel is open. Before adding a second Nextcloud consumer,
-establish one integration owner for credentials, CalDAV requests, cache
-invalidation, and mutation completion under `attention/` or `services/`; views
-should subscribe to it rather than create another calendar/task cache. Choose
-its lifetime explicitly instead of making it resident through a plugin import.
+editor state are transient UI state. The panel worker exists only while the panel is open. The bar uses a one-shot
+reader every 15 minutes. Both use `attention/backend.py` for credentials, CalDAV
+requests and cache publication. A short file lock and revision fence prevent
+reads started before or during a mutation from restoring the invalidated cache;
+network calls do not hold the lock. Failed writes retain the offline snapshot.
 
 Configuration and secrets belong in `$XDG_CONFIG_HOME/zephyrus-shell`; persistent
 records belong in `$XDG_DATA_HOME/zephyrus-shell`; replaceable public responses
@@ -141,8 +147,8 @@ Smoke harnesses must use the real module entry points, shared loader, and
 `ShellState` actions. Do not emulate lifetime by assigning loader activity or
 navigation fields directly. State-only checks run inside Quickshell because the
 core import includes its native bindings; ordinary Qt QML tests cover portable
-widgets. See [the architecture review](architecture-review.md) for deferred work
-and validation limits.
+widgets. Provider fixtures validate local behavior; live account and physical monitor
+behavior still require the real session.
 
 Machine actions use argument arrays, never interpolated shell commands. Controls
 invoke an explicit allowlist. A Python snapshot process runs when controls open;

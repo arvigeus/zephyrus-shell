@@ -33,7 +33,7 @@ ShellRoot {
             onTriggered: {
                 if (++ticks > 160) { fail("Timed out loading " + modules[index]); return; }
                 if (phase === 0) {
-                    if (!Plugins.find(modules[index])) return;
+                    if (!Modules.find(modules[index])) return;
                     started = Date.now();
                     ShellState.openPlugin(modules[index]); phase = 1;
                 } else if (phase === 1) {

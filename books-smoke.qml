@@ -40,7 +40,7 @@ ShellRoot {
             onTriggered: {
                 if (++attempts > 80) { require(false, "Timed out at step " + step); return; }
                 if (step === 0) {
-                    if (!Plugins.find("books")) return;
+                    if (!Modules.find("books")) return;
                     ShellState.openPlugin("books"); step++;
                 } else if (step === 1) {
                     const content = find(overlay.item, "moduleContent");

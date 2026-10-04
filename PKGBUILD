@@ -26,7 +26,7 @@ _package_payload() {
 		case $file in
 			assets/* | attention/* | books/* | clipboard/* | config/* | core/* | drawers/* | games/* | \
 			hyprland/* | media/* | pictures/* | plugins/* | scripts/* | services/* | settings/* | \
-			shell/* | systemd/* | templates/* | widgets/* | desktop/defaults/* | shell.qml) ;;
+			shell/* | systemd/* | widgets/* | desktop/defaults/* | shell.qml) ;;
 			*) continue ;;
 		esac
 		case $file in

@@ -6,6 +6,7 @@ import "../core/theme"
 Button {
     id: root
     property string iconName: ""
+    property string toolTip: text
     property bool destructive: false
     property real cornerRadius: Theme.controlRadius
     property color idleColor: "transparent"
@@ -16,8 +17,8 @@ Button {
     font.family: Theme.font
     font.pixelSize: Theme.sp(14)
     Accessible.name: text
-    ToolTip.visible: hovered && text.length > 0
-    ToolTip.text: text
+    ToolTip.visible: (hovered || activeFocus) && toolTip.length > 0
+    ToolTip.text: toolTip
     ToolTip.delay: 800
     contentItem: RowLayout {
         spacing: 8

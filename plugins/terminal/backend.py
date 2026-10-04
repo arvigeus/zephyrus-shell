@@ -1,8 +1,9 @@
 """Read named commands; execution belongs to the selected native terminal session."""
+
 import json
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.worker import serve
@@ -26,7 +27,8 @@ def configuration():
     commands = []
     for index, item in enumerate(data["commands"], 1):
         if not isinstance(item, dict) or any(
-            not isinstance(item.get(key), str) or not item[key].strip() for key in ("name", "command")
+            not isinstance(item.get(key), str) or not item[key].strip()
+            for key in ("name", "command")
         ):
             raise ValueError(f"Command {index} needs a nonempty name and command.")
         if any(character in item["command"] for character in ("\0", "\x1b", "\r")):

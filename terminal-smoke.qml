@@ -38,7 +38,7 @@ ShellRoot {
             if (++root.ticks > 200) { root.fail("Timeout"); return; }
             const m = overlay.item ? overlay.item.currentModule : null;
             if (root.step === 0) {
-                if (!Plugins.find("terminal") || !Theme.loaded) return;
+                if (!Modules.find("terminal") || !Theme.loaded) return;
                 ShellState.openPlugin("terminal"); root.step = 1;
             } else if (root.step === 1) {
                 if (!m || !m.currentTerminal || m.commandsLoading || root.ticks < 12) return;

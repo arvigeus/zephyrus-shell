@@ -1,12 +1,11 @@
 import importlib.util
 import json
-from pathlib import Path
 import tempfile
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
-
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("books_backend", ROOT / "books/backend.py")
@@ -22,14 +21,21 @@ class BooksBackendTests(unittest.TestCase):
         self.backend = books.BooksBackend(root / "config/books.json", root / "data", root / "cache")
         self.fixtures = ROOT / "tests/fixtures/books"
         self.book = {
-            "id": "OL100W", "title": "The Example Book",
+            "id": "OL100W",
+            "title": "The Example Book",
             "authors": [{"id": "OL1A", "name": "Ada Lovelace"}],
-            "firstPublishYear": 1843, "coverId": "1200",
+            "firstPublishYear": 1843,
+            "coverId": "1200",
             "coverSmall": "https://covers.openlibrary.org/b/id/1200-M.jpg",
             "coverLarge": "https://covers.openlibrary.org/b/id/1200-L.jpg",
-            "editionCount": 8, "subjects": ["Computing"], "subjectCount": 1,
-            "languages": ["eng"], "ratingAverage": 4.3, "ratingCount": 12,
-            "ebookAccess": "public", "hasFulltext": True,
+            "editionCount": 8,
+            "subjects": ["Computing"],
+            "subjectCount": 1,
+            "languages": ["eng"],
+            "ratingAverage": 4.3,
+            "ratingCount": 12,
+            "ebookAccess": "public",
+            "hasFulltext": True,
             "openLibraryUrl": "https://openlibrary.org/works/OL100W",
         }
 
@@ -43,14 +49,16 @@ class BooksBackendTests(unittest.TestCase):
         first = result["items"][0]
         self.assertEqual(first["authors"], [{"id": "OL1A", "name": "Ada Lovelace"}])
         self.assertEqual(first["firstPublishYear"], 1843)
-        self.assertEqual(first["coverSmall"], "https://covers.openlibrary.org/b/id/1200-M.jpg?default=false")
+        self.assertEqual(
+            first["coverSmall"], "https://covers.openlibrary.org/b/id/1200-M.jpg?default=false"
+        )
         self.assertEqual(first["editionCount"], 8)
         self.assertEqual(first["ratingAverage"], 4.2)
         self.assertEqual(first["ratingCount"], 12)
         self.assertEqual(first["subjectCount"], 14)
         self.assertEqual(len(first["subjects"]), 12)
         self.assertEqual(api.call_args.args[0], "/search.json")
-        self.assertEqual(api.call_args.args[1]["q"], "*:*" )
+        self.assertEqual(api.call_args.args[1]["q"], "*:*")
         self.assertEqual(api.call_args.args[1]["sort"], "trending")
         self.assertIn("author_key", api.call_args.args[1]["fields"])
         self.assertNotIn("editions", api.call_args.args[1]["fields"])
@@ -69,42 +77,66 @@ class BooksBackendTests(unittest.TestCase):
             books.work_id("OL100M")
 
     def test_author_ids_survive_normalized_records_and_sparse_detail_merges(self):
-        catalogue = books.normalize_work({
-            "key": "/works/OL5682519W", "title": "Dog Days",
-            "author_name": ["Jeff Kinney"], "author_key": ["OL2832500A"],
-        })
+        catalogue = books.normalize_work(
+            {
+                "key": "/works/OL5682519W",
+                "title": "Dog Days",
+                "author_name": ["Jeff Kinney"],
+                "author_key": ["OL2832500A"],
+            }
+        )
         renormalized = books.normalize_work(catalogue)
         self.assertEqual(renormalized["authors"], [{"id": "OL2832500A", "name": "Jeff Kinney"}])
 
-        hydrated = books.merge_book(catalogue, {"authors": [
-            {"name": "Jeff Kinney"}, {"id": "OL2832500A"},
-        ]})
+        hydrated = books.merge_book(
+            catalogue,
+            {
+                "authors": [
+                    {"name": "Jeff Kinney"},
+                    {"id": "OL2832500A"},
+                ]
+            },
+        )
         self.assertEqual(hydrated["authors"], [{"id": "OL2832500A", "name": "Jeff Kinney"}])
 
     def test_cached_sparse_author_duplicates_are_repaired_on_read(self):
-        self.backend.put_cache("work:OL100W", {
-            "id": "OL100W", "title": "The Example Book",
-            "authors": [{"id": "", "name": "Ada Lovelace"}, {"id": "OL1A", "name": ""}],
-        })
+        self.backend.put_cache(
+            "work:OL100W",
+            {
+                "id": "OL100W",
+                "title": "The Example Book",
+                "authors": [{"id": "", "name": "Ada Lovelace"}, {"id": "OL1A", "name": ""}],
+            },
+        )
         result = self.backend.details({"book": self.book})
         self.assertEqual(result["authors"], [{"id": "OL1A", "name": "Ada Lovelace"}])
 
     def test_query_supports_text_isbn_subject_language_year_and_sort(self):
         response = {"num_found": 0, "docs": []}
         with patch.object(self.backend, "request", return_value=response) as api:
-            self.backend.browse({"query": "9780000000001", "filters": {
-                "subject": 'science "history', "language": "eng", "minYear": "1800",
-                "maxYear": "1900", "sort": "newest",
-            }})
+            self.backend.browse(
+                {
+                    "query": "9780000000001",
+                    "filters": {
+                        "subject": 'science "history',
+                        "language": "eng",
+                        "minYear": "1800",
+                        "maxYear": "1900",
+                        "sort": "newest",
+                    },
+                }
+            )
         params = api.call_args.args[1]
         self.assertIn("9780000000001", params["q"])
-        self.assertIn('subject:"science \\\"history"', params["q"])
+        self.assertIn('subject:"science \\"history"', params["q"])
         self.assertIn("language:eng", params["q"])
         self.assertIn("first_publish_year:[1800 TO 1900]", params["q"])
         self.assertEqual(params["sort"], "new")
 
     def test_free_text_defaults_to_relevance_and_discovery_to_trending(self):
-        with patch.object(self.backend, "request", return_value={"num_found": 0, "docs": []}) as api:
+        with patch.object(
+            self.backend, "request", return_value={"num_found": 0, "docs": []}
+        ) as api:
             self.backend.browse({"query": "rambo"})
             self.assertNotIn("sort", api.call_args.args[1])
             self.backend.browse({})
@@ -121,7 +153,9 @@ class BooksBackendTests(unittest.TestCase):
         )
 
     def test_free_text_escapes_lucene_operators_and_keeps_symbols_literal(self):
-        with patch.object(self.backend, "request", return_value={"num_found": 0, "docs": []}) as api:
+        with patch.object(
+            self.backend, "request", return_value={"num_found": 0, "docs": []}
+        ) as api:
             self.backend.browse({"query": "C++ (a:b)"})
         self.assertEqual(api.call_args.args[1]["q"], r"(C\+\+ \(a\:b\))")
 
@@ -140,7 +174,10 @@ class BooksBackendTests(unittest.TestCase):
     def test_catalogue_pagination_uses_offsets_and_work_counts(self):
         def response(path, params):
             offset = params["offset"]
-            rows = [{"key": f"/works/OL{i}W", "title": f"Work {i}"} for i in range(offset, min(offset + books.PAGE_SIZE, 81))]
+            rows = [
+                {"key": f"/works/OL{i}W", "title": f"Work {i}"}
+                for i in range(offset, min(offset + books.PAGE_SIZE, 81))
+            ]
             return {"num_found": 81, "docs": rows}
 
         with patch.object(self.backend, "request", side_effect=response) as api:
@@ -168,7 +205,10 @@ class BooksBackendTests(unittest.TestCase):
             cached = self.backend.browse({})
         key = books.browse_cache_key("", {}, 0)
         with self.backend.db(self.backend.cache_db) as db:
-            db.execute("UPDATE cache SET updated=? WHERE key=?", (time.time() - books.CATALOGUE_TTL - 5, key))
+            db.execute(
+                "UPDATE cache SET updated=? WHERE key=?",
+                (time.time() - books.CATALOGUE_TTL - 5, key),
+            )
         with patch.object(self.backend, "request", side_effect=books.BooksError("offline")):
             stale = self.backend.browse({"refresh": True})
         self.assertEqual(stale["items"], cached["items"])
@@ -176,8 +216,12 @@ class BooksBackendTests(unittest.TestCase):
 
     def test_favorites_persist_by_work_id_and_search_locally_offline(self):
         self.backend.handle({"op": "save", "book": self.book, "favorite": True})
-        restarted = books.BooksBackend(self.backend.config_path, self.backend.data, self.backend.cache)
-        with patch.object(restarted, "request", side_effect=AssertionError("favorites should not hit the network")):
+        restarted = books.BooksBackend(
+            self.backend.config_path, self.backend.data, self.backend.cache
+        )
+        with patch.object(
+            restarted, "request", side_effect=AssertionError("favorites should not hit the network")
+        ):
             favorites = restarted.browse({"favorites": True, "query": "ada"})
             missing = restarted.browse({"favorites": True, "query": "9780000000001"})
         self.assertEqual([book["id"] for book in favorites["items"]], ["OL100W"])
@@ -216,7 +260,9 @@ class BooksBackendTests(unittest.TestCase):
         self.assertTrue(author["image"].endswith("/a/id/76-M.jpg?default=false"))
         self.assertEqual(api.call_args.args[0], "/authors/OL1A.json")
 
-        with patch.object(self.backend, "request", return_value=self.fixture("author-works.json")) as api:
+        with patch.object(
+            self.backend, "request", return_value=self.fixture("author-works.json")
+        ) as api:
             works = self.backend.author_works({"author": {"id": "OL1A"}})
         self.assertEqual([book["id"] for book in works["items"]], ["OL200W", "OL201W"])
         self.assertEqual(works["next"], "2")
@@ -233,7 +279,9 @@ class BooksBackendTests(unittest.TestCase):
         self.assertEqual(selected["authors"], [person])
 
     def test_editions_are_lazy_paginated_and_keep_only_edition_differences(self):
-        with patch.object(self.backend, "request", return_value=self.fixture("editions.json")) as api:
+        with patch.object(
+            self.backend, "request", return_value=self.fixture("editions.json")
+        ) as api:
             result = self.backend.editions({"book": self.book})
         self.assertEqual(api.call_args.args[0], "/works/OL100W/editions.json")
         self.assertEqual(api.call_args.args[1], {"limit": books.EDITION_PAGE_SIZE, "offset": 0})
@@ -248,9 +296,13 @@ class BooksBackendTests(unittest.TestCase):
         self.assertNotIn("authors", edition)
 
     def test_provider_errors_are_concise_and_do_not_echo_response_body(self):
-        with patch.object(books.urllib.request, "urlopen", side_effect=HTTPError(
-            "https://openlibrary.org/search.json?q=private", 429, "rate limit", {}, None
-        )):
+        with patch.object(
+            books.urllib.request,
+            "urlopen",
+            side_effect=HTTPError(
+                "https://openlibrary.org/search.json?q=private", 429, "rate limit", {}, None
+            ),
+        ):
             with self.assertRaises(books.BooksError) as raised:
                 self.backend.request("/search.json", {"q": "private"})
         self.assertEqual(str(raised.exception), "Open Library is busy. Wait a moment, then retry.")

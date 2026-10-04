@@ -44,7 +44,7 @@ ShellRoot {
             if (!target && step < 15) return;
             const client = target ? WindowList.clientFor(target) : null;
             if (step === 0) {
-                if (!client || !Plugins.find("apps")) return;
+                if (!client || !Modules.find("apps")) return;
                 ShellState.openPlugin("apps"); advance();
             } else if (step === 1) {
                 if (!root.modules.item || !root.modules.item.currentModule) return;

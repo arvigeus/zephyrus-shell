@@ -1,4 +1,5 @@
 """Keep the session's lock background alongside the saved desktop choice."""
+
 import json
 import os
 from pathlib import Path

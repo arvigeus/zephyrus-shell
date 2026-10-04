@@ -40,7 +40,7 @@ ShellRoot {
             onTriggered: {
                 if (++ticks > 100) { fail("Timed out at step " + step); return; }
                 if (step === 0) {
-                    if (!Plugins.find("music") || !Plugins.find("radio") || !Plugins.find("games")) return;
+                    if (!Modules.find("music") || !Modules.find("radio") || !Modules.find("games")) return;
                     ShellState.monitor = "primary";
                     ShellState.openPlugin("music"); step++; ticks = 0;
                 } else if (step === 1) {
@@ -62,10 +62,9 @@ ShellRoot {
                     ShellState.toggle("left", "primary");
                     ShellState.dismissPanel();
                     if (ShellState.monitor !== "secondary" || content("radio", overlay) !== radioItem) { fail("Drawer moved Radio"); return; }
-                    Plugins.reload(); step++; ticks = 0;
+                    step++; ticks = 0;
                 } else if (step === 4) {
-                    if (Plugins.scan.running) return;
-                    if (content("music") !== musicItem || content("radio", overlay) !== radioItem) { fail("Reload stopped a player"); return; }
+                    if (content("music") !== musicItem || content("radio", overlay) !== radioItem) { fail("Panel dismissal stopped a player"); return; }
                     ShellState.openPlugin("games"); step++; ticks = 0;
                 } else if (step === 5) {
                     const game = find(overlay.item, "moduleContent");
@@ -123,7 +122,7 @@ ShellRoot {
                     musicItem.host.close(); step++; ticks = 0;
                 } else if (step === 16) {
                     if (overlay.item) return;
-                    console.log("RETAINED PASS: drawer, Desktop, idle release, general retention, multi-monitor switching, reload, and explicit stop");
+                    console.log("RETAINED PASS: drawer, Desktop, idle release, general retention, multi-monitor switching and explicit stop");
                     Qt.quit();
                 }
             }

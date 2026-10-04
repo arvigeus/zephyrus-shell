@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Capture from Hyprland into XDG Pictures/Screenshots and the clipboard."""
+
 import argparse
-from datetime import datetime
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
+from datetime import datetime
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,7 +30,11 @@ def capture(mode, *, edit=False, active=False):
     if active and mode != "window":
         raise ValueError("Active selection is only needed for window capture.")
     result = subprocess.run(["xdg-user-dir", "PICTURES"], capture_output=True, text=True, timeout=5)
-    pictures = Path(result.stdout.strip()) if result.returncode == 0 and result.stdout.strip() else Path.home() / "Pictures"
+    pictures = (
+        Path(result.stdout.strip())
+        if result.returncode == 0 and result.stdout.strip()
+        else Path.home() / "Pictures"
+    )
     folder = pictures / "Screenshots"
     folder.mkdir(parents=True, exist_ok=True)
     filename = "Screenshot-" + datetime.now().strftime("%Y-%m-%d-%H%M%S-%f") + ".png"
@@ -46,8 +51,18 @@ def capture(mode, *, edit=False, active=False):
         return None
     if editor:
         # Replace the detached helper: the editor outlives any shell surface.
-        os.execv(editor, [editor, "--config", str(ROOT / "config/satty.toml"),
-                          "--filename", str(image), "--output-filename", str(image)])
+        os.execv(
+            editor,
+            [
+                editor,
+                "--config",
+                str(ROOT / "config/satty.toml"),
+                "--filename",
+                str(image),
+                "--output-filename",
+                str(image),
+            ],
+        )
     return image
 
 
@@ -55,7 +70,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("region", "window", "output"))
     parser.add_argument("--edit", action="store_true", help="Open the capture in Satty")
-    parser.add_argument("--active", action="store_true", help="Capture the active window without selection")
+    parser.add_argument(
+        "--active", action="store_true", help="Capture the active window without selection"
+    )
     args = parser.parse_args()
     try:
         capture(args.mode, edit=args.edit, active=args.active)

@@ -35,8 +35,8 @@ ShellRoot {
                         + " " + (rootModule ? rootModule.errorText + "/" + rootModule.changing : "destroyed")); return;
                 }
                 if (phase === 0) {
-                    if (!Plugins.find("apps")) return;
-                    if (Plugins.find("clipboard")) { fail("Clipboard is still a module"); return; }
+                    if (!Modules.find("apps")) return;
+                    if (Modules.find("clipboard")) { fail("Clipboard is still a module"); return; }
                     ShellState.monitor = "test";
                     ShellState.openPlugin("apps"); phase = 10;
                 } else if (phase === 10) {

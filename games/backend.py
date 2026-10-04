@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 """Games catalogue and local-library worker. QML communicates with JSON lines."""
 
-from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager, nullcontext
-from datetime import datetime
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import sqlite3
@@ -20,12 +16,19 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from contextlib import contextmanager, nullcontext
+from datetime import datetime
+from functools import cached_property
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from games.igdb import Client as IGDBClient, normalize as normalize_igdb_game
+from games.igdb import Client as IGDBClient
+from games.igdb import normalize as normalize_igdb_game
+from media.local import LocalLibrary
 
-
-CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "zephyrus-shell/games.json"
+CONFIG = (
+    Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "zephyrus-shell/games.json"
+)
 DATA = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "zephyrus-shell/games"
 PROTONDB_SUMMARY = "https://www.protondb.com/api/v1/reports/summaries/{}.json"
 PROTONDB_PAGE = "https://www.protondb.com/app/{}"
@@ -75,7 +78,9 @@ def match_library_item(game, store, library_items, override=""):
         for reference in (game.get("storeReferences") or [])
         if reference.get("store") == store and reference.get("externalId")
     ]
-    by_id = {str(item.get("externalId", "")): item for item in library_items if item.get("externalId")}
+    by_id = {
+        str(item.get("externalId", "")): item for item in library_items if item.get("externalId")
+    }
     if override:
         return (by_id[override], "override") if override in by_id else (None, "")
     for external_id in references:
@@ -124,8 +129,11 @@ def derive_store_state(game, libraries, overrides=None):
     references = game.get("storeReferences") or []
     rows = []
     for store in ("steam", "epic"):
-        reference_ids = [str(value.get("externalId", "")) for value in references
-                         if value.get("store") == store and value.get("externalId")]
+        reference_ids = [
+            str(value.get("externalId", ""))
+            for value in references
+            if value.get("store") == store and value.get("externalId")
+        ]
         override = str(overrides.get(store, ""))
         provider = (libraries or {}).get(store, {})
         owned_ids = set(str(value) for value in provider.get("ownedIds", []))
@@ -142,17 +150,41 @@ def derive_store_state(game, libraries, overrides=None):
         actions = []
         action_id = matched_id or override or (reference_ids[0] if len(reference_ids) == 1 else "")
         if launchable and action_id:
-            actions.append({"id": f"{store}:play:{action_id}", "type": "play", "label": "Play", "store": store})
-            actions.append({"id": f"{store}:uninstall:{action_id}", "type": "uninstall", "label": "Uninstall", "store": store})
+            actions.append(
+                {"id": f"{store}:play:{action_id}", "type": "play", "label": "Play", "store": store}
+            )
+            actions.append(
+                {
+                    "id": f"{store}:uninstall:{action_id}",
+                    "type": "uninstall",
+                    "label": "Uninstall",
+                    "store": store,
+                }
+            )
         elif owned_status == "owned" and not installed and provider.get("available"):
             install_candidates = (override,) if override else (matched_id, *reference_ids)
-            install_id = next((value for value in install_candidates if value and value in owned_ids), "")
+            install_id = next(
+                (value for value in install_candidates if value and value in owned_ids), ""
+            )
             if install_id and (store == "steam" or provider.get("installationKnown", True)):
-                actions.append({"id": f"{store}:install:{install_id}", "type": "install", "label": "Install", "store": store})
+                actions.append(
+                    {
+                        "id": f"{store}:install:{install_id}",
+                        "type": "install",
+                        "label": "Install",
+                        "store": store,
+                    }
+                )
 
         linked = bool(reference_ids or override or match)
         installation_known = provider.get("installationKnown", store == "steam")
-        installation_label = "Installed" if installed else "Not installed" if linked and installation_known else "No matching install found"
+        installation_label = (
+            "Installed"
+            if installed
+            else "Not installed"
+            if linked and installation_known
+            else "No matching install found"
+        )
         if installed and not launchable:
             installation_label = "Installed · launcher unavailable"
         if not installation_known:
@@ -163,7 +195,11 @@ def derive_store_state(game, libraries, overrides=None):
             ownership_label = "Not owned"
         elif store == "epic" and provider.get("available") and not provider.get("ownershipKnown"):
             ownership_label = "Sign in with Legendary"
-        elif store == "steam" and provider.get("ownershipConfigured") and not provider.get("ownershipKnown"):
+        elif (
+            store == "steam"
+            and provider.get("ownershipConfigured")
+            and not provider.get("ownershipKnown")
+        ):
             ownership_label = "Steam profile is private or unavailable"
         elif not provider.get("available"):
             ownership_label = "Integration unavailable"
@@ -171,66 +207,113 @@ def derive_store_state(game, libraries, overrides=None):
             ownership_label = "Ownership not checked"
 
         if not linked:
-            primary_action = {"type": "link", "label": "Link", "enabled": True,
-                              "tooltip": "Add this game's store ID to match it with your library."}
+            primary_action = {
+                "type": "link",
+                "label": "Link",
+                "enabled": True,
+                "tooltip": "Add this game's store ID to match it with your library.",
+            }
             status_label = "Not linked"
         elif launchable and actions:
-            primary_action = {**actions[0], "enabled": True,
-                              "tooltip": f"{ownership_label} · {installation_label}"}
+            primary_action = {
+                **actions[0],
+                "enabled": True,
+                "tooltip": f"{ownership_label} · {installation_label}",
+            }
             status_label = "Installed"
         elif owned_status == "owned" and not installed and actions:
-            primary_action = {**actions[0], "enabled": True,
-                              "tooltip": f"{ownership_label} · {installation_label}"}
+            primary_action = {
+                **actions[0],
+                "enabled": True,
+                "tooltip": f"{ownership_label} · {installation_label}",
+            }
             status_label = "Owned · not installed"
         elif installed:
-            primary_action = {"type": "disabled", "label": "Unavailable", "enabled": False,
-                              "tooltip": provider.get("message") or "This launcher cannot currently manage this installation."}
+            primary_action = {
+                "type": "disabled",
+                "label": "Unavailable",
+                "enabled": False,
+                "tooltip": provider.get("message")
+                or "This launcher cannot currently manage this installation.",
+            }
             status_label = "Installed"
         elif owned_status == "not-owned":
-            purchase_url = next((_safe_store_url(value.get("url", ""), store, value.get("externalId", ""))
-                                 for value in references if value.get("store") == store
-                                 and _safe_store_url(value.get("url", ""), store, value.get("externalId", ""))), "")
-            primary_action = {"type": "buy" if purchase_url else "disabled", "label": "Buy" if purchase_url else "Unavailable",
-                              "enabled": bool(purchase_url), "url": purchase_url,
-                              "tooltip": f"Open {STORE_LABELS[store]} to buy this game." if purchase_url else ownership_label}
+            purchase_url = next(
+                (
+                    _safe_store_url(value.get("url", ""), store, value.get("externalId", ""))
+                    for value in references
+                    if value.get("store") == store
+                    and _safe_store_url(value.get("url", ""), store, value.get("externalId", ""))
+                ),
+                "",
+            )
+            primary_action = {
+                "type": "buy" if purchase_url else "disabled",
+                "label": "Buy" if purchase_url else "Unavailable",
+                "enabled": bool(purchase_url),
+                "url": purchase_url,
+                "tooltip": f"Open {STORE_LABELS[store]} to buy this game."
+                if purchase_url
+                else ownership_label,
+            }
             status_label = "Not owned"
         else:
-            primary_action = {"type": "disabled", "label": "Unavailable", "enabled": False,
-                              "tooltip": provider.get("message") or ownership_label}
+            primary_action = {
+                "type": "disabled",
+                "label": "Unavailable",
+                "enabled": False,
+                "tooltip": provider.get("message") or ownership_label,
+            }
             status_label = "Unavailable" if not provider.get("available") else "Ownership unknown"
         status_tooltip = f"Ownership: {ownership_label}\nInstallation: {installation_label}"
         if provider.get("message"):
             status_tooltip += "\n" + _safe_text(provider["message"], 240)
 
-        rows.append({
-            "store": store,
-            "label": STORE_LABELS[store],
-            "availability": "available" if linked else "unavailable",
-            "availabilityLabel": "Available" if linked else "No store ID linked",
-            "ownership": owned_status,
-            "ownershipLabel": ownership_label,
-            "installation": "installed" if installed else "not-installed" if linked and installation_known else "unknown",
-            "installationLabel": installation_label,
-            "installed": installed,
-            "launchable": launchable,
-            "statusLabel": status_label,
-            "statusTooltip": status_tooltip,
-            "primaryAction": primary_action,
-            "matchSource": match_source,
-            "externalId": action_id,
-            "storeReferences": reference_ids,
-            "actions": actions,
-            "providerMessage": provider.get("message", ""),
-            "storeUrl": next((value.get("url", "") for value in references if value.get("store") == store and value.get("url")), ""),
-        })
+        rows.append(
+            {
+                "store": store,
+                "label": STORE_LABELS[store],
+                "availability": "available" if linked else "unavailable",
+                "availabilityLabel": "Available" if linked else "No store ID linked",
+                "ownership": owned_status,
+                "ownershipLabel": ownership_label,
+                "installation": "installed"
+                if installed
+                else "not-installed"
+                if linked and installation_known
+                else "unknown",
+                "installationLabel": installation_label,
+                "installed": installed,
+                "launchable": launchable,
+                "statusLabel": status_label,
+                "statusTooltip": status_tooltip,
+                "primaryAction": primary_action,
+                "matchSource": match_source,
+                "externalId": action_id,
+                "storeReferences": reference_ids,
+                "actions": actions,
+                "providerMessage": provider.get("message", ""),
+                "storeUrl": next(
+                    (
+                        value.get("url", "")
+                        for value in references
+                        if value.get("store") == store and value.get("url")
+                    ),
+                    "",
+                ),
+            }
+        )
     return rows
 
 
 def parse_vdf(text):
     """Parse the quoted key/value and nested-object subset used by Steam VDF files."""
     token_pattern = re.compile(r'\s+|//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|[{}]|[^\s{}"]+')
-    tokens = [match.group(0) for match in token_pattern.finditer(str(text))
-              if not match.group(0).isspace() and not match.group(0).startswith(("//", "/*"))]
+    tokens = [
+        match.group(0)
+        for match in token_pattern.finditer(str(text))
+        if not match.group(0).isspace() and not match.group(0).startswith(("//", "/*"))
+    ]
     position = 0
 
     def take():
@@ -241,7 +324,7 @@ def parse_vdf(text):
         position += 1
         if token.startswith('"') and token.endswith('"'):
             token = token[1:-1]
-            token = re.sub(r'\\([\\"])', r'\1', token)
+            token = re.sub(r'\\([\\"])', r"\1", token)
         return token
 
     def block(nested=False):
@@ -290,8 +373,14 @@ def steam_manifest(raw, library, manifest_path):
     install_path = Path(library) / "steamapps/common" / install_dir
     if not install_path.is_dir():
         return None
-    return {"store": "steam", "externalId": app_id, "title": title,
-            "installPath": str(install_path), "installed": True, "launchable": False}
+    return {
+        "store": "steam",
+        "externalId": app_id,
+        "title": title,
+        "installPath": str(install_path),
+        "installed": True,
+        "launchable": False,
+    }
 
 
 def parse_steam_owned_games(raw):
@@ -309,8 +398,15 @@ def parse_steam_owned_games(raw):
         if not app_id or not title or app_id in seen:
             continue
         seen.add(app_id)
-        games.append({"store": "steam", "externalId": app_id, "title": title,
-                      "installed": False, "launchable": False})
+        games.append(
+            {
+                "store": "steam",
+                "externalId": app_id,
+                "title": title,
+                "installed": False,
+                "launchable": False,
+            }
+        )
     return games
 
 
@@ -338,7 +434,9 @@ def parse_legendary_owned(raw):
     seen = set()
     for item in _json_records(raw):
         app_name = _epic_id(item.get("app_name") or item.get("appName") or item.get("app_id") or "")
-        title = _safe_text(item.get("app_title") or item.get("title") or item.get("app_name") or "", 180)
+        title = _safe_text(
+            item.get("app_title") or item.get("title") or item.get("app_name") or "", 180
+        )
         if not app_name or not title or app_name in seen:
             continue
         seen.add(app_name)
@@ -351,25 +449,45 @@ def parse_legendary_installed(raw):
     seen = set()
     for item in _json_records(raw):
         app_name = _epic_id(item.get("app_name") or item.get("appName") or item.get("app_id") or "")
-        title = _safe_text(item.get("app_title") or item.get("title") or item.get("app_name") or "", 180)
-        install_path = _safe_text(item.get("install_path") or item.get("installPath") or item.get("install_dir") or "", 2048)
+        title = _safe_text(
+            item.get("app_title") or item.get("title") or item.get("app_name") or "", 180
+        )
+        install_path = _safe_text(
+            item.get("install_path") or item.get("installPath") or item.get("install_dir") or "",
+            2048,
+        )
         if not app_name or app_name in seen:
             continue
         seen.add(app_name)
         installed = bool(install_path and Path(install_path).is_dir())
-        games.append({
-            "store": "epic", "externalId": app_name, "title": title or app_name,
-            "installPath": install_path, "installed": installed,
-        })
+        games.append(
+            {
+                "store": "epic",
+                "externalId": app_name,
+                "title": title or app_name,
+                "installPath": install_path,
+                "installed": installed,
+            }
+        )
     return [game for game in games if game["installed"]]
 
 
 def _safe_store_url(value, store, external_id):
     url = _safe_text(value, 1024).strip()
     parsed = urllib.parse.urlsplit(url)
-    allowed_hosts = {"store.steampowered.com"} if store == "steam" else {"store.epicgames.com", "www.epicgames.com"}
+    allowed_hosts = (
+        {"store.steampowered.com"}
+        if store == "steam"
+        else {"store.epicgames.com", "www.epicgames.com"}
+    )
     try:
-        if parsed.scheme == "https" and parsed.hostname in allowed_hosts and not parsed.username and not parsed.password and parsed.port in (None, 443):
+        if (
+            parsed.scheme == "https"
+            and parsed.hostname in allowed_hosts
+            and not parsed.username
+            and not parsed.password
+            and parsed.port in (None, 443)
+        ):
             return url
     except ValueError:
         pass
@@ -379,8 +497,16 @@ def _safe_store_url(value, store, external_id):
 
 
 class GamesBackend:
-    def __init__(self, config=CONFIG, data=DATA, env=None,
-                 request=None, runner=None, popen=None, clock=time.time):
+    def __init__(
+        self,
+        config=CONFIG,
+        data=DATA,
+        env=None,
+        request=None,
+        runner=None,
+        popen=None,
+        clock=time.time,
+    ):
         self.config_path = Path(config)
         self.data_root = Path(data)
         self.env = dict(os.environ if env is None else env)
@@ -441,7 +567,9 @@ class GamesBackend:
                 mtime = None
             if force or mtime != self._config_mtime:
                 try:
-                    raw = self.config_path.read_text(encoding="utf-8") if mtime is not None else "{}"
+                    raw = (
+                        self.config_path.read_text(encoding="utf-8") if mtime is not None else "{}"
+                    )
                     if len(raw) > 65536:
                         raise ValueError("configuration file is too large")
                     loaded = json.loads(raw)
@@ -473,7 +601,9 @@ class GamesBackend:
             "configPath": path,
             "configError": getattr(self, "_config_error", ""),
             "permissionsWarning": permissions_warning,
-            "message": "" if valid else "Add igdb_client_id and igdb_client_secret to games.json to browse games.",
+            "message": ""
+            if valid
+            else "Add igdb_client_id and igdb_client_secret to games.json to browse games.",
         }
 
     @staticmethod
@@ -499,8 +629,10 @@ class GamesBackend:
     def _cache_put(self, key, value):
         encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
         with self._db() as db:
-            db.execute("INSERT OR REPLACE INTO cache(key,value,updated) VALUES(?,?,?)",
-                       (key, encoded, self._clock()))
+            db.execute(
+                "INSERT OR REPLACE INTO cache(key,value,updated) VALUES(?,?,?)",
+                (key, encoded, self._clock()),
+            )
 
     def _game_by_id(self, game_id):
         with self._db() as db:
@@ -516,10 +648,12 @@ class GamesBackend:
         provider = str(game.get("catalogProvider", "igdb"))
         provider_id = str(game.get("catalogProviderId", catalog_id))
         db_catalog_id = self._database_catalog_id(provider, provider_id)
-        with (nullcontext(connection) if connection is not None else self._db()) as db:
+        with nullcontext(connection) if connection is not None else self._db() as db:
             if connection is None:
                 db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT id,payload FROM games WHERE catalog_id=?", (db_catalog_id,)).fetchone()
+            row = db.execute(
+                "SELECT id,payload FROM games WHERE catalog_id=?", (db_catalog_id,)
+            ).fetchone()
             game_id = row["id"] if row else uuid.uuid4().hex
             if row and merge:
                 try:
@@ -528,12 +662,18 @@ class GamesBackend:
                     existing = {}
                 merged = dict(existing)
                 for key, value in game.items():
-                    if key == "officialWebsite" or value not in (None, "", [], {}) or key not in merged:
+                    if (
+                        key == "officialWebsite"
+                        or value not in (None, "", [], {})
+                        or key not in merged
+                    ):
                         merged[key] = value
                 game = merged
             game["id"] = game_id
-            db.execute("INSERT OR REPLACE INTO games(id,catalog_id,payload,updated) VALUES(?,?,?,?)",
-                       (game_id, db_catalog_id, json.dumps(game, ensure_ascii=False), self._clock()))
+            db.execute(
+                "INSERT OR REPLACE INTO games(id,catalog_id,payload,updated) VALUES(?,?,?,?)",
+                (game_id, db_catalog_id, json.dumps(game, ensure_ascii=False), self._clock()),
+            )
         return game
 
     def _save_store_match(self, game_id, store, external_id):
@@ -545,7 +685,9 @@ class GamesBackend:
                 found = db.execute("SELECT 1 FROM games WHERE id=?", (str(game_id),)).fetchone()
                 if not found:
                     raise GamesError("Select a game before clearing a store match.")
-                db.execute("DELETE FROM store_matches WHERE game_id=? AND store=?", (str(game_id), store))
+                db.execute(
+                    "DELETE FROM store_matches WHERE game_id=? AND store=?", (str(game_id), store)
+                )
             return ""
         if store == "steam":
             external_id = _steam_id(external_id)
@@ -557,16 +699,22 @@ class GamesBackend:
             found = db.execute("SELECT 1 FROM games WHERE id=?", (str(game_id),)).fetchone()
             if not found:
                 raise GamesError("Select a game before saving a store match.")
-            db.execute("INSERT OR REPLACE INTO store_matches(game_id,store,external_id) VALUES(?,?,?)",
-                       (str(game_id), store, external_id))
+            db.execute(
+                "INSERT OR REPLACE INTO store_matches(game_id,store,external_id) VALUES(?,?,?)",
+                (str(game_id), store, external_id),
+            )
         return external_id
 
     def _store_overrides(self, game_id):
         with self._db() as db:
-            rows = db.execute("SELECT store,external_id FROM store_matches WHERE game_id=?", (str(game_id),)).fetchall()
+            rows = db.execute(
+                "SELECT store,external_id FROM store_matches WHERE game_id=?", (str(game_id),)
+            ).fetchall()
         return {row["store"]: row["external_id"] for row in rows}
 
-    def _http_json(self, url, method="GET", headers=None, body=None, timeout=15, max_bytes=4 * 1024 * 1024):
+    def _http_json(
+        self, url, method="GET", headers=None, body=None, timeout=15, max_bytes=4 * 1024 * 1024
+    ):
         request = urllib.request.Request(url, data=body, method=method, headers=headers or {})
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -598,8 +746,13 @@ class GamesBackend:
         if ids:
             placeholders = ",".join("?" for _ in ids)
             with self._db() as db:
-                rows = db.execute(f"SELECT game_id FROM favorites WHERE game_id IN ({placeholders})", ids).fetchall()
-                matches = db.execute(f"SELECT game_id,store,external_id FROM store_matches WHERE game_id IN ({placeholders})", ids).fetchall()
+                rows = db.execute(
+                    f"SELECT game_id FROM favorites WHERE game_id IN ({placeholders})", ids
+                ).fetchall()
+                matches = db.execute(
+                    f"SELECT game_id,store,external_id FROM store_matches WHERE game_id IN ({placeholders})",
+                    ids,
+                ).fetchall()
             favorite_ids = {row["game_id"] for row in rows}
             for match in matches:
                 overrides.setdefault(match["game_id"], {})[match["store"]] = match["external_id"]
@@ -670,10 +823,14 @@ class GamesBackend:
                 continue
             if not normalized_query or normalized_query in str(game.get("title", "")).casefold():
                 values.append(game)
-        page = values[offset:offset + PAGE_SIZE]
-        return {"items": self._with_library_indicators(page),
-                "next": offset + PAGE_SIZE if len(values) > offset + PAGE_SIZE else None,
-                "setupRequired": False, "warning": "", "provider": "igdb"}
+        page = values[offset : offset + PAGE_SIZE]
+        return {
+            "items": self._with_library_indicators(page),
+            "next": offset + PAGE_SIZE if len(values) > offset + PAGE_SIZE else None,
+            "setupRequired": False,
+            "warning": "",
+            "provider": "igdb",
+        }
 
     def _browse_filters(self, filters):
         filters = filters if isinstance(filters, dict) else {}
@@ -708,8 +865,14 @@ class GamesBackend:
             return self._favorite_games(query, offset)
         filter_params = self._browse_filters(request.get("filters", {}))
         catalog = self.config_state()
-        key = "browse:v4:" + hashlib.sha256(json.dumps(
-            ["igdb", query.casefold(), filter_params, offset], sort_keys=True).encode()).hexdigest()
+        key = (
+            "browse:v4:"
+            + hashlib.sha256(
+                json.dumps(
+                    ["igdb", query.casefold(), filter_params, offset], sort_keys=True
+                ).encode()
+            ).hexdigest()
+        )
         cached, fresh = self._cache_get(key, 900)
         if cached is not None and not request.get("refresh"):
             cached["items"] = self._with_library_indicators(cached.get("items", []))
@@ -717,7 +880,9 @@ class GamesBackend:
         stale, _ = self._cache_get(key, 900, allow_stale=True)
         if not catalog["configured"]:
             if stale:
-                stale["warning"] = "Showing saved results. Add the catalogue API key to refresh them."
+                stale["warning"] = (
+                    "Showing saved results. Add the catalogue API key to refresh them."
+                )
                 stale["items"] = self._with_library_indicators(stale.get("items", []))
                 return stale
             return {"items": [], "next": None, "setupRequired": True, "warning": catalog["message"]}
@@ -732,8 +897,14 @@ class GamesBackend:
                         continue
                     normalized = normalize_igdb_game(raw)
                     items.append(self._save_game(str(raw["id"]), normalized, connection=db))
-            result = {"items": self._with_library_indicators(items), "next": offset + PAGE_SIZE if has_next else None,
-                      "setupRequired": False, "warning": "", "provider": "igdb", "providerName": "IGDB"}
+            result = {
+                "items": self._with_library_indicators(items),
+                "next": offset + PAGE_SIZE if has_next else None,
+                "setupRequired": False,
+                "warning": "",
+                "provider": "igdb",
+                "providerName": "IGDB",
+            }
             self._cache_put(key, result)
             return result
         except GamesError as error:
@@ -748,15 +919,20 @@ class GamesBackend:
         _, saved = self._catalog_id(game_id)
         provider_id = str(saved.get("catalogProviderId", ""))
         if saved.get("catalogProvider") != "igdb":
-            return {"game": self._with_library_indicators([saved])[0],
-                    "warning": "Search the catalogue to refresh this saved game."}
+            return {
+                "game": self._with_library_indicators([saved])[0],
+                "warning": "Search the catalogue to refresh this saved game.",
+            }
         key = f"detail:v3:igdb:{provider_id}"
         cached, fresh = self._cache_get(key, 7 * 86400)
         if cached and not request.get("refresh"):
             return {"game": self._with_library_indicators([cached])[0], "warning": ""}
         current_catalog = self.config_state()
         if not current_catalog["configured"]:
-            return {"game": self._with_library_indicators([saved])[0], "warning": current_catalog["message"]}
+            return {
+                "game": self._with_library_indicators([saved])[0],
+                "warning": current_catalog["message"],
+            }
         try:
             raw = self.catalogue.details(provider_id)
             if not raw:
@@ -766,7 +942,10 @@ class GamesBackend:
             return {"game": self._with_library_indicators([game])[0], "warning": ""}
         except GamesError as error:
             if cached:
-                return {"game": self._with_library_indicators([cached])[0], "warning": str(error) + " Showing saved details."}
+                return {
+                    "game": self._with_library_indicators([cached])[0],
+                    "warning": str(error) + " Showing saved details.",
+                }
             return {"game": self._with_library_indicators([saved])[0], "warning": str(error)}
 
     def protondb(self, request):
@@ -776,22 +955,42 @@ class GamesBackend:
         override = self._store_overrides(game_id).get("steam", "")
         app_id = steam_app_id(game, self.libraries(), override)
         if not app_id:
-            return {"available": False, "tier": "unknown", "label": "Unavailable", "url": "", "total": 0}
+            return {
+                "available": False,
+                "tier": "unknown",
+                "label": "Unavailable",
+                "url": "",
+                "total": 0,
+            }
         key = f"protondb:v1:{app_id}"
         cached, fresh = self._cache_get(key, 7 * 86400)
         if cached is not None:
             return cached
         cooling, _ = self._cache_get(f"protondb-cooldown:v1:{app_id}", 300)
         if cooling:
-            return {"available": True, "tier": "unknown", "label": "Unknown", "total": 0,
-                    "url": protondb_url(app_id), "appId": app_id, "warning": "Compatibility summary is temporarily unavailable."}
+            return {
+                "available": True,
+                "tier": "unknown",
+                "label": "Unknown",
+                "total": 0,
+                "url": protondb_url(app_id),
+                "appId": app_id,
+                "warning": "Compatibility summary is temporarily unavailable.",
+            }
         try:
             with _PROTONDB_LOCK:
                 elapsed = time.monotonic() - _LAST_PROTONDB_REQUEST
                 if elapsed < 1.0:
                     time.sleep(1.0 - elapsed)
                 _LAST_PROTONDB_REQUEST = time.monotonic()
-            raw = self._request(PROTONDB_SUMMARY.format(app_id), "GET", {"Accept": "application/json"}, None, 8, 128 * 1024)
+            raw = self._request(
+                PROTONDB_SUMMARY.format(app_id),
+                "GET",
+                {"Accept": "application/json"},
+                None,
+                8,
+                128 * 1024,
+            )
             if not isinstance(raw, dict):
                 raise GamesError("ProtonDB returned an unexpected summary.")
             tier = str(raw.get("tier", "")).casefold()
@@ -801,7 +1000,9 @@ class GamesBackend:
                 "available": True,
                 "tier": tier,
                 "label": tier.title() if tier != "unknown" else "Unknown",
-                "trendingTier": str(raw.get("trendingTier", "")).casefold() if str(raw.get("trendingTier", "")).casefold() in ALLOWED_PROTONDB_TIERS else "",
+                "trendingTier": str(raw.get("trendingTier", "")).casefold()
+                if str(raw.get("trendingTier", "")).casefold() in ALLOWED_PROTONDB_TIERS
+                else "",
                 "total": max(0, int(raw.get("total", 0) or 0)),
                 "confidence": _safe_text(raw.get("confidence", ""), 24),
                 "url": protondb_url(app_id),
@@ -815,8 +1016,15 @@ class GamesBackend:
                 stale["stale"] = True
                 return stale
             self._cache_put(f"protondb-cooldown:v1:{app_id}", {"unavailable": True})
-            return {"available": True, "tier": "unknown", "label": "Unknown", "total": 0,
-                    "url": protondb_url(app_id), "appId": app_id, "warning": "Compatibility summary is unavailable."}
+            return {
+                "available": True,
+                "tier": "unknown",
+                "label": "Unknown",
+                "total": 0,
+                "url": protondb_url(app_id),
+                "appId": app_id,
+                "warning": "Compatibility summary is unavailable.",
+            }
 
     def _which(self, name):
         return shutil.which(name, path=self.env.get("PATH"))
@@ -885,35 +1093,83 @@ class GamesBackend:
         cache_key = "steam-owned:" + hashlib.sha256((api_key + ":" + steam_id).encode()).hexdigest()
         cached, fresh = self._cache_get(cache_key, 1800)
         if cached:
-            return {"configured": True, "known": bool(cached.get("known")), "ids": cached.get("ids", []),
-                    "games": cached.get("games", []), "message": cached.get("message", "")}
+            return {
+                "configured": True,
+                "known": bool(cached.get("known")),
+                "ids": cached.get("ids", []),
+                "games": cached.get("games", []),
+                "message": cached.get("message", ""),
+            }
         key = urllib.parse.urlencode({"key": api_key, "steamids": steam_id})
         try:
-            players = self._request("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?" + key,
-                                    "GET", {"Accept": "application/json"}, None, 8, 512 * 1024)
+            players = self._request(
+                "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?" + key,
+                "GET",
+                {"Accept": "application/json"},
+                None,
+                8,
+                512 * 1024,
+            )
             player_response = (players or {}).get("response") if isinstance(players, dict) else None
-            player_list = player_response.get("players") if isinstance(player_response, dict) else None
-            if not isinstance(player_list, list) or not player_list or not isinstance(player_list[0], dict):
-                result = {"known": False, "ids": [], "message": "Steam profile is private or unavailable."}
+            player_list = (
+                player_response.get("players") if isinstance(player_response, dict) else None
+            )
+            if (
+                not isinstance(player_list, list)
+                or not player_list
+                or not isinstance(player_list[0], dict)
+            ):
+                result = {
+                    "known": False,
+                    "ids": [],
+                    "message": "Steam profile is private or unavailable.",
+                }
             else:
                 visibility = int(player_list[0].get("communityvisibilitystate", 0))
                 if visibility != 3:
-                    result = {"known": False, "ids": [], "message": "Steam profile is private or unavailable."}
+                    result = {
+                        "known": False,
+                        "ids": [],
+                        "message": "Steam profile is private or unavailable.",
+                    }
                 else:
-                    query = urllib.parse.urlencode({
-                        "key": api_key, "steamid": steam_id, "include_appinfo": "true",
-                        "include_played_free_games": "true",
-                    })
-                    owned = self._request("https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?" + query,
-                                          "GET", {"Accept": "application/json"}, None, 12, 4 * 1024 * 1024)
+                    query = urllib.parse.urlencode(
+                        {
+                            "key": api_key,
+                            "steamid": steam_id,
+                            "include_appinfo": "true",
+                            "include_played_free_games": "true",
+                        }
+                    )
+                    owned = self._request(
+                        "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?" + query,
+                        "GET",
+                        {"Accept": "application/json"},
+                        None,
+                        12,
+                        4 * 1024 * 1024,
+                    )
                     games = parse_steam_owned_games(owned)
                     if games is None:
-                        result = {"known": False, "ids": [], "message": "Steam game details are private or unavailable."}
+                        result = {
+                            "known": False,
+                            "ids": [],
+                            "message": "Steam game details are private or unavailable.",
+                        }
                     else:
-                        result = {"known": True, "ids": [game["externalId"] for game in games],
-                                  "games": games, "message": ""}
+                        result = {
+                            "known": True,
+                            "ids": [game["externalId"] for game in games],
+                            "games": games,
+                            "message": "",
+                        }
         except (GamesError, TypeError, ValueError):
-            result = {"known": False, "ids": [], "games": [], "message": "Steam ownership could not be checked."}
+            result = {
+                "known": False,
+                "ids": [],
+                "games": [],
+                "message": "Steam ownership could not be checked.",
+            }
         self._cache_put(cache_key, result)
         return {"configured": True, **result}
 
@@ -957,7 +1213,14 @@ class GamesBackend:
             "ownershipKnown": bool(owned.get("known")),
             "ownershipConfigured": bool(owned.get("configured")),
             "installationKnown": bool(libraries),
-            "message": owned.get("message", "") or ("Steam client was not found." if not executable and roots else "Steam was not found." if not roots else ""),
+            "message": owned.get("message", "")
+            or (
+                "Steam client was not found."
+                if not executable and roots
+                else "Steam was not found."
+                if not roots
+                else ""
+            ),
         }
 
     def _run_legendary_json(self, args, timeout=20):
@@ -966,8 +1229,13 @@ class GamesBackend:
             return None, "missing"
         try:
             result = self._runner(
-                [executable, *args], stdin=subprocess.DEVNULL, capture_output=True,
-                text=True, timeout=timeout, check=False, env=self.env,
+                [executable, *args],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+                env=self.env,
             )
         except FileNotFoundError:
             return None, "missing"
@@ -975,7 +1243,9 @@ class GamesBackend:
             return None, "error"
         if result.returncode != 0:
             combined = ((result.stderr or "") + " " + (result.stdout or "")).casefold()
-            return None, "unauthenticated" if any(word in combined for word in ("login", "auth", "token", "credential")) else "error"
+            return None, "unauthenticated" if any(
+                word in combined for word in ("login", "auth", "token", "credential")
+            ) else "error"
         try:
             return json.loads(result.stdout or "[]"), "ok"
         except (TypeError, ValueError):
@@ -985,18 +1255,30 @@ class GamesBackend:
         executable = self._which("legendary")
         if not executable:
             return {
-                "available": False, "detected": False, "authenticated": False, "ownershipKnown": False,
-                "ownedCount": 0, "installedCount": 0, "items": [], "ownedIds": [],
+                "available": False,
+                "detected": False,
+                "authenticated": False,
+                "ownershipKnown": False,
+                "ownedCount": 0,
+                "installedCount": 0,
+                "items": [],
+                "ownedIds": [],
                 "installationKnown": False,
                 "message": "Legendary is not installed on PATH.",
             }
         owned_raw, owned_status = self._run_legendary_json(["list", "--json"])
-        installed_raw, installed_status = self._run_legendary_json(["list-installed", "--json", "--show-dirs"])
+        installed_raw, installed_status = self._run_legendary_json(
+            ["list-installed", "--json", "--show-dirs"]
+        )
         owned = parse_legendary_owned(owned_raw) if owned_status == "ok" else []
         installed = parse_legendary_installed(installed_raw) if installed_status == "ok" else []
         owned_by_id = {game["externalId"]: game for game in owned}
         for item in installed:
-            owned_by_id[item["externalId"]] = {**owned_by_id.get(item["externalId"], {}), **item, "launchable": True}
+            owned_by_id[item["externalId"]] = {
+                **owned_by_id.get(item["externalId"], {}),
+                **item,
+                "launchable": True,
+            }
         authenticated = owned_status == "ok"
         status = owned_status if owned_status != "ok" else installed_status
         if status == "unauthenticated":
@@ -1034,9 +1316,16 @@ class GamesBackend:
                 "epic": epic,
                 "umu": {"available": bool(umu), "executable": umu or ""},
                 "diagnostics": {
-                    "steam": (f"{steam['installedCount']} installed · {steam['libraryCount']} libraries" if steam["available"] else
-                              f"Client unavailable · {steam['installedCount']} found locally" if steam["detected"] else "Unavailable"),
-                    "epic": f"{epic['ownedCount']} owned · {epic['installedCount']} installed" if epic["authenticated"] else epic["message"],
+                    "steam": (
+                        f"{steam['installedCount']} installed · {steam['libraryCount']} libraries"
+                        if steam["available"]
+                        else f"Client unavailable · {steam['installedCount']} found locally"
+                        if steam["detected"]
+                        else "Unavailable"
+                    ),
+                    "epic": f"{epic['ownedCount']} owned · {epic['installedCount']} installed"
+                    if epic["authenticated"]
+                    else epic["message"],
                     "umu": "Available" if umu else "Unavailable",
                 },
             }
@@ -1068,7 +1357,14 @@ class GamesBackend:
             return str(cached.get("gameId", "umu-default"))
         query = urllib.parse.urlencode({"store": "egs", "codename": safe_name})
         try:
-            result = self._request(UMU_DATABASE + "?" + query, "GET", {"Accept": "application/json"}, None, 8, 512 * 1024)
+            result = self._request(
+                UMU_DATABASE + "?" + query,
+                "GET",
+                {"Accept": "application/json"},
+                None,
+                8,
+                512 * 1024,
+            )
             records = result if isinstance(result, list) else _json_records(result)
             game_id = "umu-default"
             for record in records:
@@ -1092,12 +1388,22 @@ class GamesBackend:
         umu = self._which("umu-run")
         if umu:
             _, game = self._catalog_id(game_id)
-            steam_references = [ref.get("externalId", "") for ref in (game.get("storeReferences") or []) if ref.get("store") == "steam"]
+            steam_references = [
+                ref.get("externalId", "")
+                for ref in (game.get("storeReferences") or [])
+                if ref.get("store") == "steam"
+            ]
             override = self._store_overrides(game_id).get("steam", "")
-            steam_id = _steam_id(override or (steam_references[0] if len(steam_references) == 1 else ""))
+            steam_id = _steam_id(
+                override or (steam_references[0] if len(steam_references) == 1 else "")
+            )
             game_id_for_umu = "umu-" + steam_id if steam_id else self._umu_game_id(app_name)
             prefix_key = hashlib.sha256(("egs:" + app_name.casefold()).encode()).hexdigest()[:24]
-            prefix_root = Path(self.env.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "zephyrus-shell/games/prefixes/egs" / prefix_key
+            prefix_root = (
+                Path(self.env.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+                / "zephyrus-shell/games/prefixes/egs"
+                / prefix_key
+            )
             prefix_root.mkdir(parents=True, exist_ok=True, mode=0o700)
             env["GAMEID"] = game_id_for_umu
             env["STORE"] = "egs"
@@ -1111,8 +1417,14 @@ class GamesBackend:
 
     def _spawn_detached(self, args, failure_message, env=None):
         try:
-            process = self._popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                  stderr=subprocess.DEVNULL, start_new_session=True, env=env)
+            process = self._popen(
+                args,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+                env=env,
+            )
         except (FileNotFoundError, OSError):
             raise GamesError(failure_message) from None
         # Launchers often hand off to another process. Detect quick startup failures,
@@ -1133,23 +1445,38 @@ class GamesBackend:
         game_ref = self._catalog_id(game_id)
         _, game = game_ref
         stores = self.availability({"gameId": game_id})["stores"]
-        action = next((value for row in stores for value in row["actions"] if value["id"] == action_id), None)
+        action = next(
+            (value for row in stores for value in row["actions"] if value["id"] == action_id), None
+        )
         if not action:
-            raise GamesError("This action is no longer available. Refresh the library and try again.")
+            raise GamesError(
+                "This action is no longer available. Refresh the library and try again."
+            )
         store = action["store"]
         if action["type"] == "play" and store == "steam":
             app_id = _steam_id(action_id.rsplit(":", 1)[-1])
             state = self.libraries()
-            installation = next((item for item in state["steam"]["items"] if item.get("externalId") == app_id), None)
+            installation = next(
+                (item for item in state["steam"]["items"] if item.get("externalId") == app_id), None
+            )
             executable = state["steam"].get("executable", "")
-            if not app_id or not installation or not installation.get("launchable") or not executable:
+            if (
+                not app_id
+                or not installation
+                or not installation.get("launchable")
+                or not executable
+            ):
                 raise GamesError("Steam no longer reports this game as installed and launchable.")
-            self._spawn_detached([executable, "-applaunch", app_id], "Steam could not launch this game.")
+            self._spawn_detached(
+                [executable, "-applaunch", app_id], "Steam could not launch this game."
+            )
             return {"started": True, "message": "Steam launch started."}
         if action["type"] == "play" and store == "epic":
             app_name = action_id.rsplit(":", 1)[-1]
             epic_items = self.libraries()["epic"].get("items", [])
-            match, _ = match_library_item(game, "epic", epic_items, self._store_overrides(game_id).get("epic", ""))
+            match, _ = match_library_item(
+                game, "epic", epic_items, self._store_overrides(game_id).get("epic", "")
+            )
             if not match or match.get("externalId") != app_name or not match.get("installed"):
                 raise GamesError("Legendary no longer reports this game as installed.")
             return self._launch_epic(game_id, app_name, match)
@@ -1161,17 +1488,24 @@ class GamesBackend:
             executable = state.get("executable") or self._which("steam")
             if not executable:
                 raise GamesError("Steam is not available to install this game.")
-            self._spawn_detached([executable, f"steam://install/{app_id}"], "Steam could not open the install page.")
+            self._spawn_detached(
+                [executable, f"steam://install/{app_id}"], "Steam could not open the install page."
+            )
             return {"started": True, "message": "Steam install page opened."}
         if action["type"] == "install" and store == "epic":
             external_id = action_id.rsplit(":", 1)[-1]
             epic = self.libraries()["epic"]
             if not epic.get("ownershipKnown") or external_id not in epic.get("ownedIds", []):
-                raise GamesError("Sign in with Legendary and refresh Epic ownership before installing.")
+                raise GamesError(
+                    "Sign in with Legendary and refresh Epic ownership before installing."
+                )
             executable = self._which("legendary")
             if not executable:
                 raise GamesError("Legendary is not installed.")
-            self._spawn_detached([executable, "--yes", "install", external_id], "Legendary could not start the installation.")
+            self._spawn_detached(
+                [executable, "--yes", "install", external_id],
+                "Legendary could not start the installation.",
+            )
             return {"started": True, "message": "Epic installation started in Legendary."}
         if action["type"] == "uninstall" and store == "steam":
             app_id = _steam_id(action_id.rsplit(":", 1)[-1])
@@ -1181,7 +1515,10 @@ class GamesBackend:
                 raise GamesError("Steam returned an invalid AppID.")
             if not executable:
                 raise GamesError("Steam is not available to uninstall this game.")
-            self._spawn_detached([executable, f"steam://uninstall/{app_id}"], "Steam could not open the uninstall prompt.")
+            self._spawn_detached(
+                [executable, f"steam://uninstall/{app_id}"],
+                "Steam could not open the uninstall prompt.",
+            )
             return {"started": True, "message": "Steam uninstall prompt opened."}
         if action["type"] == "uninstall" and store == "epic":
             external_id = action_id.rsplit(":", 1)[-1]
@@ -1190,19 +1527,32 @@ class GamesBackend:
             executable = self._which("legendary")
             if not executable:
                 raise GamesError("Legendary is not installed.")
-            self._spawn_detached([executable, "--yes", "uninstall", external_id], "Legendary could not start the uninstall.")
+            self._spawn_detached(
+                [executable, "--yes", "uninstall", external_id],
+                "Legendary could not start the uninstall.",
+            )
             return {"started": True, "message": "Epic uninstall started in Legendary."}
         raise GamesError("This action is not supported.")
 
+    @cached_property
+    def local(self):
+        return LocalLibrary(self.data_root.parent / "media")
+
     def handle(self, request):
         op = request.get("op")
+        if op == "local_list":
+            return self.local.list("game")
+        if op == "local_files":
+            return self.local.files(request["title"])
         if op == "init":
             return self.init()
         if op == "browse":
             return self.browse(request)
         if op == "catalog_filters":
             if not self.config_state()["configured"]:
-                raise GamesError("Add the game catalogue API key in games.json to load filter options.")
+                raise GamesError(
+                    "Add the game catalogue API key in games.json to load filter options."
+                )
             return self._filter_options()
         if op == "set_favorite":
             return self.set_favorite(request)
@@ -1216,7 +1566,11 @@ class GamesBackend:
         if op == "availability":
             return self.availability(request)
         if op == "set_match":
-            return {"externalId": self._save_store_match(request.get("gameId"), request.get("store"), request.get("externalId"))}
+            return {
+                "externalId": self._save_store_match(
+                    request.get("gameId"), request.get("store"), request.get("externalId")
+                )
+            }
         if op == "action":
             return self.action(request)
         if op == "refresh_details":
@@ -1228,8 +1582,15 @@ class GamesBackend:
 def main():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from services.worker import serve
+
     backend = GamesBackend()
-    serve(backend.handle, errors=(GamesError,), background=("refresh_libraries", "availability", "protondb"), latest=("browse", "details", "availability", "protondb"), controls=("set_favorite", "set_match", "action"))
+    serve(
+        backend.handle,
+        errors=(GamesError, ValueError, OSError),
+        background=("refresh_libraries", "availability", "protondb"),
+        latest=("browse", "details", "availability", "protondb"),
+        controls=("set_favorite", "set_match", "action"),
+    )
 
 
 if __name__ == "__main__":

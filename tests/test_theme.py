@@ -1,10 +1,10 @@
 import copy
 import json
 import os
-from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from services import theme
@@ -13,7 +13,10 @@ from services import theme
 class ThemeTests(unittest.TestCase):
     def test_portable_qml_defaults_match_authoritative_json(self):
         text = (theme.ROOT / "core/theme/Defaults.js").read_text()
-        self.assertEqual(json.loads(text.split("var settings = ", 1)[1].rstrip(";\n")), json.loads(theme.DEFAULTS.read_text()))
+        self.assertEqual(
+            json.loads(text.split("var settings = ", 1)[1].rstrip(";\n")),
+            json.loads(theme.DEFAULTS.read_text()),
+        )
 
     def test_bundled_icon_markup_is_available_for_light_foregrounds(self):
         result = theme.effective(theme.load(Path("/nonexistent/theme-test")))
@@ -24,7 +27,9 @@ class ThemeTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
-        self.config, self.data, self.state = (self.root / name for name in ("config", "data", "state"))
+        self.config, self.data, self.state = (
+            self.root / name for name in ("config", "data", "state")
+        )
         self.settings = theme.load(self.config)
         self.sync = theme.Synchronizer(self.config, self.data, self.state)
 
@@ -35,14 +40,23 @@ class ThemeTests(unittest.TestCase):
         return path
 
     def test_partial_override_merges_and_invalid_input_is_rejected(self):
-        self.write("zephyrus-shell/theme.json", '{"font_size":13,"palettes":{"dark":{"accent":"#123456"}}}')
+        self.write(
+            "zephyrus-shell/theme.json", '{"font_size":13,"palettes":{"dark":{"accent":"#123456"}}}'
+        )
         result = theme.load(self.config)
         self.assertEqual(result["palettes"]["dark"]["accent"], "#123456")
         self.assertEqual(result["font_size"], 13)
         self.assertEqual(result["palettes"]["dark"]["background"], "#1b2021")
-        for overrides in ({"mode": "bad"}, {"font": "bad\nfont"}, {"font_size": True},
-                          {"font_size": float("nan")}, {"font_size": 25}, {"sync_desktop": 1},
-                          {"palettes": {"dark": {"accent": "red"}}}, {"unknown": 2}):
+        for overrides in (
+            {"mode": "bad"},
+            {"font": "bad\nfont"},
+            {"font_size": True},
+            {"font_size": float("nan")},
+            {"font_size": 25},
+            {"sync_desktop": 1},
+            {"palettes": {"dark": {"accent": "red"}}},
+            {"unknown": 2},
+        ):
             self.write("zephyrus-shell/theme.json", json.dumps(overrides))
             with self.assertRaises(ValueError):
                 theme.load(self.config)
@@ -51,8 +65,13 @@ class ThemeTests(unittest.TestCase):
         self.write("zed/settings.json", '{"git":{"inline_blame":{"enabled":false}}}')
         self.write("Code - OSS/User/settings.json", '{"editor.tabSize":4}')
         for mode in ("dark", "light"):
-            self.settings.update(mode=mode, font="DejaVu Sans", font_size=13,
-                                 monospace_font="DejaVu Sans Mono", monospace_font_size=12)
+            self.settings.update(
+                mode=mode,
+                font="DejaVu Sans",
+                font_size=13,
+                monospace_font="DejaVu Sans Mono",
+                monospace_font_size=12,
+            )
             self.sync.apply(self.settings)
             c = self.settings["palettes"][mode]
             kde = theme.read(self.config / "kdeglobals")
@@ -72,7 +91,9 @@ class ThemeTests(unittest.TestCase):
             self.assertEqual(zed["ui_font_size"], 13 * 4 / 3)
             self.assertEqual(zed["theme"]["mode"], mode)
             code = json.loads(theme.read(self.config / "Code - OSS/User/settings.json"))
-            self.assertEqual(code["workbench.colorCustomizations"]["editor.background"], c["background"])
+            self.assertEqual(
+                code["workbench.colorCustomizations"]["editor.background"], c["background"]
+            )
             self.assertEqual(code["editor.fontSize"], 16)
             self.assertEqual(code["editor.tabSize"], 4)
 
@@ -90,7 +111,10 @@ class ThemeTests(unittest.TestCase):
         self.assertNotIn("#ff465c", css)
 
     def test_ini_preserves_unrelated_settings_and_comments(self):
-        path = self.write("kdeglobals", "# personal\n[General]\nTerminalApplication=kitty\nfont=old\n[Icons]\nTheme=old\n[Other]\nValue=100%\n")
+        path = self.write(
+            "kdeglobals",
+            "# personal\n[General]\nTerminalApplication=kitty\nfont=old\n[Icons]\nTheme=old\n[Other]\nValue=100%\n",
+        )
         self.sync.apply(self.settings)
         self.assertIn("# personal", path.read_text())
         self.assertIn("TerminalApplication=kitty", path.read_text())
@@ -99,19 +123,27 @@ class ThemeTests(unittest.TestCase):
         self.assertNotIn("Theme=old", path.read_text())
 
     def test_jsonc_preserves_comments_nested_settings_urls_and_trailing_commas(self):
-        text = '''// settings
+        text = """// settings
 {
   "url": "https://example.com/a/*b*/",
   "theme_overrides": {"One Dark": {"syntax": {"comment": {"font_style": "italic"}},}},
   "editor.fontFamily": "Old", // font comment
-}'''
-        result = theme.jsonc_merge(text, {"editor.fontFamily": "New", "new": 42,
-            "theme_overrides": {"One Dark": {"background": "#112233"}}})
+}"""
+        result = theme.jsonc_merge(
+            text,
+            {
+                "editor.fontFamily": "New",
+                "new": 42,
+                "theme_overrides": {"One Dark": {"background": "#112233"}},
+            },
+        )
         self.assertIn("// settings", result)
         self.assertIn("// font comment", result)
         self.assertIn("https://example.com/a/*b*/", result)
         parsed = json.loads(theme.jsonc_clean(result))
-        self.assertEqual(parsed["theme_overrides"]["One Dark"]["syntax"]["comment"]["font_style"], "italic")
+        self.assertEqual(
+            parsed["theme_overrides"]["One Dark"]["syntax"]["comment"]["font_style"], "italic"
+        )
         self.assertEqual(parsed["theme_overrides"]["One Dark"]["background"], "#112233")
         self.assertEqual(parsed["editor.fontFamily"], "New")
         self.assertEqual(theme.jsonc_merge(result, {"new": 42}), result)
@@ -150,14 +182,18 @@ class ThemeTests(unittest.TestCase):
     def test_failed_write_rolls_back_files_and_keeps_existing_manifest(self):
         self.sync.apply(self.settings)
         prior = self.sync.manifest.read_bytes()
-        files = {path: path.read_bytes() for path in theme.render(self.settings, self.config, self.data)}
+        files = {
+            path: path.read_bytes() for path in theme.render(self.settings, self.config, self.data)
+        }
         changed = copy.deepcopy(self.settings)
         changed["mode"] = "light"
         original = theme.atomic_write
+
         def fail(path, content, mode=0o600):
             if path == self.sync.manifest:
                 raise OSError("disk full")
             return original(path, content, mode)
+
         with patch.object(theme, "atomic_write", fail), self.assertRaises(OSError):
             self.sync.apply(changed)
         self.assertEqual(self.sync.manifest.read_bytes(), prior)
@@ -169,12 +205,14 @@ class ThemeTests(unittest.TestCase):
         content = original.read_bytes()
         write = theme.atomic_write
         failed = False
+
         def fail_once(path, value, mode=0o600):
             nonlocal failed
             if path == self.config / "gtk-4.0/gtk.css" and not failed:
                 failed = True
                 raise OSError("interrupted write")
             return write(path, value, mode)
+
         with patch.object(theme, "atomic_write", fail_once), self.assertRaises(OSError):
             self.sync.apply(self.settings)
         self.assertEqual(original.read_bytes(), content)
@@ -187,10 +225,15 @@ class ThemeTests(unittest.TestCase):
     def test_notifications_capture_original_settings_and_emit_palette_and_font_changes(self):
         self.sync.apply(self.settings)
         calls = []
+
         def run(command):
             calls.append(command)
             return "'old'" if command[1] == "get" else ""
-        with patch.object(theme, "run", run), patch.dict(os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": ""}):
+
+        with (
+            patch.object(theme, "run", run),
+            patch.dict(os.environ, {"HYPRLAND_INSTANCE_SIGNATURE": ""}),
+        ):
             self.assertEqual(theme.notify(self.settings, self.sync), [])
         saved = json.loads(self.sync.manifest.read_text())["settings"]
         self.assertEqual(saved["font-name"]["before"], "'old'")
@@ -199,8 +242,17 @@ class ThemeTests(unittest.TestCase):
         self.assertTrue(any("prefer-dark" in call[-1] for call in calls))
 
     def test_real_cli_respects_xdg_and_no_notify(self):
-        env = {**os.environ, **{key: str(path) for key, path in zip(
-            ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"), (self.config, self.data, self.state))}}
+        env = {
+            **os.environ,
+            **{
+                key: str(path)
+                for key, path in zip(
+                    ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"),
+                    (self.config, self.data, self.state),
+                    strict=True,
+                )
+            },
+        }
         cli = ["python3", str(theme.ROOT / "scripts/theme.py")]
         first = json.loads(subprocess.check_output(cli + ["apply", "--no-notify"], env=env))
         self.assertTrue(first["changed"])
@@ -217,7 +269,9 @@ class ThemeTests(unittest.TestCase):
         folder = self.data / "flatpak/overrides"
         folder.mkdir(parents=True)
         path = folder / app
-        original = "[Context]\nfilesystems=xdg-download;!xdg-config/gtk-3.0;\n[Environment]\nOTHER=value\n"
+        original = (
+            "[Context]\nfilesystems=xdg-download;!xdg-config/gtk-3.0;\n[Environment]\nOTHER=value\n"
+        )
         path.write_text(original)
         self.sync.apply(self.settings, [app])
         content = path.read_text()
@@ -231,7 +285,9 @@ class ThemeTests(unittest.TestCase):
         self.assertEqual(path.read_text(), original)
 
     def test_vlc_forced_dark_is_disabled_without_changing_other_options(self):
-        path = self.write("vlc/vlcrc", "[core]\none-instance=1\n[qt]\nqt-dark-palette=1\nqt-max-volume=200\n")
+        path = self.write(
+            "vlc/vlcrc", "[core]\none-instance=1\n[qt]\nqt-dark-palette=1\nqt-max-volume=200\n"
+        )
         self.settings["mode"] = "light"
         self.sync.apply(self.settings)
         self.assertIn("qt-dark-palette=0", path.read_text())

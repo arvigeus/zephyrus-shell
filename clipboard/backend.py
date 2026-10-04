@@ -1,14 +1,14 @@
 """Owned clipboard popover worker; the session's cliphist watcher owns recording."""
-from pathlib import Path
+
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from services.worker import serve
-
 
 _thumbnail_directory = tempfile.TemporaryDirectory(prefix="zephyrus-clipboard-")
 IMAGE_PREVIEW = re.compile(r"\b(png|jpe?g|gif|webp)\b", re.IGNORECASE)
@@ -17,17 +17,28 @@ IMAGE_PREVIEW = re.compile(r"\b(png|jpe?g|gif|webp)\b", re.IGNORECASE)
 def command(name, *args, data=None):
     executable = shutil.which(name)
     if not executable:
-        raise ValueError("Clipboard history needs cliphist and wl-clipboard. Install the desktop utilities and log in again.")
+        raise ValueError(
+            "Clipboard history needs cliphist and wl-clipboard. Install the desktop utilities and log in again."
+        )
     try:
-        result = subprocess.run([executable, *args], input=data, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, timeout=10)
+        result = subprocess.run(
+            [executable, *args],
+            input=data,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
     except subprocess.TimeoutExpired:
         raise ValueError("Clipboard operation timed out. Try again.") from None
     if result.returncode:
         diagnostic = result.stderr.decode("utf-8", errors="replace").strip()
         # cliphist returns failure for a new (or wiped) database. This is an
         # empty history, not a missing package or a broken clipboard.
-        if name == "cliphist" and args == ("list",) and diagnostic == "opening db: please store something first":
+        if (
+            name == "cliphist"
+            and args == ("list",)
+            and diagnostic == "opening db: please store something first"
+        ):
             return b""
         raise ValueError("Clipboard operation failed: " + (diagnostic or "Refresh and try again."))
     return result.stdout
@@ -40,9 +51,15 @@ def entries():
         if separator and re.fullmatch(r"[0-9]+", identifier):
             binary = preview.startswith("[[ binary data")
             image = bool(binary and IMAGE_PREVIEW.search(preview))
-            result.append({"id": identifier, "preview": preview,
-                           "label": "Image" if image else preview,
-                           "binary": binary, "image": image})
+            result.append(
+                {
+                    "id": identifier,
+                    "preview": preview,
+                    "label": "Image" if image else preview,
+                    "binary": binary,
+                    "image": image,
+                }
+            )
     return result
 
 

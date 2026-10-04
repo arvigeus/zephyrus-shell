@@ -298,7 +298,7 @@ ColumnLayout {
             }
             Icon { x: 14; anchors.verticalCenter: parent.verticalCenter; width: 24; height: 24; name: root.iconFor(row.modelData) }
             Label { x: 48; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 110; text: row.modelData.name; color: Theme.text; elide: Text.ElideRight }
-            Label { anchors.right: gear.left; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter; text: row.modelData.is_dir ? "Folder" : row.modelData.size_label; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
+            Label { anchors.right: gear.left; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter; text: row.modelData.size_label; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12) }
             MouseArea {
                 id: rowMouse
                 anchors.fill: parent

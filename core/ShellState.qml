@@ -79,10 +79,4 @@ QtObject {
         if (pluginId) stopPlugin(pluginId);
         panel = ""; pluginId = ""; pluginMonitor = "";
     }
-    function reconcilePlugins(ids) {
-        const removedCurrent = pluginId && !ids.includes(pluginId);
-        for (const id of runningPluginIds.slice())
-            if (!ids.includes(id)) stopPlugin(id);
-        if (removedCurrent) panel = "left";
-    }
 }

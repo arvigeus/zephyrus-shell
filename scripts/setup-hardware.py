@@ -3,14 +3,15 @@
 
 import argparse
 import os
-from pathlib import Path
 import pwd
 import subprocess
 import sys
+from pathlib import Path
 
 
-def configure_ddc(username, root=Path("/"), runner=subprocess.run,
-                  user_lookup=pwd.getpwnam, effective_uid=None):
+def configure_ddc(
+    username, root=Path("/"), runner=subprocess.run, user_lookup=pwd.getpwnam, effective_uid=None
+):
     if (os.geteuid() if effective_uid is None else effective_uid) != 0:
         raise PermissionError("configure-ddc must run as root")
     try:
@@ -26,8 +27,7 @@ def configure_ddc(username, root=Path("/"), runner=subprocess.run,
         temporary.replace(modules_load)
 
     runner(["modprobe", "i2c-dev"], check=True)
-    if runner(["getent", "group", "i2c"], check=False,
-              capture_output=True).returncode:
+    if runner(["getent", "group", "i2c"], check=False, capture_output=True).returncode:
         runner(["groupadd", "--system", "i2c"], check=True)
     runner(["usermod", "--append", "--groups", "i2c", username], check=True)
     runner(["udevadm", "control", "--reload-rules"], check=True)

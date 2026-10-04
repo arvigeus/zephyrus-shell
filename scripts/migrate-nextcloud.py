@@ -3,12 +3,18 @@
 
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from services.nextcloud import config_root, load_account, read_json, validate_account, NextcloudError
+from services.nextcloud import (
+    NextcloudError,
+    config_root,
+    load_account,
+    read_json,
+    validate_account,
+)
 
 
 def write_private(path, content):
@@ -33,21 +39,34 @@ def migrate(root=None):
     if not isinstance(legacy, dict):
         raise NextcloudError("Legacy nextcloud configuration must be an object.")
     account = load_account(root)
-    sources = {"dav-app-password": root / "nextcloud-app-password",
-               "music-api-key": root / "nextcloud-music-password"}
+    sources = {
+        "dav-app-password": root / "nextcloud-app-password",
+        "music-api-key": root / "nextcloud-music-password",
+    }
     if legacy.get("password_file"):
         sources["dav-app-password"] = Path(legacy["password_file"]).expanduser()
     if not account:
         if not legacy.get("url") or not legacy.get("username"):
             if any(path.exists() for path in sources.values()):
-                raise NextcloudError("Set the account URL and username before migrating credentials.")
+                raise NextcloudError(
+                    "Set the account URL and username before migrating credentials."
+                )
             return False
-        account = validate_account({"url": legacy["url"], "username": legacy["username"],
-            "credentials": {"dav": {"provider": "file", "file": "dav-app-password"}},
-            "capabilities": {"dav": {"credential": "dav"}}})
-    elif legacy.get("url") and (legacy["url"].rstrip("/") + "/" != account["url"]
-                               or legacy.get("username") != account["username"]):
-        raise NextcloudError("Existing nextcloud.json describes a different account; migration stopped.")
+        account = validate_account(
+            {
+                "url": legacy["url"],
+                "username": legacy["username"],
+                "credentials": {"dav": {"provider": "file", "file": "dav-app-password"}},
+                "capabilities": {"dav": {"credential": "dav"}},
+            }
+        )
+    elif legacy.get("url") and (
+        legacy["url"].rstrip("/") + "/" != account["url"]
+        or legacy.get("username") != account["username"]
+    ):
+        raise NextcloudError(
+            "Existing nextcloud.json describes a different account; migration stopped."
+        )
     if sources["music-api-key"].exists():
         account["credentials"].setdefault("music", {"provider": "file", "file": "music-api-key"})
         account["capabilities"].setdefault("music_subsonic", {"credential": "music"})
@@ -65,7 +84,9 @@ def migrate(root=None):
         credential_id = "dav" if filename == "dav-app-password" else "music"
         reference = account["credentials"].get(credential_id, {})
         if reference != {"provider": "file", "file": filename}:
-            raise NextcloudError("Existing credential references conflict with migration; no secrets removed.")
+            raise NextcloudError(
+                "Existing credential references conflict with migration; no secrets removed."
+            )
         target = directory / filename
         if source.is_symlink() or target.is_symlink():
             raise NextcloudError("Migration refuses symlinked credentials.")
@@ -73,7 +94,9 @@ def migrate(root=None):
         if not data.strip():
             raise NextcloudError("A legacy credential is empty; migration stopped.")
         if target.exists() and target.read_bytes() != data:
-            raise NextcloudError("A destination credential differs; migration will not overwrite it.")
+            raise NextcloudError(
+                "A destination credential differs; migration will not overwrite it."
+            )
         pending.append((source, target, data))
     for _, target, data in pending:
         write_private(target, data)
@@ -96,8 +119,17 @@ def migrate(root=None):
 if __name__ == "__main__":
     try:
         changed = migrate()
-        print("Nextcloud migration complete." if changed else "No legacy Nextcloud account to migrate.")
+        print(
+            "Nextcloud migration complete."
+            if changed
+            else "No legacy Nextcloud account to migrate."
+        )
     except (NextcloudError, OSError) as error:
         # OSError paths can reveal usernames; report a constant for filesystem failures.
-        print(str(error) if isinstance(error, NextcloudError) else "Nextcloud migration failed; check file permissions.", file=sys.stderr)
+        print(
+            str(error)
+            if isinstance(error, NextcloudError)
+            else "Nextcloud migration failed; check file permissions.",
+            file=sys.stderr,
+        )
         sys.exit(1)

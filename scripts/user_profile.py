@@ -1,9 +1,10 @@
 """Read the current local account without changing its settings."""
+
 import configparser
 import json
 import os
-from pathlib import Path
 import pwd
+from pathlib import Path
 
 
 def profile():
@@ -19,9 +20,21 @@ def profile():
             avatars.append(Path(icon))
     except (OSError, configparser.Error):
         pass
-    avatars.extend([Path(account.pw_dir) / ".face", Path(account.pw_dir) / ".face.icon",
-                    Path("/var/lib/AccountsService/icons") / account.pw_name])
-    avatar = next((path.resolve().as_uri() for path in avatars if path.is_file() and os.access(path, os.R_OK)), "")
+    avatars.extend(
+        [
+            Path(account.pw_dir) / ".face",
+            Path(account.pw_dir) / ".face.icon",
+            Path("/var/lib/AccountsService/icons") / account.pw_name,
+        ]
+    )
+    avatar = next(
+        (
+            path.resolve().as_uri()
+            for path in avatars
+            if path.is_file() and os.access(path, os.R_OK)
+        ),
+        "",
+    )
     return dict(name=name, username=account.pw_name, avatar=avatar, home=account.pw_dir)
 
 

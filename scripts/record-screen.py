@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Open Kooha's native recording controls while keeping shell surfaces open."""
+
 import os
 import shutil
 import subprocess

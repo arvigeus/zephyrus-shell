@@ -56,7 +56,6 @@ Item {
         location: "file://" + (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/zephyrus-shell/books-ui.ini"
     }
     BooksService { id: service; onFailed: message => { root.error = message; root.loading = false; } }
-    M.TorrentService { id: localService }
 
     W.DetailScrim {
         gridMode: root.gridMode
@@ -96,7 +95,7 @@ Item {
         if (localMode) {
             const generation = ++browseGeneration;
             loading = true; error = ""; nextPage = "";
-            localService.request("local_list", {kind:"book"}, (result, failure) => {
+            service.request("local_list", {kind:"book"}, (result, failure) => {
                 if (generation !== browseGeneration) return;
                 loading = false;
                 if (failure) { error = failure; return; }
@@ -144,7 +143,7 @@ Item {
         service.request("personal", {book: book}, (result, failure) => {
             if (generation === selectionGeneration && !failure && result) personal = result;
         });
-        localService.request("local_files", {title:Object.assign({}, book, {kind:"book"})}, (result, failure) => {
+        service.request("local_files", {title:Object.assign({}, book, {kind:"book"})}, (result, failure) => {
             if (generation === selectionGeneration && !failure) localFiles = result;
         });
         detailDelay.restart();
@@ -253,7 +252,7 @@ Item {
 
     Component.onCompleted: {
         gridMode = preferences.value("catalogue/grid", false);
-        localService.request("local_list", {kind:"book"}, (result, failure) => {
+        service.request("local_list", {kind:"book"}, (result, failure) => {
             localMode = !failure && !!result && result.length > 0;
             browse(false, false);
         });
@@ -464,7 +463,7 @@ Item {
                             visible: (root.selected.languages || []).length > 0
                             text: "Languages: " + (root.selected.languages || []).map(root.languageLabel).join(", ")
                         }
-                        W.Label { Layout.fillWidth: true; text: "Open Library does not list a synopsis or complete metadata for every work."; color: Theme.muted; wrapMode: Text.Wrap; visible: !root.detailLoading && !root.selected.description && !root.selected.first_sentence && !(root.selected.subjects || []).length }
+                        W.Label { Layout.fillWidth: true; text: "No synopsis available."; color: Theme.muted; wrapMode: Text.Wrap; visible: !root.detailLoading && !root.selected.description && !root.selected.first_sentence && !(root.selected.subjects || []).length }
                     }
                 }
                 M.TorrentSearch {
@@ -472,7 +471,7 @@ Item {
                     Layout.fillWidth: true; Layout.fillHeight: true
                     title: Object.assign({}, root.selected, {kind:"book",year:root.selected.firstPublishYear || "",author:(root.selected.authors || [])[0] ? root.selected.authors[0].name : ""})
                     onImported: {
-                        localService.request("local_files", {title:Object.assign({}, root.selected, {kind:"book"})}, (result, failure) => { if (!failure) root.localFiles = result; });
+                        service.request("local_files", {title:Object.assign({}, root.selected, {kind:"book"})}, (result, failure) => { if (!failure) root.localFiles = result; });
                         if (root.localMode) root.browse(false, false);
                     }
                 }

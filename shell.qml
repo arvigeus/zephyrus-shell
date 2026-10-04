@@ -27,11 +27,10 @@ ShellRoot {
         function close(): void { ShellState.close(); }
         function desktop(): void { ShellState.showDesktop(); }
         function openPlugin(id: string): void {
-            if (!Plugins.find(id)) return;
+            if (!Modules.find(id)) return;
             if (Hyprland.focusedMonitor) ShellState.monitor = Hyprland.focusedMonitor.name;
             ShellState.openPlugin(id);
         }
-        function reloadPlugins(): void { Plugins.reload(); }
         function reloadTheme(): void { Theme.refresh(); }
         function reloadSessionLock(): void { SessionLock.refresh(); }
         function lidClosed(): void {

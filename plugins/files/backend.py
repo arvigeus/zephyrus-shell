@@ -1,4 +1,5 @@
 """Small, home-scoped filesystem worker for the Files module."""
+
 import atexit
 import json
 import os
@@ -31,24 +32,33 @@ def list_directory(value):
         raise ValueError("That location is not a folder.")
     items = []
     try:
-        children = list(path.iterdir())
+        # scandir supplies directory/type metadata without resolving and statting
+        # every ordinary entry. Only symlinks need the home-boundary check.
+        with os.scandir(path) as children:
+            for entry in children:
+                try:
+                    child = Path(entry.path)
+                    if entry.is_symlink():
+                        resolved = child.resolve(strict=True)
+                        is_directory = entry.is_dir() and resolved.is_relative_to(HOME)
+                    else:
+                        is_directory = entry.is_dir(follow_symlinks=False)
+                    size = 0 if is_directory else entry.stat(follow_symlinks=False).st_size
+                    items.append(
+                        {
+                            "name": entry.name,
+                            "path": entry.path,
+                            "is_dir": is_directory,
+                            "hidden": entry.name.startswith("."),
+                            "extension": child.suffix.lower(),
+                            "size_label": "" if is_directory else human_size(size),
+                        }
+                    )
+                except (OSError, RuntimeError):
+                    continue
     except OSError as error:
         raise ValueError(f"Cannot read this folder: {error.strerror or error}") from error
-    for child in children:
-        try:
-            info = child.lstat()
-            resolved = child.resolve(strict=True)
-            is_directory = child.is_dir() and resolved.is_relative_to(HOME)
-            if child.is_symlink() and not resolved.is_relative_to(HOME):
-                is_directory = False
-            size = info.st_size
-            items.append({"name": child.name, "path": str(child), "is_dir": is_directory,
-                          "hidden": child.name.startswith("."),
-                          "extension": child.suffix.lower(),
-                          "size_label": "" if is_directory else human_size(size)})
-        except (OSError, RuntimeError):
-            continue
-    items.sort(key=lambda item: (not item["is_dir"], item["name"].casefold()))
+    items.sort(key=lambda item: (not item["is_dir"], str(item["name"]).casefold()))
     return {"path": str(path), "entries": items}
 
 
@@ -62,8 +72,13 @@ def human_size(size):
 
 
 def spawn(command):
-    subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL, start_new_session=True)
+    subprocess.Popen(
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
 
 
 def custom_action_configuration():
@@ -116,10 +131,14 @@ def custom_action_configuration():
             except (OSError, RuntimeError) as error:
                 raise ValueError(f"Action {index + 1} has an invalid match path.") from error
             if not target.is_relative_to(HOME):
-                raise ValueError(f"Action {index + 1} match paths must stay inside your home folder.")
+                raise ValueError(
+                    f"Action {index + 1} match paths must stay inside your home folder."
+                )
             action["value"] = target
         else:
-            raise ValueError(f"Action {index + 1} match kind must be file, extension, or directory.")
+            raise ValueError(
+                f"Action {index + 1} match kind must be file, extension, or directory."
+            )
         actions.append(action)
     return path, actions
 
@@ -167,8 +186,12 @@ def run_custom_action(value, index):
         lambda match: shlex.quote(values[match.group(1)]), action["command"]
     )
     process = subprocess.Popen(
-        ["/bin/sh", "-c", command], cwd=str(directory), stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+        ["/bin/sh", "-c", command],
+        cwd=str(directory),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
     )
     ACTION_PROCESSES[process.pid] = process
     return {"message": "Started " + action["name"], "job_id": process.pid}
@@ -226,8 +249,14 @@ def delete_entry(value):
     trash = shutil.which("trash-put")
     if not gio and not trash:
         raise ValueError("Install gio or trash-cli to move files to Trash.")
-    command = [gio, "trash", "--", str(target)] if gio else [trash, "--", str(target)]
-    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15, check=False)
+    if gio:
+        command = [gio, "trash", "--", str(target)]
+    else:
+        assert trash is not None
+        command = [trash, "--", str(target)]
+    result = subprocess.run(
+        command, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15, check=False
+    )
     if result.returncode:
         raise ValueError("This entry could not be moved to Trash. Check its permissions.")
     return {"message": "Moved " + target.name + " to Trash"}
@@ -254,18 +283,40 @@ def run(request):
         spawn(["xdg-open", str(location)])
         return {"message": f"Showing {path.name or 'Home'} in the file manager"}
     if op == "copy":
-        for name, arguments in (("wl-copy", []), ("xclip", ["-selection", "clipboard"]), ("xsel", ["--clipboard", "--input"])):
+        for name, arguments in (
+            ("wl-copy", []),
+            ("xclip", ["-selection", "clipboard"]),
+            ("xsel", ["--clipboard", "--input"]),
+        ):
             executable = shutil.which(name)
             if executable:
-                subprocess.run([executable, *arguments], input=str(path), text=True,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=3)
+                subprocess.run(
+                    [executable, *arguments],
+                    input=str(path),
+                    text=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=True,
+                    timeout=3,
+                )
                 return {"message": "Copied path to clipboard"}
         raise ValueError("No clipboard utility found. Install wl-clipboard, xclip, or xsel.")
     if op == "terminal":
         directory = path if path.is_dir() else path.parent
         terminal = os.environ.get("TERMINAL", "").strip()
         candidates = [shlex.split(terminal)] if terminal else []
-        candidates += [[name] for name in ("x-terminal-emulator", "kgx", "gnome-terminal", "konsole", "kitty", "alacritty", "foot")]
+        candidates += [
+            [name]
+            for name in (
+                "x-terminal-emulator",
+                "kgx",
+                "gnome-terminal",
+                "konsole",
+                "kitty",
+                "alacritty",
+                "foot",
+            )
+        ]
         for command in candidates:
             if command and shutil.which(command[0]):
                 executable = Path(command[0]).name
@@ -286,6 +337,7 @@ def run(request):
 def main():
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from services.worker import serve
+
     atexit.register(stop_custom_actions)
     signal.signal(signal.SIGTERM, stop_custom_actions)
     serve(

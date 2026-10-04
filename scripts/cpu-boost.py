@@ -1,9 +1,10 @@
 #!/usr/bin/python3 -I
 """Privileged one-shot control. Install root-owned; never run repository code via pkexec."""
+
 import json
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 BOOST_NODE = Path("/sys/devices/system/cpu/cpufreq/boost")
 

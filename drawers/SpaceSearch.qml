@@ -10,7 +10,7 @@ Item {
     property string initialQuery: ""
     property bool catalogReady: false
     property var applications: DesktopEntries.applications.values.filter(app => !app.noDisplay)
-    property var spaces: Plugins.entries
+    property var spaces: Modules.entries
     readonly property alias query: search.text
     readonly property alias currentIndex: results.currentIndex
     readonly property var matches: {

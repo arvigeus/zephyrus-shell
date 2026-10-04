@@ -1,9 +1,8 @@
 """Local project catalogue and actions for the Projects space."""
 
-import json
 import hashlib
+import json
 import os
-from pathlib import Path
 import re
 import shlex
 import shutil
@@ -14,16 +13,27 @@ import tempfile
 import threading
 import time
 import uuid
+from pathlib import Path
 from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from plugins.projects.templates import BY_ID, TEMPLATES
 
 ICON_CANDIDATES = (
-    "favicon.svg", "favicon.png", "favicon.ico", "public/favicon.svg",
-    "public/favicon.png", "public/favicon.ico", "app/icon.svg", "app/icon.png",
-    "src/favicon.svg", "assets/icon.svg", "assets/icon.png",
-    "assets/logo.svg", "assets/logo.png", ".idea/icon.svg",
+    "favicon.svg",
+    "favicon.png",
+    "favicon.ico",
+    "public/favicon.svg",
+    "public/favicon.png",
+    "public/favicon.ico",
+    "app/icon.svg",
+    "app/icon.png",
+    "src/favicon.svg",
+    "assets/icon.svg",
+    "assets/icon.png",
+    "assets/logo.svg",
+    "assets/logo.png",
+    ".idea/icon.svg",
 )
 IMAGE_SUFFIXES = {".svg", ".png", ".ico"}
 _running = set()
@@ -57,9 +67,15 @@ def _stop_worker(signum, _frame):
 
 
 def run_managed(command, *, cwd=None, timeout):
-    child = subprocess.Popen(command, cwd=cwd, stdin=subprocess.DEVNULL,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             text=True, start_new_session=True)
+    child = subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
     with _run_lock:
         _running.add(child)
     try:
@@ -122,18 +138,24 @@ def read_profiles():
     for path, profile in data["projects"].items():
         if not isinstance(path, str) or not isinstance(profile, dict):
             continue
-        device, inode, badges = (profile.get("device"), profile.get("inode"),
-                                  profile.get("badges"))
-        if (not isinstance(device, int) or isinstance(device, bool)
-                or not isinstance(inode, int) or isinstance(inode, bool)
-                or not isinstance(badges, list) or len(badges) > 6):
+        device, inode, badges = (profile.get("device"), profile.get("inode"), profile.get("badges"))
+        if (
+            not isinstance(device, int)
+            or isinstance(device, bool)
+            or not isinstance(inode, int)
+            or isinstance(inode, bool)
+            or not isinstance(badges, list)
+            or len(badges) > 6
+        ):
             continue
-        if not all(isinstance(badge, dict)
-                   and isinstance(badge.get("icon"), str)
-                   and re.fullmatch(r"[a-z0-9-]+", badge["icon"])
-                   and isinstance(badge.get("label"), str)
-                   and 0 < len(badge["label"]) <= 64
-                   for badge in badges):
+        if not all(
+            isinstance(badge, dict)
+            and isinstance(badge.get("icon"), str)
+            and re.fullmatch(r"[a-z0-9-]+", badge["icon"])
+            and isinstance(badge.get("label"), str)
+            and 0 < len(badge["label"]) <= 64
+            for badge in badges
+        ):
             continue
         profiles[path] = {"device": device, "inode": inode, "badges": badges}
     return profiles
@@ -144,8 +166,9 @@ def write_profiles(profiles):
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=target.parent,
-                                         prefix=".project-profiles-", delete=False) as output:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=target.parent, prefix=".project-profiles-", delete=False
+        ) as output:
             temporary = Path(output.name)
             json.dump({"version": 1, "projects": profiles}, output)
             output.flush()
@@ -158,16 +181,18 @@ def write_profiles(profiles):
 
 def detected_profile(project):
     stat = project.stat()
-    return {"device": stat.st_dev, "inode": stat.st_ino,
-            "badges": technologies(project)}
+    return {"device": stat.st_dev, "inode": stat.st_ino, "badges": technologies(project)}
 
 
 def read_history():
     try:
         data = json.loads(history_path().read_text())
         if data.get("version") == 1 and isinstance(data.get("opened"), dict):
-            return {key: value for key, value in data["opened"].items()
-                    if isinstance(key, str) and isinstance(value, int) and value >= 0}
+            return {
+                key: value
+                for key, value in data["opened"].items()
+                if isinstance(key, str) and isinstance(value, int) and value >= 0
+            }
     except (OSError, ValueError, TypeError, AttributeError):
         pass
     return {}
@@ -181,10 +206,13 @@ def read_syntaxis_history():
         if path.stat().st_size > 4 * 1024 * 1024:
             return {}
         data = json.loads(path.read_text())
-        return {entry["root"]: entry["last_opened_unix_ms"]
-                for entry in data.get("workspaces", [])
-                if isinstance(entry, dict) and isinstance(entry.get("root"), str)
-                and isinstance(entry.get("last_opened_unix_ms"), int)}
+        return {
+            entry["root"]: entry["last_opened_unix_ms"]
+            for entry in data.get("workspaces", [])
+            if isinstance(entry, dict)
+            and isinstance(entry.get("root"), str)
+            and isinstance(entry.get("last_opened_unix_ms"), int)
+        }
     except (OSError, ValueError, TypeError, AttributeError):
         return {}
 
@@ -192,8 +220,9 @@ def read_syntaxis_history():
 def write_history(opened):
     target = history_path()
     target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=target.parent,
-                                     prefix=".projects-", delete=False) as output:
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=target.parent, prefix=".projects-", delete=False
+    ) as output:
         temporary = Path(output.name)
         json.dump({"version": 1, "opened": opened}, output)
         output.flush()
@@ -245,11 +274,16 @@ def technologies(root):
     if any_file("package.json"):
         add("nodejs", "Node.js")
     for dependency, icon, label in (
-        ("next", "nextjs", "Next.js"), ("react", "react", "React"),
-        ("vue", "vuejs", "Vue"), ("svelte", "svelte", "Svelte"),
-        ("@angular/core", "angular", "Angular"), ("astro", "astro", "Astro"),
-        ("vite", "vitejs", "Vite"), ("tailwindcss", "tailwindcss", "Tailwind CSS"),
-        ("prisma", "prisma", "Prisma"), ("@prisma/client", "prisma", "Prisma"),
+        ("next", "nextjs", "Next.js"),
+        ("react", "react", "React"),
+        ("vue", "vuejs", "Vue"),
+        ("svelte", "svelte", "Svelte"),
+        ("@angular/core", "angular", "Angular"),
+        ("astro", "astro", "Astro"),
+        ("vite", "vitejs", "Vite"),
+        ("tailwindcss", "tailwindcss", "Tailwind CSS"),
+        ("prisma", "prisma", "Prisma"),
+        ("@prisma/client", "prisma", "Prisma"),
         ("typescript", "typescript", "TypeScript"),
     ):
         if dependency in dependencies:
@@ -261,11 +295,16 @@ def technologies(root):
     if any_file("tailwind.config.ts", "tailwind.config.js", "tailwind.config.cjs"):
         add("tailwindcss", "Tailwind CSS")
     for marker, icon, label in (
-        ("Cargo.toml", "rust", "Rust"), ("go.mod", "go", "Go"),
-        ("pyproject.toml", "python", "Python"), ("requirements.txt", "python", "Python"),
-        ("Dockerfile", "docker", "Docker"), ("compose.yaml", "docker", "Docker"),
-        ("docker-compose.yml", "docker", "Docker"), ("composer.json", "composer", "Composer"),
-        ("manage.py", "django", "Django"), ("main.tf", "terraform", "Terraform"),
+        ("Cargo.toml", "rust", "Rust"),
+        ("go.mod", "go", "Go"),
+        ("pyproject.toml", "python", "Python"),
+        ("requirements.txt", "python", "Python"),
+        ("Dockerfile", "docker", "Docker"),
+        ("compose.yaml", "docker", "Docker"),
+        ("docker-compose.yml", "docker", "Docker"),
+        ("composer.json", "composer", "Composer"),
+        ("manage.py", "django", "Django"),
+        ("main.tf", "terraform", "Terraform"),
         ("firebase.json", "firebase", "Firebase"),
     ):
         if (root / marker).exists():
@@ -284,8 +323,12 @@ def project_logo(root):
     for relative in ICON_CANDIDATES:
         candidate = root / relative
         try:
-            if (candidate.suffix in IMAGE_SUFFIXES and not candidate.is_symlink()
-                    and candidate.is_file() and candidate.stat().st_size <= 256 * 1024):
+            if (
+                candidate.suffix in IMAGE_SUFFIXES
+                and not candidate.is_symlink()
+                and candidate.is_file()
+                and candidate.stat().st_size <= 256 * 1024
+            ):
                 return candidate.as_uri()
         except OSError:
             pass
@@ -295,8 +338,13 @@ def project_logo(root):
 def list_projects(rescan_profiles=False):
     root = projects_root()
     if not root.is_dir():
-        return {"root": str(root), "projects": [], "missing": True,
-                "mise": bool(shutil.which("mise")), "templates": template_catalogue()}
+        return {
+            "root": str(root),
+            "projects": [],
+            "missing": True,
+            "mise": bool(shutil.which("mise")),
+            "templates": template_catalogue(),
+        }
     opened = read_history()
     prior = read_syntaxis_history()
     projects = []
@@ -315,17 +363,26 @@ def list_projects(rescan_profiles=False):
                 path = str(child.resolve())
                 stat = child.stat()
                 profile = profiles.get(path)
-                if (rescan_profiles or profile is None
-                        or profile["device"] != stat.st_dev or profile["inode"] != stat.st_ino):
+                if (
+                    rescan_profiles
+                    or profile is None
+                    or profile["device"] != stat.st_dev
+                    or profile["inode"] != stat.st_ino
+                ):
                     profile = detected_profile(child)
                     profiles[path] = profile
                     changed = True
                 badges = profile["badges"]
-                projects.append({"name": child.name, "path": path,
-                                 "logo": project_logo(child),
-                                 "symbol": badges[0]["icon"] if badges else "",
-                                 "badges": badges,
-                                 "opened": max(opened.get(path, 0), prior.get(path, 0))})
+                projects.append(
+                    {
+                        "name": child.name,
+                        "path": path,
+                        "logo": project_logo(child),
+                        "symbol": badges[0]["icon"] if badges else "",
+                        "badges": badges,
+                        "opened": max(opened.get(path, 0), prior.get(path, 0)),
+                    }
+                )
             except OSError:
                 continue
         if changed:
@@ -333,10 +390,15 @@ def list_projects(rescan_profiles=False):
                 write_profiles(profiles)
             except OSError:
                 warning = "Project technologies could not be saved. Check the XDG data directory."
-    projects.sort(key=lambda item: (-item["opened"], item["name"].casefold()))
-    return {"root": str(root), "projects": projects, "missing": False,
-            "mise": bool(shutil.which("mise")),
-            "templates": template_catalogue(), "warning": warning}
+    projects.sort(key=lambda item: (-float(item["opened"]), str(item["name"]).casefold()))
+    return {
+        "root": str(root),
+        "projects": projects,
+        "missing": False,
+        "mise": bool(shutil.which("mise")),
+        "templates": template_catalogue(),
+        "warning": warning,
+    }
 
 
 def refresh_profile(value):
@@ -350,15 +412,25 @@ def refresh_profile(value):
 
 
 def template_catalogue():
-    return [{**{key: value for key, value in template.items() if key != "command"},
-             "available": not template["requires"] or bool(shutil.which(template["requires"]))}
-            for template in TEMPLATES]
+    return [
+        {
+            **{key: value for key, value in template.items() if key != "command"},
+            "available": not template["requires"] or bool(shutil.which(template["requires"])),
+        }
+        for template in TEMPLATES
+    ]
 
 
 def valid_project_name(value):
     name = value.strip()
-    if (not name or name in {".", ".."} or len(name.encode()) > 255
-            or "/" in name or "\\" in name or any(ord(char) < 32 for char in name)):
+    if (
+        not name
+        or name in {".", ".."}
+        or len(name.encode()) > 255
+        or "/" in name
+        or "\\" in name
+        or any(ord(char) < 32 for char in name)
+    ):
         raise ValueError("Use a single folder name without slashes or control characters.")
     return name
 
@@ -389,9 +461,13 @@ def open_project(value):
     zed = shutil.which("zed") or shutil.which("zeditor")
     if not zed:
         raise ValueError("Zed (zed or zeditor) is not installed or is not on PATH.")
-    subprocess.Popen([zed, str(path)], stdin=subprocess.DEVNULL,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     start_new_session=True)
+    subprocess.Popen(
+        [zed, str(path)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
     opened = read_history()
     opened[str(path)] = int(time.time() * 1000)
     try:
@@ -413,8 +489,7 @@ def create_project(name, template):
     if selected["requires"] and not shutil.which(selected["requires"]):
         raise ValueError(f"{selected['requires']} is required for this starter.")
     destination.mkdir()
-    result = {"path": str(destination), "name": destination.name,
-              "template": selected["label"]}
+    result = {"path": str(destination), "name": destination.name, "template": selected["label"]}
     if selected["command"]:
         try:
             result.update(prepare_setup(destination, selected["command"]))
@@ -438,20 +513,25 @@ def prepare_setup(project, command):
     cutoff = time.time() - 24 * 60 * 60
     for old in directory.iterdir():
         try:
-            if re.fullmatch(r"[0-9a-f]{32}\.(?:sh|status)", old.name) and old.stat().st_mtime < cutoff:
+            if (
+                re.fullmatch(r"[0-9a-f]{32}\.(?:sh|status)", old.name)
+                and old.stat().st_mtime < cutoff
+            ):
                 old.unlink()
         except OSError:
             pass
     script = directory / f"{token}.sh"
     status = directory / f"{token}.status"
-    contents = ("#!/usr/bin/env bash\n"
-                f"cd -- {shlex.quote(str(project))} || exit 1\n"
-                f"{command}\n"
-                "result=$?\n"
-                f"printf '%s\\n' \"$result\" > {shlex.quote(str(status))}\n"
-                "if [ \"$result\" -eq 0 ]; then printf '\\nSetup finished successfully.\\n'; "
-                "else printf '\\nSetup exited with code %s.\\n' \"$result\"; fi\n"
-                "exec \"${SHELL:-/bin/bash}\" -i\n")
+    contents = (
+        "#!/usr/bin/env bash\n"
+        f"cd -- {shlex.quote(str(project))} || exit 1\n"
+        f"{command}\n"
+        "result=$?\n"
+        f"printf '%s\\n' \"$result\" > {shlex.quote(str(status))}\n"
+        "if [ \"$result\" -eq 0 ]; then printf '\\nSetup finished successfully.\\n'; "
+        "else printf '\\nSetup exited with code %s.\\n' \"$result\"; fi\n"
+        'exec "${SHELL:-/bin/bash}" -i\n'
+    )
     with script.open("x") as output:
         output.write(contents)
     script.chmod(0o700)
@@ -483,16 +563,19 @@ def discard_setup(value):
     return {"discarded": True}
 
 
-MISE_CONFIGS = ("mise.toml", ".mise.toml", "mise.local.toml",
-                ".mise.local.toml", ".tool-versions")
+MISE_CONFIGS = ("mise.toml", ".mise.toml", "mise.local.toml", ".mise.local.toml", ".tool-versions")
 
 
 def inferred_tools(project):
-    has = lambda *names: any((project / name).exists() for name in names)
+    def has(*names):
+        return any((project / name).exists() for name in names)
+
     tools = []
+
     def add(tool):
         if tool not in tools:
             tools.append(tool)
+
     if has("Cargo.toml", "rust-toolchain", "rust-toolchain.toml"):
         add("rust@stable")
     if has("deno.json", "deno.jsonc", "deno.lock"):
@@ -518,7 +601,8 @@ def inferred_tools(project):
     if has("Gemfile", ".ruby-version"):
         add("ruby@latest")
     if has("composer.json"):
-        add("php@latest"); add("composer@latest")
+        add("php@latest")
+        add("composer@latest")
     if has("main.tf", ".terraform.lock.hcl"):
         add("terraform@latest")
     if has("Justfile", "justfile"):
@@ -536,8 +620,14 @@ def _exclude_local_mise(project):
     git = shutil.which("git")
     if not git:
         return
-    output = subprocess.run([git, "rev-parse", "--git-path", "info/exclude"],
-                            cwd=project, capture_output=True, text=True, check=False, timeout=5)
+    output = subprocess.run(
+        [git, "rev-parse", "--git-path", "info/exclude"],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=5,
+    )
     if output.returncode:
         return
     path = Path(output.stdout.strip())
@@ -545,8 +635,9 @@ def _exclude_local_mise(project):
         path = project / path
     path.parent.mkdir(parents=True, exist_ok=True)
     current = path.read_text() if path.exists() else ""
-    additions = [name for name in ("mise.local.toml", "mise.local.lock")
-                 if name not in current.splitlines()]
+    additions = [
+        name for name in ("mise.local.toml", "mise.local.lock") if name not in current.splitlines()
+    ]
     if additions:
         with path.open("a") as destination:
             if current and not current.endswith("\n"):
@@ -599,8 +690,9 @@ def save_notes(value, notes):
         raise ValueError("Project notes must be smaller than 256 KiB.")
     path = notes_path(project)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent,
-                                     prefix=".notes-", delete=False) as output:
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, prefix=".notes-", delete=False
+    ) as output:
         temporary = Path(output.name)
         output.write(notes)
     os.replace(temporary, path)
@@ -626,9 +718,11 @@ def cleanup_preview(value):
     result = run_managed(cleanup_command(True), cwd=project, timeout=30)
     if result.returncode:
         raise ValueError("Git could not inspect ignored project files.")
-    return [{"path": line.removeprefix("Would remove ").rstrip("/"),
-             "directory": line.endswith("/")}
-            for line in result.stdout.splitlines() if line.startswith("Would remove ")]
+    return [
+        {"path": line.removeprefix("Would remove ").rstrip("/"), "directory": line.endswith("/")}
+        for line in result.stdout.splitlines()
+        if line.startswith("Would remove ")
+    ]
 
 
 def cleanup_selected(value, selected):
@@ -678,8 +772,10 @@ def mise_global(action):
     mise = shutil.which("mise")
     if not mise:
         raise ValueError("Install mise to manage tools.")
-    commands = {"update": [[mise, "upgrade", "--inactive", "--yes"]],
-                "prune": [[mise, "prune", "--tools", "--yes"]]}
+    commands = {
+        "update": [[mise, "upgrade", "--inactive", "--yes"]],
+        "prune": [[mise, "prune", "--tools", "--yes"]],
+    }
     if action not in commands:
         raise ValueError("Unsupported mise action.")
     output = []
@@ -692,16 +788,45 @@ def mise_global(action):
 
 
 CACHE_ROOTS = (
-    ".npm/_cacache", ".npm/_logs", ".npm/_npx", ".bun/install/cache",
-    ".cargo/registry/cache", ".cargo/registry/src", ".cargo/registry/index",
-    ".cargo/git/checkouts", ".cargo/git/db", ".rustup/downloads", ".rustup/tmp",
-    ".local/share/mise/downloads", ".local/share/pnpm/store",
-    ".gradle/caches", ".gradle/daemon", ".gradle/native", ".gradle/notifications",
-    ".gradle/wrapper/dists", ".nuget/packages", ".pnpm-store",
-    ".yarn/cache", ".yarn/unplugged", "go/pkg/mod", "go/pkg/sumdb",
+    ".npm/_cacache",
+    ".npm/_logs",
+    ".npm/_npx",
+    ".bun/install/cache",
+    ".cargo/registry/cache",
+    ".cargo/registry/src",
+    ".cargo/registry/index",
+    ".cargo/git/checkouts",
+    ".cargo/git/db",
+    ".rustup/downloads",
+    ".rustup/tmp",
+    ".local/share/mise/downloads",
+    ".local/share/pnpm/store",
+    ".gradle/caches",
+    ".gradle/daemon",
+    ".gradle/native",
+    ".gradle/notifications",
+    ".gradle/wrapper/dists",
+    ".nuget/packages",
+    ".pnpm-store",
+    ".yarn/cache",
+    ".yarn/unplugged",
+    "go/pkg/mod",
+    "go/pkg/sumdb",
 )
-XDG_CACHE_TOOLS = ("bun", "cargo", "deno", "go-build", "gradle", "mise",
-                   "npm", "pip", "pnpm", "rustup", "uv", "yarn")
+XDG_CACHE_TOOLS = (
+    "bun",
+    "cargo",
+    "deno",
+    "go-build",
+    "gradle",
+    "mise",
+    "npm",
+    "pip",
+    "pnpm",
+    "rustup",
+    "uv",
+    "yarn",
+)
 TOOL_ROOTS = (".bun", ".deno", ".rustup")
 
 
@@ -723,7 +848,9 @@ def purge_known(paths, extra_roots=()):
                 path.unlink()
             else:
                 resolved = path.resolve(strict=True)
-                if resolved in allowed or not any(resolved.is_relative_to(root) for root in allowed):
+                if resolved in allowed or not any(
+                    resolved.is_relative_to(root) for root in allowed
+                ):
                     raise ValueError(f"Refused to clean an unsafe path: {path}")
                 if path.is_dir():
                     shutil.rmtree(path)
@@ -751,7 +878,9 @@ def free_space(caches, mise_tools, other_tools, confirmation=""):
         xdg_cache = Path(os.environ.get("XDG_CACHE_HOME", home / ".cache")).expanduser()
         if not xdg_cache.is_absolute() or xdg_cache.resolve() in {Path("/"), home.resolve()}:
             raise ValueError("XDG_CACHE_HOME must be an absolute cache directory.")
-        if xdg_cache.exists() and (not xdg_cache.is_dir() or xdg_cache.stat().st_uid != os.getuid()):
+        if xdg_cache.exists() and (
+            not xdg_cache.is_dir() or xdg_cache.stat().st_uid != os.getuid()
+        ):
             raise ValueError("XDG_CACHE_HOME must be a cache directory owned by this user.")
         paths = [home / name for name in CACHE_ROOTS]
         paths.extend(xdg_cache / name for name in XDG_CACHE_TOOLS)
@@ -761,8 +890,10 @@ def free_space(caches, mise_tools, other_tools, confirmation=""):
         for command in ([mise, "uninstall", "--all", "--yes"], [mise, "cache", "clear"]):
             result = run_managed(command, cwd=Path.home(), timeout=600)
             if result.returncode:
-                raise ValueError((result.stderr or result.stdout).strip()[-500:]
-                                 or "Mise could not remove installed tools.")
+                raise ValueError(
+                    (result.stderr or result.stdout).strip()[-500:]
+                    or "Mise could not remove installed tools."
+                )
         messages.append("Removed installed Mise tools and its cache.")
     if other_tools:
         count = purge_known([Path.home() / name for name in TOOL_ROOTS])
@@ -773,14 +904,18 @@ def free_space(caches, mise_tools, other_tools, confirmation=""):
 def clone_arguments(url, name, mode):
     url = url.strip()
     parsed = urlparse(url)
-    if not ((parsed.scheme in {"https", "http", "ssh", "git"}
-             and parsed.hostname and parsed.path.strip("/"))
-            or re.fullmatch(r"git@[^:\s]+:.+", url)):
+    if not (
+        (
+            parsed.scheme in {"https", "http", "ssh", "git"}
+            and parsed.hostname
+            and parsed.path.strip("/")
+        )
+        or re.fullmatch(r"git@[^:\s]+:.+", url)
+    ):
         raise ValueError("Enter an HTTPS, SSH, or Git repository URL.")
     if mode not in {"full", "blobless", "shallow"}:
         raise ValueError("Choose a supported clone mode.")
-    flags = {"full": [], "blobless": ["--filter=blob:none"],
-             "shallow": ["--depth=1"]}[mode]
+    flags = {"full": [], "blobless": ["--filter=blob:none"], "shallow": ["--depth=1"]}[mode]
     destination = destination_for(name)
     git = shutil.which("git")
     if not git:
@@ -816,15 +951,22 @@ def _clone_job(job_id, command, destination, staging):
         with _run_lock:
             if _clone_jobs[job_id]["cancelled"]:
                 return
-        child = subprocess.Popen([*command, str(build)], stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                 text=True, start_new_session=True, bufsize=1)
+        child = subprocess.Popen(
+            [*command, str(build)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+            bufsize=1,
+        )
         with _run_lock:
             _running.add(child)
             _clone_jobs[job_id]["process"] = child
             cancelled = _clone_jobs[job_id]["cancelled"]
         if cancelled:
             os.killpg(child.pid, signal.SIGTERM)
+        assert child.stderr is not None
         for line in child.stderr:
             line = line.strip()
             if not line:
@@ -833,7 +975,9 @@ def _clone_job(job_id, command, destination, staging):
             lines = lines[-8:]
             match = re.search(r"(Counting|Compressing|Receiving|Resolving) objects:\s*(\d+)%", line)
             with _run_lock:
-                _clone_jobs[job_id]["phase"] = (match.group(1) + " objects") if match else "Cloning repository"
+                _clone_jobs[job_id]["phase"] = (
+                    (match.group(1) + " objects") if match else "Cloning repository"
+                )
                 _clone_jobs[job_id]["percent"] = int(match.group(2)) if match else None
         code = child.wait()
         with _run_lock:
@@ -841,12 +985,16 @@ def _clone_job(job_id, command, destination, staging):
         if cancelled:
             return
         if code:
-            raise ValueError("Git clone failed. " + (lines[-1] if lines else "Check the URL and credentials."))
+            raise ValueError(
+                "Git clone failed. " + (lines[-1] if lines else "Check the URL and credentials.")
+            )
         if destination.exists() or destination.is_symlink():
             raise ValueError("A project with that name already exists.")
         build.rename(destination)
         with _run_lock:
-            _clone_jobs[job_id].update(done=True, path=str(destination), phase="Complete", percent=100)
+            _clone_jobs[job_id].update(
+                done=True, path=str(destination), phase="Complete", percent=100
+            )
     except (OSError, ValueError) as error:
         with _run_lock:
             _clone_jobs[job_id].update(done=True, error=str(error))
@@ -882,11 +1030,22 @@ def clone_start(url, name, mode):
     job_id = uuid.uuid4().hex
     with _run_lock:
         _incomplete.add(staging)
-        _clone_jobs[job_id] = {"id": job_id, "phase": "Preparing clone", "percent": None,
-                               "done": False, "cancelled": False, "error": "", "path": "",
-                               "process": None}
-    threading.Thread(target=_clone_job, args=(job_id, command, destination, staging),
-                     name="project-clone", daemon=True).start()
+        _clone_jobs[job_id] = {
+            "id": job_id,
+            "phase": "Preparing clone",
+            "percent": None,
+            "done": False,
+            "cancelled": False,
+            "error": "",
+            "path": "",
+            "process": None,
+        }
+    threading.Thread(
+        target=_clone_job,
+        args=(job_id, command, destination, staging),
+        name="project-clone",
+        daemon=True,
+    ).start()
     return {"id": job_id}
 
 
@@ -926,9 +1085,13 @@ def run(request):
     if operation == "create":
         return create_project(request.get("name", ""), request.get("template", "empty"))
     if operation == "clone":
-        return clone_project(request.get("url", ""), request.get("name", ""), request.get("mode", "full"))
+        return clone_project(
+            request.get("url", ""), request.get("name", ""), request.get("mode", "full")
+        )
     if operation == "cloneStart":
-        return clone_start(request.get("url", ""), request.get("name", ""), request.get("mode", "full"))
+        return clone_start(
+            request.get("url", ""), request.get("name", ""), request.get("mode", "full")
+        )
     if operation == "cloneStatus":
         return clone_status(request.get("job", ""))
     if operation == "cloneCancel":
@@ -940,7 +1103,9 @@ def run(request):
     if operation == "bootstrapPlan":
         return bootstrap_plan(request.get("path", ""))
     if operation == "prepareMise":
-        return prepare_mise(request.get("path", ""), request.get("action", ""), request.get("tools", ""))
+        return prepare_mise(
+            request.get("path", ""), request.get("action", ""), request.get("tools", "")
+        )
     if operation == "notes":
         return load_notes(request.get("path", ""))
     if operation == "saveNotes":
@@ -954,14 +1119,35 @@ def run(request):
     if operation == "miseGlobal":
         return mise_global(request.get("action", ""))
     if operation == "freeSpace":
-        return free_space(request.get("caches"), request.get("miseTools"),
-                          request.get("otherTools"), request.get("confirmation", ""))
+        return free_space(
+            request.get("caches"),
+            request.get("miseTools"),
+            request.get("otherTools"),
+            request.get("confirmation", ""),
+        )
     raise ValueError("Unsupported project action.")
 
 
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, _stop_worker)
     from services.worker import serve
-    serve(run, latest=("list",), controls=("refreshAllProfiles", "refreshProfile",
-                                            "open", "create", "clone", "cloneStart",
-                                            "prepareMise", "discardSetup", "saveNotes", "cleanup", "trash", "miseGlobal", "freeSpace"))
+
+    serve(
+        run,
+        latest=("list",),
+        controls=(
+            "refreshAllProfiles",
+            "refreshProfile",
+            "open",
+            "create",
+            "clone",
+            "cloneStart",
+            "prepareMise",
+            "discardSetup",
+            "saveNotes",
+            "cleanup",
+            "trash",
+            "miseGlobal",
+            "freeSpace",
+        ),
+    )

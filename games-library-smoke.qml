@@ -41,7 +41,7 @@ ShellRoot {
             onTriggered: {
                 if (++attempts > 80) { require(false, "Timed out at step " + step); return; }
                 if (step === 0) {
-                    if (!Plugins.find("games")) return;
+                    if (!Modules.find("games")) return;
                     ShellState.openPlugin("games");
                     step++;
                 } else if (step === 1) {

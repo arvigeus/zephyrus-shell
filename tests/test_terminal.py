@@ -1,8 +1,8 @@
 import json
 import os
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from plugins.terminal import backend
@@ -24,17 +24,24 @@ class TerminalConfigTests(unittest.TestCase):
         self.assertEqual(json.loads(self.path.read_text()), {"commands": []})
 
     def test_reload_preserves_shell_syntax_and_does_not_execute(self):
-        marker = Path(self.directory.name) / 'must-not-exist'
+        marker = Path(self.directory.name) / "must-not-exist"
         command = f"printf '%s\\n' '$HOME'; touch '{marker}'"
         self.path.write_text(json.dumps({"commands": [{"name": " Example ", "command": command}]}))
-        self.assertEqual(backend.configuration()["commands"], [{"name": "Example", "command": command}])
+        self.assertEqual(
+            backend.configuration()["commands"], [{"name": "Example", "command": command}]
+        )
         self.assertFalse(marker.exists())
         self.path.write_text('{"commands": []}')
         self.assertEqual(backend.configuration()["commands"], [])
 
     def test_bad_config_is_not_overwritten(self):
-        for raw in ('{broken', '[]', '{"commands":{}}', '{"commands":[{"name":"Missing"}]}',
-                    '{"commands":[{"name":"", "command":"pwd"}]}'):
+        for raw in (
+            "{broken",
+            "[]",
+            '{"commands":{}}',
+            '{"commands":[{"name":"Missing"}]}',
+            '{"commands":[{"name":"", "command":"pwd"}]}',
+        ):
             with self.subTest(raw=raw):
                 self.path.write_text(raw)
                 with self.assertRaises(ValueError):
@@ -42,7 +49,9 @@ class TerminalConfigTests(unittest.TestCase):
                 self.assertEqual(self.path.read_text(), raw)
 
     def test_control_characters_are_rejected(self):
-        for control in ('\0', '\x1b', '\r'):
-            self.path.write_text(json.dumps({"commands": [{"name": "Invalid", "command": "pwd" + control}]}))
-            with self.assertRaisesRegex(ValueError, 'control'):
+        for control in ("\0", "\x1b", "\r"):
+            self.path.write_text(
+                json.dumps({"commands": [{"name": "Invalid", "command": "pwd" + control}]})
+            )
+            with self.assertRaisesRegex(ValueError, "control"):
                 backend.configuration()

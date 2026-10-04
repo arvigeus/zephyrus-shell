@@ -1,8 +1,8 @@
 import importlib.util
-from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock
 
 
@@ -24,17 +24,25 @@ class HardwareSetupTests(unittest.TestCase):
             def runner(arguments, **kwargs):
                 runs.append(arguments)
                 if arguments[:3] == ["getent", "group", "i2c"]:
-                    return subprocess.CompletedProcess(arguments, 1 if runs.count(arguments) == 1 else 0)
+                    return subprocess.CompletedProcess(
+                        arguments, 1 if runs.count(arguments) == 1 else 0
+                    )
                 return subprocess.CompletedProcess(arguments, 0)
 
             lookup = Mock()
             module.configure_ddc("tester", root, runner, lookup, effective_uid=0)
             module.configure_ddc("tester", root, runner, lookup, effective_uid=0)
-            self.assertEqual((root / "etc/modules-load.d/zephyrus-ddc.conf").read_text(), "i2c-dev\n")
+            self.assertEqual(
+                (root / "etc/modules-load.d/zephyrus-ddc.conf").read_text(), "i2c-dev\n"
+            )
             self.assertEqual(runs.count(["groupadd", "--system", "i2c"]), 1)
             self.assertEqual(runs.count(["usermod", "--append", "--groups", "i2c", "tester"]), 2)
-            self.assertTrue(all(Path(path).is_relative_to(root) for path in
-                                [root / "etc/modules-load.d/zephyrus-ddc.conf"]))
+            self.assertTrue(
+                all(
+                    Path(path).is_relative_to(root)
+                    for path in [root / "etc/modules-load.d/zephyrus-ddc.conf"]
+                )
+            )
 
     def test_ddc_setup_refuses_non_root_before_host_changes(self):
         module = setup_module()

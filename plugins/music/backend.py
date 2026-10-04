@@ -1,9 +1,6 @@
 """Apple Music catalog and configurable playback providers for mpv."""
 
 import base64
-from concurrent.futures import ThreadPoolExecutor
-import html
-from html.parser import HTMLParser
 import json
 import os
 import re
@@ -13,21 +10,70 @@ import subprocess
 import sys
 import tempfile
 import time
-import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
+from html.parser import HTMLParser
 from pathlib import Path
 from threading import Lock
-from functools import lru_cache
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from media.local import LocalLibrary, safe_name, xdg_dir
+from plugins.music.records import (
+    MusicError as MusicError,
+)
+from plugins.music.records import (
+    apple_cover as apple_cover,
+)
+from plugins.music.records import (
+    clean_artist_biography as clean_artist_biography,
+)
+from plugins.music.records import (
+    clean_duration as clean_duration,
+)
+from plugins.music.records import (
+    clean_favorite as clean_favorite,
+)
+from plugins.music.records import (
+    normalize_album as normalize_album,
+)
+from plugins.music.records import (
+    normalize_apple as normalize_apple,
+)
+from plugins.music.records import (
+    normalize_artist as normalize_artist,
+)
+from plugins.music.records import (
+    normalize_track as normalize_track,
+)
+from plugins.music.records import (
+    normalized as normalized,
+)
+from plugins.music.records import (
+    parse_playlist_id as parse_playlist_id,
+)
+from plugins.music.records import (
+    raw_artists as raw_artists,
+)
+from plugins.music.records import (
+    safe_catalog_id as safe_catalog_id,
+)
+from plugins.music.records import (
+    safe_playlist_id as safe_playlist_id,
+)
+from plugins.music.records import (
+    safe_stream_id as safe_stream_id,
+)
+from plugins.music.records import (
+    score_candidate as score_candidate,
+)
+from scripts.open_browser import browser_argv
 from services.cache import JsonCache
 from services.mpv import MpvIpc
-from media.local import LocalLibrary, safe_name, xdg_dir
-from scripts.open_browser import browser_argv
-
+from services.storage import atomic_write
 
 APPLE_API = "https://api.music.apple.com/v1/catalog"
 USER_AGENT = (
@@ -48,10 +94,6 @@ _lyrics_cooldowns = {}
 _lyrics_cooldown_lock = Lock()
 _download_processes = set()
 _download_processes_lock = Lock()
-
-
-class MusicError(Exception):
-    pass
 
 
 def music_config():
@@ -81,14 +123,14 @@ def music_config():
         if download is None:
             continue
         if not isinstance(download, dict) or any(
-            key in download and not isinstance(download[key], str)
-            for key in ("track", "album")
+            key in download and not isinstance(download[key], str) for key in ("track", "album")
         ):
-            raise MusicError("A Music provider download must contain optional track and album URL templates or 'stream'.")
-        if any(
-            str(download.get(key) or "").strip() == "stream"
-            for key in ("track", "album")
-        ) and (not provider.get("search_url") or not provider.get("stream_url")):
+            raise MusicError(
+                "A Music provider download must contain optional track and album URL templates or 'stream'."
+            )
+        if any(str(download.get(key) or "").strip() == "stream" for key in ("track", "album")) and (
+            not provider.get("search_url") or not provider.get("stream_url")
+        ):
             raise MusicError("Stream downloads require the provider's search_url and stream_url.")
     lyrics_providers = parsed.get("lyrics_providers")
     if lyrics_providers is None:
@@ -122,7 +164,9 @@ def request_body(url, headers=None, timeout=24):
     except urllib.error.HTTPError as error:
         if error.code in (502, 503, 504):
             raise MusicError("A configured music endpoint is temporarily unavailable.") from error
-        raise MusicError("A configured music endpoint returned HTTP " + str(error.code) + ".") from error
+        raise MusicError(
+            "A configured music endpoint returned HTTP " + str(error.code) + "."
+        ) from error
     except urllib.error.URLError as error:
         raise MusicError("Could not connect to a configured music endpoint.") from error
     except TimeoutError as error:
@@ -155,16 +199,6 @@ class AppleArtistPageParser(HTMLParser):
     def handle_data(self, data):
         if self.capturing:
             self.payload.append(data)
-
-
-def clean_artist_biography(value):
-    text = html.unescape(str(value or ""))
-    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
-    text = re.sub(r"</(?:p|div|h[1-6]|li)\s*>", "\n\n", text, flags=re.IGNORECASE)
-    text = re.sub(r"<[^>]*>", "", text)
-    text = re.sub(r"[ \t]+\n", "\n", text)
-    text = re.sub(r"\n[ \t]*\n(?:[ \t]*\n)+", "\n\n", text)
-    return text.strip()
 
 
 def apple_artist_page_biography(artist_id, artist_url):
@@ -281,7 +315,9 @@ def apple_url(path, params=None):
     url = APPLE_API + "/" + storefront + path
     if params:
         url += "?" + urllib.parse.urlencode(params)
-    return catalog_cache().load(url, 900, lambda: request_json(url, {"Authorization": "Bearer " + apple_token()}))
+    return catalog_cache().load(
+        url, 900, lambda: request_json(url, {"Authorization": "Bearer " + apple_token()})
+    )
 
 
 def apple_artist_song_cursor(artist_id, cursor):
@@ -290,261 +326,15 @@ def apple_artist_song_cursor(artist_id, cursor):
     url = urllib.parse.urljoin(APPLE_API + "/", str(cursor or ""))
     parsed = urllib.parse.urlsplit(url)
     expected = f"/v1/catalog/{storefront}/artists/{artist_id}/view/top-songs"
-    if parsed.scheme != "https" or parsed.netloc != "api.music.apple.com" or parsed.path != expected:
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc != "api.music.apple.com"
+        or parsed.path != expected
+    ):
         raise MusicError("The catalogue returned an invalid song page.")
-    return catalog_cache().load(url, 900, lambda: request_json(url, {"Authorization": "Bearer " + apple_token()}))
-
-
-def safe_catalog_id(value):
-    value = str(value or "").strip()
-    if not re.fullmatch(r"[0-9]{1,32}", value):
-        raise MusicError("The selected catalog item has an invalid ID.")
-    return value
-
-
-def parse_playlist_id(value):
-    if value is None or value == "":
-        return ""
-    if not isinstance(value, str):
-        raise MusicError("default_playlist must be an Apple Music playlist ID or URL.")
-    value = value.strip()
-    if not value:
-        return ""
-    if "://" in value:
-        parsed = urllib.parse.urlsplit(value)
-        if parsed.scheme != "https" or parsed.netloc != "music.apple.com":
-            raise MusicError("default_playlist must be an Apple Music playlist ID or URL.")
-        parts = parsed.path.strip("/").split("/")
-        value = parts[-1] if parts else ""
-    if not re.fullmatch(r"pl\.[A-Za-z0-9._-]{1,120}", value):
-        raise MusicError("default_playlist must be an Apple Music playlist ID or URL.")
-    return value
-
-
-def safe_playlist_id(value):
-    value = str(value or "").strip()
-    if not re.fullmatch(r"pl\.[A-Za-z0-9._-]{1,120}", value):
-        raise MusicError("The configured Apple Music playlist ID is invalid.")
-    return value
-
-
-def safe_stream_id(value):
-    value = str(value or "").strip()
-    if not value or len(value) > 256 or any(char in value for char in "\r\n\x00"):
-        raise MusicError("The playback provider returned an invalid track ID.")
-    return value
-
-
-def normalized(value):
-    value = unicodedata.normalize("NFKD", str(value or ""))
-    value = "".join(char for char in value if not unicodedata.combining(char))
-    value = value.casefold()
-    value = re.sub(r"\b(feat|featuring|ft)\.?\s+.*$", "", value)
-    value = re.sub(r"[^a-z0-9]+", " ", value)
-    return " ".join(value.split())
-
-
-def clean_duration(value):
-    try:
-        duration = float(value or 0)
-    except (TypeError, ValueError):
-        return 0
-    if duration > 1000:
-        duration /= 1000
-    return max(0, int(round(duration)))
-
-
-def raw_artists(item):
-    names = item.get("artistNames")
-    if isinstance(names, list) and names:
-        return [str(name).strip() for name in names if str(name).strip()]
-    artists = item.get("artists")
-    if isinstance(artists, list):
-        return [
-            str(artist.get("name") or artist.get("displayName") or "").strip()
-            for artist in artists
-            if isinstance(artist, dict) and (artist.get("name") or artist.get("displayName"))
-        ]
-    artist = item.get("artistName") or item.get("artist")
-    return [str(artist).strip()] if artist else []
-
-
-def normalize_track(item, source="apple"):
-    if not isinstance(item, dict):
-        return None
-    artists = raw_artists(item)
-    artist_records = item.get("artists") if isinstance(item.get("artists"), list) else []
-    first_artist = next((value for value in artist_records if isinstance(value, dict)), {})
-    track_id = str(item.get("trackId") or item.get("id") or "")
-    release_id = str(item.get("releaseId") or item.get("albumId") or "")
-    release = item.get("release")
-    release_title = release.get("title") if isinstance(release, dict) else ""
-    artwork = str(item.get("artwork") or item.get("cover") or "")
-    album_title = (
-        item.get("albumTitle")
-        or item.get("releaseTitle")
-        or item.get("albumName")
-        or release_title
-        or ""
+    return catalog_cache().load(
+        url, 900, lambda: request_json(url, {"Authorization": "Bearer " + apple_token()})
     )
-    return {
-        "kind": "song",
-        "id": track_id or str(item.get("id") or ""),
-        "trackId": track_id if source != "apple" else "",
-        "source": source,
-        "title": str(item.get("title") or item.get("name") or "Unknown Title"),
-        "artist": artists[0] if artists else "Unknown Artist",
-        "artists": artists,
-        "artistIds": [str(value) for value in item.get("artistIds", []) if value],
-        "album": str(album_title or "Unknown Album"),
-        "albumId": release_id,
-        "cover": artwork,
-        "albumCover": artwork or str((release or {}).get("artwork") or "") if isinstance(release, dict) else artwork,
-        "artistCover": str(
-            item.get("artistArtwork") or item.get("artistAvatar")
-            or first_artist.get("avatar") or first_artist.get("picture") or first_artist.get("artwork") or ""
-        ),
-        "duration": clean_duration(item.get("duration") or item.get("durationInMillis")),
-        "isrc": str(item.get("isrc") or ""),
-        "genreNames": list(item.get("genreNames") or item.get("genres") or []),
-        "releaseDate": str(item.get("releaseDate") or ""),
-        "playable": item.get("playable") is not False,
-    }
-
-
-def normalize_artist(item, source="apple"):
-    if not isinstance(item, dict):
-        return None
-    artist_id = str(item.get("artistId") or item.get("id") or "")
-    raw_genres = item.get("genres") or item.get("genreNames") or []
-    genres = [
-        str(value.get("name") or value.get("displayName") or "")
-        if isinstance(value, dict) else str(value)
-        for value in raw_genres
-    ]
-    raw_notes = item.get("editorialNotes") or {}
-    editorial_notes = {}
-    if isinstance(raw_notes, dict):
-        for field in ("name", "tagline", "short", "standard"):
-            value = str(raw_notes.get(field) or "").strip()
-            value = html.unescape(value)
-            value = re.sub(r"<br\s*/?>", "\n", value, flags=re.IGNORECASE)
-            value = re.sub(r"</(?:p|div|h[1-6])\s*>", "\n\n", value, flags=re.IGNORECASE)
-            value = re.sub(r"<[^>]*>", "", value).strip()
-            if value:
-                editorial_notes[field] = html.unescape(value)
-    return {
-        "kind": "artist",
-        "id": artist_id,
-        "source": source,
-        "name": str(item.get("displayName") or item.get("name") or "Unknown Artist"),
-        "cover": str(item.get("avatar") or item.get("picture") or ""),
-        "genres": [value for value in genres if value],
-        "biography": str(item.get("bio") or item.get("biography") or ""),
-        "editorialNotes": editorial_notes,
-        "url": str(item.get("url") or ""),
-    }
-
-
-def normalize_album(item, source="apple"):
-    if not isinstance(item, dict):
-        return None
-    album_id = str(item.get("releaseId") or item.get("id") or "")
-    artists = raw_artists(item)
-    artist_records = item.get("artists") if isinstance(item.get("artists"), list) else []
-    return {
-        "kind": "album",
-        "id": album_id,
-        "source": source,
-        "title": str(item.get("title") or item.get("name") or "Unknown Album"),
-        "artist": artists[0] if artists else str(item.get("artistName") or "Unknown Artist"),
-        "artists": artists,
-        "artistIds": [str(value) for value in item.get("artistIds", []) if value],
-        "artistCovers": [
-            str(value.get("avatar") or value.get("picture") or "")
-            for value in artist_records if isinstance(value, dict)
-        ],
-        "cover": str(item.get("artwork") or item.get("cover") or ""),
-        "releaseDate": str(item.get("releaseDate") or ""),
-        "releaseType": str(item.get("releaseType") or item.get("type") or ""),
-    }
-
-
-def apple_cover(attributes):
-    artwork = attributes.get("artwork") or {}
-    url = artwork.get("url") or ""
-    return (
-        str(url)
-        .replace("{w}", "640")
-        .replace("{h}", "640")
-        .replace("{f}", "jpg")
-    )
-
-
-def normalize_apple(item, kind):
-    if not isinstance(item, dict):
-        return None
-    attributes = item.get("attributes") or {}
-    item_id = str(item.get("id") or "")
-    relationships = item.get("relationships") or {}
-    album_relations = (relationships.get("albums") or {}).get("data") or []
-    artist_relations = (relationships.get("artists") or {}).get("data") or []
-    album_id = str(album_relations[0].get("id") or "") if album_relations else ""
-    artist_ids = [str(value.get("id") or "") for value in artist_relations if value.get("id")]
-    if kind == "songs":
-        row = normalize_track(
-            {
-                "id": item_id,
-                "title": attributes.get("name"),
-                "artistName": attributes.get("artistName"),
-                "albumName": attributes.get("albumName"),
-                "artwork": apple_cover(attributes),
-                "durationInMillis": attributes.get("durationInMillis"),
-                "isrc": attributes.get("isrc"),
-                "genreNames": attributes.get("genreNames") or [],
-                "albumId": album_id,
-                "artistIds": artist_ids,
-                "releaseDate": attributes.get("releaseDate"),
-            },
-            source="apple",
-        )
-        if row:
-            row["appleId"] = item_id
-            row["albumId"] = album_id
-            row["url"] = str(attributes.get("url") or "")
-        return row
-    if kind == "albums":
-        row = normalize_album(
-            {
-                "id": item_id,
-                "title": attributes.get("name"),
-                "artistName": attributes.get("artistName"),
-                "artwork": apple_cover(attributes),
-                "releaseDate": attributes.get("releaseDate"),
-                "genreNames": attributes.get("genreNames") or [],
-                "artistIds": artist_ids,
-            },
-            source="apple",
-        )
-        if row:
-            row["appleId"] = item_id
-        return row
-    if kind == "artists":
-        row = normalize_artist(
-            {
-                "id": item_id,
-                "name": attributes.get("name"),
-                "avatar": apple_cover(attributes),
-                "genreNames": attributes.get("genreNames") or [],
-                "editorialNotes": attributes.get("editorialNotes") or {},
-                "url": attributes.get("url") or "",
-            },
-            source="apple",
-        )
-        if row:
-            row["appleId"] = item_id
-        return row
-    return None
 
 
 def add_artist_artwork(artists):
@@ -654,8 +444,13 @@ def apple_playlist_cursor(playlist_id, cursor):
     url = urllib.parse.urljoin(APPLE_API + "/", str(cursor or ""))
     parsed = urllib.parse.urlsplit(url)
     expected = f"/v1/catalog/{storefront}/playlists/{playlist_id}/tracks"
-    if (parsed.scheme != "https" or parsed.netloc != "api.music.apple.com"
-            or parsed.path != expected or parsed.username or parsed.password):
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc != "api.music.apple.com"
+        or parsed.path != expected
+        or parsed.username
+        or parsed.password
+    ):
         raise MusicError("The Apple Music playlist returned an invalid page link.")
     response = catalog_cache().load(
         url, 900, lambda: request_json(url, {"Authorization": "Bearer " + apple_token()})
@@ -681,30 +476,34 @@ def playlist_results():
         if artist_name and artist_key not in seen_artists:
             seen_artists.add(artist_key)
             artist_ids = song.get("artistIds") or []
-            artists.append({
-                "kind": "artist",
-                "id": artist_ids[0] if artist_ids else "apple-name:" + artist_key,
-                "source": "apple",
-                "name": artist_name,
-                "cover": song.get("artistCover") or "",
-                "genres": song.get("genreNames") or [],
-            })
+            artists.append(
+                {
+                    "kind": "artist",
+                    "id": artist_ids[0] if artist_ids else "apple-name:" + artist_key,
+                    "source": "apple",
+                    "name": artist_name,
+                    "cover": song.get("artistCover") or "",
+                    "genres": song.get("genreNames") or [],
+                }
+            )
         album_name = str(song.get("album") or "").strip()
         album_key = str(song.get("albumId") or "") or (normalized(album_name) + "|" + artist_key)
         if album_name and album_key not in seen_albums:
             seen_albums.add(album_key)
-            albums.append({
-                "kind": "album",
-                "id": str(song.get("albumId") or "name:" + album_key),
-                "source": "apple",
-                "title": album_name,
-                "artist": artist_name or "Unknown Artist",
-                "artists": song.get("artists") or [artist_name],
-                "artistIds": song.get("artistIds") or [],
-                "artistCovers": [song.get("artistCover") or ""],
-                "cover": song.get("albumCover") or song.get("cover") or "",
-                "releaseDate": song.get("releaseDate") or "",
-            })
+            albums.append(
+                {
+                    "kind": "album",
+                    "id": str(song.get("albumId") or "name:" + album_key),
+                    "source": "apple",
+                    "title": album_name,
+                    "artist": artist_name or "Unknown Artist",
+                    "artists": song.get("artists") or [artist_name],
+                    "artistIds": song.get("artistIds") or [],
+                    "artistCovers": [song.get("artistCover") or ""],
+                    "cover": song.get("albumCover") or song.get("cover") or "",
+                    "releaseDate": song.get("releaseDate") or "",
+                }
+            )
     next_offset = raw_count
     return {
         "artists": artists,
@@ -713,8 +512,11 @@ def playlist_results():
         "paging": {
             "artists": {"limit": len(artists), "hasMore": False},
             "albums": {"limit": len(albums), "hasMore": False},
-            "songs": {"limit": next_offset, "hasMore": has_more and next_offset < SEARCH_MAX_LIMIT,
-                      "cursor": cursor},
+            "songs": {
+                "limit": next_offset,
+                "hasMore": has_more and next_offset < SEARCH_MAX_LIMIT,
+                "cursor": cursor,
+            },
         },
         "playlistId": playlist_id,
     }
@@ -724,7 +526,7 @@ def chart_results(genre_id="", kind="all"):
     params = {"types": "songs,albums", "chart": "most-played", "limit": SEARCH_PAGE_SIZE}
     if genre_id:
         params["genre"] = safe_catalog_id(genre_id)
-    charts = (apple_url("/charts", params).get("results") or {})
+    charts = apple_url("/charts", params).get("results") or {}
 
     def chart_items(category):
         items = []
@@ -747,14 +549,16 @@ def chart_results(genre_id="", kind="all"):
         if not name or key in seen:
             continue
         seen.add(key)
-        artists.append({
-            "kind": "artist",
-            "id": "apple-name:" + key,
-            "source": "apple",
-            "name": name,
-            "cover": "",
-            "genres": [],
-        })
+        artists.append(
+            {
+                "kind": "artist",
+                "id": "apple-name:" + key,
+                "source": "apple",
+                "name": name,
+                "cover": "",
+                "genres": [],
+            }
+        )
     return {
         "artists": artists,
         "albums": albums,
@@ -775,13 +579,20 @@ def search_page(args):
     genre_id = str(args.get("genreId") or "").strip()
     genre_name = str(args.get("genreName") or "").strip()
     offset = max(0, int(args.get("offset") or 0))
-    page_limit = min(SEARCH_MAX_LIMIT, max(SEARCH_PAGE_SIZE, int(args.get("limit") or SEARCH_PAGE_SIZE)))
+    page_limit = min(
+        SEARCH_MAX_LIMIT, max(SEARCH_PAGE_SIZE, int(args.get("limit") or SEARCH_PAGE_SIZE))
+    )
     if not query:
         playlist_id = music_config().get("default_playlist") or ""
         if playlist_id and not genre_id:
             if category != "songs" or offset >= page_limit:
-                return {"category": category, "items": [], "hasMore": False,
-                        "limit": min(page_limit, offset), "nextOffset": offset}
+                return {
+                    "category": category,
+                    "items": [],
+                    "hasMore": False,
+                    "limit": min(page_limit, offset),
+                    "nextOffset": offset,
+                }
             cursor = str(args.get("cursor") or "")
             if cursor:
                 items, raw_count, has_more, next_cursor = apple_playlist_cursor(playlist_id, cursor)
@@ -839,7 +650,9 @@ def search(args):
     failures = []
     with ThreadPoolExecutor(max_workers=len(categories)) as pool:
         futures = {
-            category: pool.submit(search_page, {**page_args, "category": category, "limit": SEARCH_PAGE_SIZE})
+            category: pool.submit(
+                search_page, {**page_args, "category": category, "limit": SEARCH_PAGE_SIZE}
+            )
             for category in categories
         }
         for category, future in futures.items():
@@ -850,7 +663,10 @@ def search(args):
                 pages[category] = {"items": [], "hasMore": False, "limit": 0}
     if not any(page.get("items") for page in pages.values()) and failures:
         raise MusicError(failures[0])
-    results = {category: pages.get(category, {}).get("items", []) for category in ("artists", "albums", "songs")}
+    results = {
+        category: pages.get(category, {}).get("items", [])
+        for category in ("artists", "albums", "songs")
+    }
     results["paging"] = {
         category: {
             "limit": pages.get(category, {}).get("limit", 0),
@@ -862,14 +678,18 @@ def search(args):
 
 
 def find_apple_artists(name):
-    data = apple_url(
-        "/search",
-        {"term": name, "types": "artists", "limit": 25},
-    ).get("results") or {}
+    data = (
+        apple_url(
+            "/search",
+            {"term": name, "types": "artists", "limit": 25},
+        ).get("results")
+        or {}
+    )
     candidates = (data.get("artists") or {}).get("data") or []
     wanted = normalized(name)
     exact = [
-        item for item in candidates
+        item
+        for item in candidates
         if normalized((item.get("attributes") or {}).get("name")) == wanted
     ]
     if exact:
@@ -996,12 +816,23 @@ def artist_details(item):
         top = {}
         warning = "Top songs could not load. Select an album to browse its tracks."
     return {
-        "artist": artist, "genres": artist.get("genres") or [],
-        "biography": artist.get("biography") or "", "albums": album_page["items"],
-        "albumPaging": {"artistId": artist_id, "offset": album_page["offset"], "hasMore": album_page["hasMore"]},
-        "songPaging": {"artistId": artist_id, "cursor": top.get("next") or "",
-                       "albumOffset": 0, "hasMore": bool(top.get("next") or album_page["items"])},
-        "songs": unique_songs(songs), "trackWarning": warning,
+        "artist": artist,
+        "genres": artist.get("genres") or [],
+        "biography": artist.get("biography") or "",
+        "albums": album_page["items"],
+        "albumPaging": {
+            "artistId": artist_id,
+            "offset": album_page["offset"],
+            "hasMore": album_page["hasMore"],
+        },
+        "songPaging": {
+            "artistId": artist_id,
+            "cursor": top.get("next") or "",
+            "albumOffset": 0,
+            "hasMore": bool(top.get("next") or album_page["items"]),
+        },
+        "songs": unique_songs(songs),
+        "trackWarning": warning,
     }
 
 
@@ -1013,8 +844,12 @@ def artist_songs_page(args):
         page = apple_artist_song_cursor(artist_id, cursor)
         next_cursor = str(page.get("next") or "")
         songs = [song for raw in page.get("data", []) if (song := normalize_apple(raw, "songs"))]
-        return {"items": unique_songs(songs), "cursor": next_cursor,
-                "albumOffset": album_offset, "hasMore": True}
+        return {
+            "items": unique_songs(songs),
+            "cursor": next_cursor,
+            "albumOffset": album_offset,
+            "hasMore": True,
+        }
     # The top-songs view is a ranking, not the artist's full catalogue. Fetch a
     # small album batch only when the Songs pane actually reaches its end.
     page = apple_artist_albums(artist_id, offset=album_offset, limit=2)
@@ -1030,9 +865,13 @@ def artist_songs_page(args):
                 failures += 1
     if failures and not songs:
         raise MusicError("Album tracks could not load. Reopen the artist to retry.")
-    return {"items": unique_songs(songs), "cursor": "",
-            "albumOffset": page["offset"], "hasMore": page["hasMore"],
-            "trackWarning": "Some album tracks could not load." if failures else ""}
+    return {
+        "items": unique_songs(songs),
+        "cursor": "",
+        "albumOffset": page["offset"],
+        "hasMore": page["hasMore"],
+        "trackWarning": "Some album tracks could not load." if failures else "",
+    }
 
 
 def artist_info(item):
@@ -1051,10 +890,13 @@ def artist_info(item):
     if not re.fullmatch(r"[0-9]{1,32}", artist_id):
         fallback = normalize_artist(item, source=str(item.get("source") or "apple")) or item
         return {"artist": fallback, "available": False}
-    artist_data = apple_url(
-        "/artists/" + safe_catalog_id(artist_id),
-        {"extend": "editorialNotes"},
-    ).get("data") or []
+    artist_data = (
+        apple_url(
+            "/artists/" + safe_catalog_id(artist_id),
+            {"extend": "editorialNotes"},
+        ).get("data")
+        or []
+    )
     artist = normalize_apple(artist_data[0], "artists") if artist_data else None
     if not artist:
         fallback = normalize_artist(item, source=str(item.get("source") or "apple")) or item
@@ -1064,8 +906,11 @@ def artist_info(item):
         if biography:
             artist["biography"] = biography
     has_info = bool(
-        artist.get("genres") or artist.get("cover") or artist.get("url")
-        or artist.get("biography") or artist.get("editorialNotes")
+        artist.get("genres")
+        or artist.get("cover")
+        or artist.get("url")
+        or artist.get("biography")
+        or artist.get("editorialNotes")
     )
     return {"artist": artist, "available": has_info}
 
@@ -1080,50 +925,50 @@ def artist_albums_page(args):
 def album_details(item, include_tracks=True):
     album_id = str(item.get("id") or "")
     if str(item.get("source") or "") != "apple" or not re.fullmatch(r"[0-9]{1,32}", album_id):
-        query = " ".join(part for part in (str(item.get("artist") or ""), str(item.get("title") or "")) if part)
-        matches = (apple_url("/search", {"term": query, "types": "albums", "limit": 25})
-                   .get("results", {}).get("albums", {}).get("data", []))
+        query = " ".join(
+            part for part in (str(item.get("artist") or ""), str(item.get("title") or "")) if part
+        )
+        matches = (
+            apple_url("/search", {"term": query, "types": "albums", "limit": 25})
+            .get("results", {})
+            .get("albums", {})
+            .get("data", [])
+        )
         wanted_title = normalized(item.get("title"))
         wanted_artist = normalized(item.get("artist"))
-        match = next((raw for raw in matches
-                      if normalized((raw.get("attributes") or {}).get("name")) == wanted_title
-                      and (not wanted_artist or normalized((raw.get("attributes") or {}).get("artistName")) == wanted_artist)), None)
+        match = next(
+            (
+                raw
+                for raw in matches
+                if normalized((raw.get("attributes") or {}).get("name")) == wanted_title
+                and (
+                    not wanted_artist
+                    or normalized((raw.get("attributes") or {}).get("artistName")) == wanted_artist
+                )
+            ),
+            None,
+        )
         album_id = str(match.get("id") or "") if match else ""
     album_id = safe_catalog_id(album_id)
     album_data = apple_url("/albums/" + album_id).get("data") or []
     album = normalize_apple(album_data[0], "albums") if album_data else item
-    artists = catalog_artist_records(album.get("artistIds"), album.get("artists")) if include_tracks else []
-    return {"album": album, "artists": artists,
-            "songs": tracks_for_album(album) if include_tracks else []}
+    artists = (
+        catalog_artist_records(album.get("artistIds"), album.get("artists"))
+        if include_tracks
+        else []
+    )
+    return {
+        "album": album,
+        "artists": artists,
+        "songs": tracks_for_album(album) if include_tracks else [],
+    }
 
 
 def song_artists(args):
     song = args.get("song") or {}
-    return catalog_artist_records(song.get("artistIds"), song.get("artists") or [song.get("artist")])
-
-
-def score_candidate(wanted, candidate):
-    wanted_isrc = str(wanted.get("isrc") or "").strip().casefold()
-    candidate_isrc = str(candidate.get("isrc") or "").strip().casefold()
-    if wanted_isrc and candidate_isrc == wanted_isrc:
-        return 1000
-    wanted_title = normalized(wanted.get("title"))
-    candidate_title = normalized(candidate.get("title"))
-    if not wanted_title or not candidate_title:
-        return 0
-    if wanted_title == candidate_title:
-        score = 100
-    elif wanted_title in candidate_title or candidate_title in wanted_title:
-        score = 60
-    else:
-        return 0
-    artist = normalized(wanted.get("artist"))
-    candidate_artists = [normalized(value) for value in raw_artists(candidate)]
-    if artist and artist in candidate_artists:
-        score += 80
-    elif artist and any(artist in value or value in artist for value in candidate_artists):
-        score += 35
-    return score
+    return catalog_artist_records(
+        song.get("artistIds"), song.get("artists") or [song.get("artist")]
+    )
 
 
 def value_at_path(value, path):
@@ -1158,8 +1003,12 @@ def provider_template(provider, template_name, values, require_values=False):
         raise MusicError("A provider URL template has an unknown placeholder.")
     try:
         parsed = urllib.parse.urlparse(template)
-        parsed.port  # Reject malformed port numbers.
-        valid = parsed.scheme in ("http", "https") and parsed.hostname and not re.search(r"\s", template)
+        _ = parsed.port  # Reject malformed port numbers.
+        valid = (
+            parsed.scheme in ("http", "https")
+            and parsed.hostname
+            and not re.search(r"\s", template)
+        )
     except ValueError:
         valid = False
     if not valid:
@@ -1212,7 +1061,9 @@ def save_stream_track(track, provider, directory):
     album = str(track.get("album") or "").strip()
     release_date = str(track.get("releaseDate") or "").strip()[:10]
     if not (title and artist and album and re.fullmatch(r"\d{4}-\d{2}-\d{2}", release_date)):
-        raise MusicError("A song needs a title, artist, album, and full release date to save to Music.")
+        raise MusicError(
+            "A song needs a title, artist, album, and full release date to save to Music."
+        )
     stem = f"{safe_name(title)} - {safe_name(artist)} - {safe_name(album)} ({release_date})"
     resolved = resolve_track(track, providers=[provider], local_first=False)
     headers = provider_headers(provider)
@@ -1223,13 +1074,19 @@ def save_stream_track(track, provider, directory):
         command += ["-headers", "".join(f"{name}: {value}\r\n" for name, value in headers.items())]
     command += ["-i", resolved["url"], "-map", "0:a:0", "-c:a", "copy", "-f", "matroska"]
     directory.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(prefix=".zephyrus-music-", suffix=".mka", dir=directory, delete=False) as output:
+    with tempfile.NamedTemporaryFile(
+        prefix=".zephyrus-music-", suffix=".mka", dir=directory, delete=False
+    ) as output:
         temporary = Path(output.name)
     process = None
     try:
         try:
-            process = subprocess.Popen(command + [str(temporary)], stdin=subprocess.DEVNULL,
-                                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            process = subprocess.Popen(
+                command + [str(temporary)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
         except FileNotFoundError as error:
             raise MusicError("Install ffmpeg to save music streams.") from error
         with _download_processes_lock:
@@ -1323,8 +1180,10 @@ def open_download(args):
     url = download_url(kind, args.get("item"))
     try:
         subprocess.Popen(
-            browser_argv("music", url), stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            browser_argv("music", url),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
     except (OSError, ValueError) as error:
@@ -1467,13 +1326,17 @@ def fetch_lyrics(args):
 
 
 def provider_results(provider, wanted, query):
-    url = provider_template(provider, "search_url", {
-        "query": query,
-        "artist": wanted.get("artist") or "",
-        "title": wanted.get("title") or "",
-        "isrc": wanted.get("isrc") or "",
-        "limit": 30,
-    })
+    url = provider_template(
+        provider,
+        "search_url",
+        {
+            "query": query,
+            "artist": wanted.get("artist") or "",
+            "title": wanted.get("title") or "",
+            "isrc": wanted.get("isrc") or "",
+            "limit": 30,
+        },
+    )
     if not url:
         return []
     response = request_json(url, provider_headers(provider))
@@ -1492,13 +1355,19 @@ def provider_results(provider, wanted, query):
         artists = value_at_path(raw, artists_field)
         if not artists:
             artists = value_at_path(raw, "artists") or value_at_path(raw, "artistNames")
-        artist = value_at_path(raw, artist_field) or value_at_path(raw, "artistName") or value_at_path(raw, "artist")
+        artist = (
+            value_at_path(raw, artist_field)
+            or value_at_path(raw, "artistName")
+            or value_at_path(raw, "artist")
+        )
         candidate = {
             "id": value_at_path(raw, id_field) or value_at_path(raw, "id"),
             "title": value_at_path(raw, title_field) or value_at_path(raw, "name"),
             "artist": artist,
             "artists": artists if isinstance(artists, list) else [],
-            "artistNames": artists if isinstance(artists, list) and all(isinstance(v, str) for v in artists) else [],
+            "artistNames": artists
+            if isinstance(artists, list) and all(isinstance(v, str) for v in artists)
+            else [],
             "isrc": value_at_path(raw, isrc_field),
         }
         if not candidate["artistNames"] and not candidate["artists"] and artist:
@@ -1508,7 +1377,9 @@ def provider_results(provider, wanted, query):
 
 
 def resolve_track(track, providers=None, local_first=True):
-    local_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "zephyrus-shell/media"
+    local_data = (
+        Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "zephyrus-shell/media"
+    )
     if local_first:
         local_files = LocalLibrary(local_data).files({**track, "kind": "music"})
         if local_files:
@@ -1536,14 +1407,18 @@ def resolve_track(track, providers=None, local_first=True):
             if not ranked or score_candidate(track, ranked[0]) < 120:
                 continue
             stream_id = safe_stream_id(ranked[0].get("id"))
-            stream_url = provider_template(provider, "stream_url", {
-                "id": stream_id,
-                "track_id": stream_id,
-                "query": query,
-                "artist": artist,
-                "title": title,
-                "isrc": isrc,
-            })
+            stream_url = provider_template(
+                provider,
+                "stream_url",
+                {
+                    "id": stream_id,
+                    "track_id": stream_id,
+                    "query": query,
+                    "artist": artist,
+                    "title": title,
+                    "isrc": isrc,
+                },
+            )
             return {"url": stream_url, "headers": provider_headers(provider)}
     if provider_errors:
         raise MusicError("The configured playback providers could not resolve this song.")
@@ -1637,40 +1512,6 @@ def favorite_path():
     return config_root / "zephyrus-shell" / "music-favorites.json"
 
 
-def clean_favorite(item):
-    if not isinstance(item, dict):
-        return None
-    kind = str(item.get("kind") or "")
-    item_id = str(item.get("id") or "")
-    if kind not in ("artist", "album", "song") or not item_id:
-        return None
-    fields = (
-        ("kind", "id", "source", "name", "cover", "genres", "biography")
-        if kind == "artist"
-        else (
-            "kind", "id", "source", "title", "artist", "artists", "artistIds", "artistCovers",
-            "cover", "releaseDate", "releaseType",
-        )
-        if kind == "album"
-        else (
-            "kind", "id", "trackId", "source", "title", "artist", "artists", "album",
-            "albumId", "cover", "albumCover", "artistCover", "duration", "isrc", "genreNames", "playable",
-        )
-    )
-    cleaned = {}
-    for field in fields:
-        if field not in item:
-            continue
-        value = item[field]
-        if isinstance(value, str):
-            cleaned[field] = value[:2000]
-        elif isinstance(value, (int, float, bool)):
-            cleaned[field] = value
-        elif isinstance(value, list):
-            cleaned[field] = [str(entry)[:1000] for entry in value[:100]]
-    return cleaned
-
-
 def favorites_load():
     try:
         items = json.loads(favorite_path().read_text(encoding="utf-8"))
@@ -1680,7 +1521,8 @@ def favorites_load():
         return []
     records = [record for item in items if (record := clean_favorite(item))]
     artist_records = [
-        record for record in records
+        record
+        for record in records
         if record.get("kind") == "artist"
         and record.get("source") == "apple"
         and not record.get("cover")
@@ -1696,18 +1538,21 @@ def favorites_save(args):
         raise MusicError("Invalid favorites list.")
     cleaned = [record for item in items[:5000] if (record := clean_favorite(item))]
     path = favorite_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(cleaned, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
+    atomic_write(path, json.dumps(cleaned, ensure_ascii=False, indent=2))
     return {"saved": len(cleaned)}
 
 
 def dispatch(args):
     operation = args.get("op")
     if operation == "local-songs":
-        local_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "zephyrus-shell/media"
-        return [{**item, "kind": "song", "source": "local"} for item in LocalLibrary(local_data).list("music")]
+        local_data = (
+            Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+            / "zephyrus-shell/media"
+        )
+        return [
+            {**item, "kind": "song", "source": "local"}
+            for item in LocalLibrary(local_data).list("music")
+        ]
     if operation == "search":
         return search(args)
     if operation == "search-page":
@@ -1750,8 +1595,21 @@ def dispatch(args):
 def main():
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from services.worker import serve
+
     signal.signal(signal.SIGTERM, stop_downloads)
-    serve(dispatch, errors=(MusicError,), latest=("search", "search-page", "artist", "artist-info", "album", "lyrics", "play"), controls=("player-command", "player-state", "player-cleanup", "favorites-save", "favorites-load"), scope=lambda r: (r["op"], r.get("category", "")))
+    serve(
+        dispatch,
+        errors=(MusicError,),
+        latest=("search", "search-page", "artist", "artist-info", "album", "lyrics", "play"),
+        controls=(
+            "player-command",
+            "player-state",
+            "player-cleanup",
+            "favorites-save",
+            "favorites-load",
+        ),
+        scope=lambda r: (r["op"], r.get("category", "")),
+    )
 
 
 if __name__ == "__main__":

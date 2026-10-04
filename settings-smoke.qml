@@ -51,6 +51,9 @@ ShellRoot {
                 if (++ticks > 130) { fail("Timeout at step " + step); return; }
                 if (!drawer.item || HardwareSnapshot.busy || !Profiles.loaded || Profiles.busy) return;
                 if (step === 0) {
+                    // Startup profile application legitimately invalidates the
+                    // snapshot. Wait for it before measuring drawer reuse.
+                    if (Profiles.startup || Profiles.applying || Profiles.settle.running) return;
                     if (!HardwareSnapshot.checkedAt || HardwareSnapshot.events.running || HardwareSnapshot.refreshPending) return;
                     saved = drawer.item;
                     checked = HardwareSnapshot.checkedAt;
@@ -70,7 +73,8 @@ ShellRoot {
                     if (activations) { fail("Hidden power button completed a hold"); return; }
                     button.down = false;
                     button.holdDuration = 2000;
-                    if (drawer.item !== saved || HardwareSnapshot.checkedAt !== checked) { fail("Reopening replaced Settings or repeated fresh snapshot"); return; }
+                    if (drawer.item !== saved) { fail("Reopening replaced Settings"); return; }
+                    if (HardwareSnapshot.checkedAt !== checked) { fail("Reopening repeated fresh snapshot"); return; }
                     button.holdDuration = 240;
                     button.down = true; step = 4; ticks = 0;
                 } else if (step === 4 && ticks > 8) {

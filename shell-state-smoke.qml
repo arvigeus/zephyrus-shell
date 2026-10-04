@@ -15,13 +15,12 @@ ShellRoot {
                                    test_retained_owner_survives_desktop_and_other_monitor,
                                    test_hidden_release_preserves_foreground,
                                    test_navigation_is_opaque_and_cancelled_on_desktop,
-                                   test_registry_removal_releases_all_owned_state,
                                    test_back_destroys_even_retained_module,
                                    test_clipboard_toggle_preserves_module_and_owner,
                                    test_removed_monitor_moves_module_ownership]) {
                     init(); test(); cleanup();
                 }
-                console.log("STATE PASS: lifetime, owner, opaque navigation, cancellation, registry removal");
+                console.log("STATE PASS: lifetime, owner, opaque navigation, cancellation");
             } catch (error) { console.error("STATE FAIL", error); }
             Qt.quit();
         }
@@ -72,19 +71,6 @@ ShellRoot {
         ShellState.showDesktop();
         compare(ShellState.pendingPluginOpen, null);
         compare(ShellState.runningPluginIds, ["destination"]);
-    }
-    function test_registry_removal_releases_all_owned_state() {
-        ShellState.openPlugin("player");
-        ShellState.requestKeepRunning("player", true);
-        ShellState.openPlugin("removed", {id: 3});
-        ShellState.reconcilePlugins(["player"]);
-        compare(ShellState.panel, "left");
-        compare(ShellState.pendingPluginOpen, null);
-        compare(ShellState.runningPluginIds, ["player"]);
-        compare(ShellState.runningPluginMonitors.removed, undefined);
-        ShellState.reconcilePlugins([]);
-        compare(Object.keys(ShellState.retentionRequests), []);
-        compare(Object.keys(ShellState.runningPluginMonitors), []);
     }
     function test_back_destroys_even_retained_module() {
         ShellState.openPlugin("player", {id: 1});

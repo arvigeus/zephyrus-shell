@@ -1,15 +1,15 @@
 """Small CalDAV reader for Nextcloud calendars and task lists."""
 
-from datetime import date, datetime, timedelta, timezone
 import re
-from uuid import uuid4
-from urllib.parse import quote, unquote, urljoin, urlsplit
 import xml.etree.ElementTree as ET
+from datetime import UTC, date, datetime, timedelta
+from urllib.parse import quote, unquote, urljoin
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrulestr
-from services.nextcloud import DAVClient, NextcloudError
 
+from services.nextcloud import DAVClient, NextcloudError
 
 DAV = "DAV:"
 CAL = "urn:ietf:params:xml:ns:caldav"
@@ -22,11 +22,16 @@ class Client(DAVClient):
         super().__init__(config, scope=scope, opener=opener, provider=provider)
 
     def propfind(self):
-        body = b'''<?xml version="1.0" encoding="utf-8"?>
+        body = b"""<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
   <d:prop><d:displayname/><d:resourcetype/><c:supported-calendar-component-set/><d:current-user-privilege-set/></d:prop>
-</d:propfind>'''
-        raw, _ = self.request("PROPFIND", self.home, body, {"Depth": "1", "Content-Type": "application/xml; charset=utf-8"})
+</d:propfind>"""
+        raw, _ = self.request(
+            "PROPFIND",
+            self.home,
+            body,
+            {"Depth": "1", "Content-Type": "application/xml; charset=utf-8"},
+        )
         try:
             document = ET.fromstring(raw)
         except ET.ParseError as error:
@@ -43,16 +48,25 @@ class Client(DAVClient):
                 prop = propstat.find("d:prop", NS)
                 if prop is None or prop.find("d:resourcetype/c:calendar", NS) is None:
                     continue
-                components = {node.get("name") for node in prop.findall("c:supported-calendar-component-set/c:comp", NS)}
-                privileges = {node.tag.rsplit("}", 1)[-1] for node in prop.findall("d:current-user-privilege-set/d:privilege/*", NS)}
-                collections.append({
-                    "url": url,
-                    "slug": unquote(url.rstrip("/").rsplit("/", 1)[-1]),
-                    "name": prop.findtext("d:displayname", default="", namespaces=NS) or unquote(url.rstrip("/").rsplit("/", 1)[-1]),
-                    "components": components or {"VEVENT", "VTODO"},
-                    "writable": bool({"write", "write-content", "all"} & privileges)
-                                and bool({"bind", "all"} & privileges),
-                })
+                components = {
+                    node.get("name")
+                    for node in prop.findall("c:supported-calendar-component-set/c:comp", NS)
+                }
+                privileges = {
+                    node.tag.rsplit("}", 1)[-1]
+                    for node in prop.findall("d:current-user-privilege-set/d:privilege/*", NS)
+                }
+                collections.append(
+                    {
+                        "url": url,
+                        "slug": unquote(url.rstrip("/").rsplit("/", 1)[-1]),
+                        "name": prop.findtext("d:displayname", default="", namespaces=NS)
+                        or unquote(url.rstrip("/").rsplit("/", 1)[-1]),
+                        "components": components or {"VEVENT", "VTODO"},
+                        "writable": bool({"write", "write-content", "all"} & privileges)
+                        and bool({"bind", "all"} & privileges),
+                    }
+                )
         return collections
 
     def report(self, collection, kind, start=None, end=None):
@@ -62,12 +76,20 @@ class Client(DAVClient):
         body = (
             '<?xml version="1.0" encoding="utf-8"?>'
             '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
-            '<d:prop><d:getetag/><c:calendar-data/></d:prop>'
+            "<d:prop><d:getetag/><c:calendar-data/></d:prop>"
             '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="'
-            + kind + '">' + time_range + '</c:comp-filter></c:comp-filter></c:filter>'
-            '</c:calendar-query>'
+            + kind
+            + '">'
+            + time_range
+            + "</c:comp-filter></c:comp-filter></c:filter>"
+            "</c:calendar-query>"
         ).encode()
-        raw, _ = self.request("REPORT", collection["url"], body, {"Depth": "1", "Content-Type": "application/xml; charset=utf-8"})
+        raw, _ = self.request(
+            "REPORT",
+            collection["url"],
+            body,
+            {"Depth": "1", "Content-Type": "application/xml; charset=utf-8"},
+        )
         try:
             document = ET.fromstring(raw)
         except ET.ParseError as error:
@@ -83,7 +105,13 @@ class Client(DAVClient):
                     continue
                 data = prop.findtext("c:calendar-data", default="", namespaces=NS)
                 if data:
-                    entries.append((urljoin(self.base, href), prop.findtext("d:getetag", default="", namespaces=NS), data))
+                    entries.append(
+                        (
+                            urljoin(self.base, href),
+                            prop.findtext("d:getetag", default="", namespaces=NS),
+                            data,
+                        )
+                    )
         return entries
 
     def complete_task(self, task):
@@ -103,15 +131,23 @@ class Client(DAVClient):
         if re.search(r"(?mi)^STATUS:COMPLETED\r?$", block):
             return
         newline = "\r\n" if "\r\n" in data else "\n"
-        for field, value in (("STATUS", "COMPLETED"), ("PERCENT-COMPLETE", "100"),
-                             ("COMPLETED", datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))):
+        for field, value in (
+            ("STATUS", "COMPLETED"),
+            ("PERCENT-COMPLETE", "100"),
+            ("COMPLETED", datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")),
+        ):
             pattern = rf"(?mi)^{field}(?:;[^:]*)?:[^\r\n]*"
             if re.search(pattern, block):
                 block = re.sub(pattern, field + ":" + value, block, count=1)
             else:
                 block += field + ":" + value + newline
-        updated = data[:match.start(1)] + block + data[match.end(1):]
-        self.request("PUT", href, updated.encode(), {"Content-Type": "text/calendar; charset=utf-8", "If-Match": etag})
+        updated = data[: match.start(1)] + block + data[match.end(1) :]
+        self.request(
+            "PUT",
+            href,
+            updated.encode(),
+            {"Content-Type": "text/calendar; charset=utf-8", "If-Match": etag},
+        )
 
     def save_item(self, config, kind, entry):
         if kind not in ("VTODO", "VEVENT") or not isinstance(entry, dict):
@@ -120,10 +156,17 @@ class Client(DAVClient):
         selection = config.get("task_lists" if kind == "VTODO" else "calendars")
         if selection is not None and not isinstance(selection, list):
             raise NextcloudError("The calendar selection in attention.json is invalid.")
-        collection = next((item for item in self.propfind()
-                           if item["slug"] == slug and kind in item["components"]
-                           and item["writable"] and
-                           (selection is None or slug in selection or item["name"] in selection)), None)
+        collection = next(
+            (
+                item
+                for item in self.propfind()
+                if item["slug"] == slug
+                and kind in item["components"]
+                and item["writable"]
+                and (selection is None or slug in selection or item["name"] in selection)
+            ),
+            None,
+        )
         if collection is None:
             raise NextcloudError("Choose a writable calendar or task list.")
         fields = entry_fields(kind, entry)
@@ -136,29 +179,53 @@ class Client(DAVClient):
             if headers.get("ETag") != etag:
                 raise NextcloudError("This item changed on Nextcloud. Refresh and try again.")
             updated = update_ical(raw.decode("utf-8"), kind, fields)
-            self.request("PUT", href, updated.encode("utf-8"),
-                         {"Content-Type": "text/calendar; charset=utf-8", "If-Match": etag})
+            self.request(
+                "PUT",
+                href,
+                updated.encode("utf-8"),
+                {"Content-Type": "text/calendar; charset=utf-8", "If-Match": etag},
+            )
         else:
             identity = uuid4().hex
             href = collection["url"] + identity + ".ics"
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Zephyrus Shell//Attention//EN",
-                     "BEGIN:" + kind, "UID:" + identity + "@zephyrus-shell", "DTSTAMP:" + stamp,
-                     *fields, "END:" + kind, "END:VCALENDAR"]
-            self.request("PUT", href, serialize_ical(lines),
-                         {"Content-Type": "text/calendar; charset=utf-8", "If-None-Match": "*"})
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+            lines = [
+                "BEGIN:VCALENDAR",
+                "VERSION:2.0",
+                "PRODID:-//Zephyrus Shell//Attention//EN",
+                "BEGIN:" + kind,
+                "UID:" + identity + "@zephyrus-shell",
+                "DTSTAMP:" + stamp,
+                *fields,
+                "END:" + kind,
+                "END:VCALENDAR",
+            ]
+            self.request(
+                "PUT",
+                href,
+                serialize_ical(lines),
+                {"Content-Type": "text/calendar; charset=utf-8", "If-None-Match": "*"},
+            )
         return {"saved": True}
 
 
 def escape_text(value):
-    return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace(",", "\\,").replace(";", "\\;")
+    return (
+        str(value)
+        .replace("\\", "\\\\")
+        .replace("\n", "\\n")
+        .replace(",", "\\,")
+        .replace(";", "\\;")
+    )
 
 
 def entry_fields(kind, entry):
     title = str(entry.get("summary", "")).strip()
     description = str(entry.get("description", "")).strip()
     if not title or len(title) > 250 or len(description) > 10000:
-        raise NextcloudError("Enter a title of at most 250 characters and notes of at most 10,000 characters.")
+        raise NextcloudError(
+            "Enter a title of at most 250 characters and notes of at most 10,000 characters."
+        )
     fields = ["SUMMARY:" + escape_text(title)]
     if description:
         fields.append("DESCRIPTION:" + escape_text(description))
@@ -173,8 +240,12 @@ def entry_fields(kind, entry):
             if entry.get("all_day"):
                 if ends < starts:
                     raise ValueError()
-                fields.extend(("DTSTART;VALUE=DATE:" + starts.strftime("%Y%m%d"),
-                               "DTEND;VALUE=DATE:" + (ends + timedelta(days=1)).strftime("%Y%m%d")))
+                fields.extend(
+                    (
+                        "DTSTART;VALUE=DATE:" + starts.strftime("%Y%m%d"),
+                        "DTEND;VALUE=DATE:" + (ends + timedelta(days=1)).strftime("%Y%m%d"),
+                    )
+                )
             else:
                 zone = datetime.now().astimezone().tzinfo
                 start_time = datetime.strptime(str(entry.get("start_time", "")), "%H:%M").time()
@@ -183,10 +254,16 @@ def entry_fields(kind, entry):
                 end_at = datetime.combine(ends, end_time, tzinfo=zone)
                 if end_at <= start_at:
                     raise ValueError()
-                fields.extend(("DTSTART:" + start_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
-                               "DTEND:" + end_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")))
+                fields.extend(
+                    (
+                        "DTSTART:" + start_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ"),
+                        "DTEND:" + end_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ"),
+                    )
+                )
     except (ValueError, OverflowError) as error:
-        raise NextcloudError("Check the date and time. Use YYYY-MM-DD and HH:MM, with the end after the start.") from error
+        raise NextcloudError(
+            "Check the date and time. Use YYYY-MM-DD and HH:MM, with the end after the start."
+        ) from error
     return fields
 
 
@@ -225,7 +302,7 @@ def update_ical(data, kind, fields):
         end = lines.index(closing, start + 1)
     except ValueError as error:
         raise NextcloudError("Nextcloud returned an invalid calendar item.") from error
-    block = lines[start + 1:end]
+    block = lines[start + 1 : end]
     depth = 0
     kept = []
     replace = {"SUMMARY", "DESCRIPTION", "DUE", "DTSTART", "DTEND", "LAST-MODIFIED"}
@@ -240,8 +317,8 @@ def update_ical(data, kind, fields):
             depth += 1
         elif line.upper().startswith("END:"):
             depth -= 1
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    lines[start + 1:end] = kept + fields + ["LAST-MODIFIED:" + stamp]
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    lines[start + 1 : end] = kept + fields + ["LAST-MODIFIED:" + stamp]
     return serialize_ical(lines).decode("utf-8")
 
 
@@ -277,8 +354,13 @@ def first(props, key):
 
 
 def text_value(value):
-    return (value.replace("\\n", "\n").replace("\\N", "\n")
-            .replace("\\,", ",").replace("\\;", ";").replace("\\\\", "\\"))
+    return (
+        value.replace("\\n", "\n")
+        .replace("\\N", "\n")
+        .replace("\\,", ",")
+        .replace("\\;", ";")
+        .replace("\\\\", "\\")
+    )
 
 
 def date_value(field, local_zone):
@@ -288,7 +370,7 @@ def date_value(field, local_zone):
     if params.get("VALUE") == "DATE" or (len(value) == 8 and value.isdigit()):
         return datetime.strptime(value[:8], "%Y%m%d").replace(tzinfo=local_zone), True
     if value.endswith("Z"):
-        return datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc), False
+        return datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC), False
     zone = local_zone
     if params.get("TZID"):
         try:
@@ -315,14 +397,22 @@ def events_from(entries, collection, start, end, local_zone):
             if not begins:
                 continue
             finishes, _ = date_value(first(props, "DTEND"), local_zone)
-            duration = finishes - begins if finishes else timedelta(days=1) if all_day else timedelta(hours=1)
+            duration = (
+                finishes - begins
+                if finishes
+                else timedelta(days=1)
+                if all_day
+                else timedelta(hours=1)
+            )
             if duration <= timedelta(0):
                 duration = timedelta(days=1) if all_day else timedelta(hours=1)
             occurrences = [begins]
             rule = first(props, "RRULE")[1]
             if rule:
                 try:
-                    occurrences = rrulestr(rule, dtstart=begins).between(start - duration, end, inc=True)
+                    occurrences = rrulestr(rule, dtstart=begins).between(
+                        start - duration, end, inc=True
+                    )
                 except ValueError:
                     occurrences = [begins]
             excluded = set()
@@ -338,22 +428,38 @@ def events_from(entries, collection, start, end, local_zone):
                 if override and first(override, "STATUS")[1].upper() == "CANCELLED":
                     continue
                 source = override or props
-                actual_start, actual_all_day = date_value(first(source, "DTSTART"), local_zone) if override else (occurrence, all_day)
-                actual_end, _ = date_value(first(source, "DTEND"), local_zone) if override else (occurrence + duration, all_day)
+                actual_start, actual_all_day = (
+                    date_value(first(source, "DTSTART"), local_zone)
+                    if override
+                    else (occurrence, all_day)
+                )
+                actual_end, _ = (
+                    date_value(first(source, "DTEND"), local_zone)
+                    if override
+                    else (occurrence + duration, all_day)
+                )
                 if actual_end is None:
                     actual_end = actual_start + duration
                 if actual_start < end and actual_end > start:
-                    results.append({
-                        "summary": text_value(first(source, "SUMMARY")[1]) or "Untitled event",
-                        "start": actual_start.isoformat(), "end": actual_end.isoformat(),
-                        "date": actual_start.astimezone(local_zone).date().isoformat(),
-                        "last_date": (actual_end - timedelta(microseconds=1)).astimezone(local_zone).date().isoformat(),
-                        "all_day": actual_all_day,
-                        "calendar": collection["name"], "calendar_slug": collection.get("slug", ""),
-                        "href": href, "etag": etag,
-                        "description": text_value(first(source, "DESCRIPTION")[1]),
-                        "editable": bool(collection.get("writable")) and not bool(rule),
-                    })
+                    results.append(
+                        {
+                            "summary": text_value(first(source, "SUMMARY")[1]) or "Untitled event",
+                            "start": actual_start.isoformat(),
+                            "end": actual_end.isoformat(),
+                            "date": actual_start.astimezone(local_zone).date().isoformat(),
+                            "last_date": (actual_end - timedelta(microseconds=1))
+                            .astimezone(local_zone)
+                            .date()
+                            .isoformat(),
+                            "all_day": actual_all_day,
+                            "calendar": collection["name"],
+                            "calendar_slug": collection.get("slug", ""),
+                            "href": href,
+                            "etag": etag,
+                            "description": text_value(first(source, "DESCRIPTION")[1]),
+                            "editable": bool(collection.get("writable")) and not bool(rule),
+                        }
+                    )
     return results
 
 
@@ -370,17 +476,21 @@ def tasks_from(entries, collection, local_zone):
             recurring = bool(first(props, "RRULE")[1])
             if recurring and (not due or due.astimezone(local_zone).date() > today):
                 continue
-            results.append({
-                "summary": text_value(first(props, "SUMMARY")[1]) or "Untitled task",
-                "due": due.astimezone(local_zone).date().isoformat() if due else "",
-                "due_at": due.isoformat() if due and not all_day else "",
-                "list": collection["name"], "list_slug": collection.get("slug", ""),
-                "description": text_value(first(props, "DESCRIPTION")[1]),
-                "href": href, "etag": etag,
-                "recurring": recurring,
-                "actionable": not recurring and bool(collection.get("writable", True)),
-                "editable": not recurring and bool(collection.get("writable", True)),
-            })
+            results.append(
+                {
+                    "summary": text_value(first(props, "SUMMARY")[1]) or "Untitled task",
+                    "due": due.astimezone(local_zone).date().isoformat() if due else "",
+                    "due_at": due.isoformat() if due and not all_day else "",
+                    "list": collection["name"],
+                    "list_slug": collection.get("slug", ""),
+                    "description": text_value(first(props, "DESCRIPTION")[1]),
+                    "href": href,
+                    "etag": etag,
+                    "recurring": recurring,
+                    "actionable": not recurring and bool(collection.get("writable", True)),
+                    "editable": not recurring and bool(collection.get("writable", True)),
+                }
+            )
     return results
 
 
@@ -389,11 +499,15 @@ def snapshot(config, *, start=None, end=None, opener=None):
     local_zone = datetime.now().astimezone().tzinfo
     today = date.today()
     current_window = (today - timedelta(days=7), today + timedelta(days=60))
-    target_window = (date.fromisoformat(start), date.fromisoformat(end)) if start and end else current_window
+    target_window = (
+        (date.fromisoformat(start), date.fromisoformat(end)) if start and end else current_window
+    )
     if target_window[1] <= target_window[0] or (target_window[1] - target_window[0]).days > 180:
         raise NextcloudError("The calendar date range is invalid.")
     combined = (min(current_window[0], target_window[0]), max(current_window[1], target_window[1]))
-    windows = [combined] if (combined[1] - combined[0]).days <= 180 else [current_window, target_window]
+    windows = (
+        [combined] if (combined[1] - combined[0]).days <= 180 else [current_window, target_window]
+    )
     calendar_selection = config.get("calendars")
     task_selection = config.get("task_lists")
     if calendar_selection is not None and not isinstance(calendar_selection, list):
@@ -402,7 +516,9 @@ def snapshot(config, *, start=None, end=None, opener=None):
         raise NextcloudError("nextcloud.task_lists must be a list or omitted.")
 
     def chosen(collection, selection):
-        return selection is None or collection["slug"] in selection or collection["name"] in selection
+        return (
+            selection is None or collection["slug"] in selection or collection["name"] in selection
+        )
 
     events, tasks = [], []
     collections = client.propfind()
@@ -411,8 +527,8 @@ def snapshot(config, *, start=None, end=None, opener=None):
             for range_start, range_end in windows:
                 lower = datetime.combine(range_start, datetime.min.time(), tzinfo=local_zone)
                 upper = datetime.combine(range_end, datetime.min.time(), tzinfo=local_zone)
-                query_start = (lower - timedelta(days=1)).astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-                query_end = (upper + timedelta(days=1)).astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                query_start = (lower - timedelta(days=1)).astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+                query_end = (upper + timedelta(days=1)).astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
                 entries = client.report(collection, "VEVENT", query_start, query_end)
                 events.extend(events_from(entries, collection, lower, upper, local_zone))
         if "VTODO" in collection["components"] and chosen(collection, task_selection):
@@ -422,9 +538,18 @@ def snapshot(config, *, start=None, end=None, opener=None):
     events.sort(key=lambda event: event["start"])
     tasks.sort(key=lambda task: (task["due"] == "", task["due"], task["summary"].casefold()))
     return {
-        "calendars": [{"name": item["name"], "slug": item["slug"], "components": sorted(item["components"]),
-                       "writable": item.get("writable", False),
-                       "events_enabled": chosen(item, calendar_selection),
-                       "tasks_enabled": chosen(item, task_selection)} for item in collections],
-        "events": events[:300], "tasks": tasks, "task_count": len(tasks),
+        "calendars": [
+            {
+                "name": item["name"],
+                "slug": item["slug"],
+                "components": sorted(item["components"]),
+                "writable": item.get("writable", False),
+                "events_enabled": chosen(item, calendar_selection),
+                "tasks_enabled": chosen(item, task_selection),
+            }
+            for item in collections
+        ],
+        "events": events[:300],
+        "tasks": tasks,
+        "task_count": len(tasks),
     }

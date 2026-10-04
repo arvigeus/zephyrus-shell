@@ -53,7 +53,6 @@ Item {
 
     ListModel { id: catalogue }
     GameService { id: service; onFailed: message => root.error = message }
-    M.TorrentService { id: localService }
     Settings {
         id: preferences
         location: "file://" + (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/zephyrus-shell/games-ui.ini"
@@ -103,7 +102,7 @@ Item {
         if (localMode) {
             const generation = ++browseGeneration;
             loading = true; error = ""; nextOffset = 0; setupRequired = false;
-            localService.request("local_list", {kind:"game"}, (result, failure) => {
+            service.request("local_list", {kind:"game"}, (result, failure) => {
                 if (generation !== browseGeneration) return;
                 loading = false;
                 if (failure) { error = failure; return; }
@@ -165,7 +164,7 @@ Item {
         detailError = "";
         notice = "";
         editingStore = "";
-        localService.request("local_files", {title:Object.assign({}, game, {kind:"game"})}, (result, failure) => {
+        service.request("local_files", {title:Object.assign({}, game, {kind:"game"})}, (result, failure) => {
             if (generation === selectionGeneration && !failure) localFiles = result;
         });
         detailDelay.restart();
@@ -340,7 +339,7 @@ Item {
                 setupRequired = !catalogState.configured;
                 refreshLibraries();
             }
-            localService.request("local_list", {kind:"game"}, (local, localFailure) => {
+            service.request("local_list", {kind:"game"}, (local, localFailure) => {
                 localMode = !localFailure && !!local && local.length > 0;
                 initializing = false;
                 if (!failure || localMode) browse(false);
@@ -983,7 +982,7 @@ Item {
                     Layout.fillWidth: true; Layout.fillHeight: true
                     title: Object.assign({}, root.selected, {kind:"game",year:(root.selected.releaseDate || "").slice(0,4)})
                     onImported: {
-                        localService.request("local_files", {title:Object.assign({}, root.selected, {kind:"game"})}, (result, failure) => { if (!failure) root.localFiles = result; });
+                        service.request("local_files", {title:Object.assign({}, root.selected, {kind:"game"})}, (result, failure) => { if (!failure) root.localFiles = result; });
                         if (root.localMode) root.browse(false);
                     }
                 }

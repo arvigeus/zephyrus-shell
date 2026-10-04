@@ -25,7 +25,7 @@ ShellRoot {
             onTriggered: {
                 if (++attempts > 100) { require(false, "Loading timed out"); return; }
                 if (step === 0) {
-                    if (!Plugins.find("apps")) return;
+                    if (!Modules.find("apps")) return;
                     ShellState.openPlugin("apps");
                     require(!find(overlay.item, "moduleContent").item, "Module loaded before drawer closed");
                     overlay.readyToLoad = true;

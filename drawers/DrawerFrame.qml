@@ -46,7 +46,7 @@ Rectangle {
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: 4
                     Label { text: root.title; font.family: Theme.font; font.pixelSize: Theme.sp(23); font.weight: Font.DemiBold; font.letterSpacing: 0.5 }
-                    Label { text: root.subtitle; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); Layout.fillWidth: true }
+                    Label { visible: text.length > 0; text: root.subtitle; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); Layout.fillWidth: true }
                 }
             }
             Loader { visible: !!root.headerActions; sourceComponent: root.headerActions }

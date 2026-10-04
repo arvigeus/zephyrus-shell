@@ -1,7 +1,7 @@
 # Interface conventions
 
 - Use bundled Lucide SVGs through `widgets/Icon.qml` or `Action.iconName` for interface icons. Do not introduce Unicode symbols, emoji, or another icon family as interface icons. Application and brand artwork may use their own icons through `AppIcon`.
-- Plugin manifest `icon` values are bundled Lucide icon names (without `.svg`).
+- Built-in module registry `icon` values are bundled Lucide icon names (without `.svg`).
 - The Spaces drawer lists Desktop first, then modules. Selecting a module closes the drawer and opens its content in the shared desktop overlay below the 42 px pill bar. Keep module loading and host navigation in `shell/ModuleOverlay.qml` so all modules share this behavior.
 - Plugins own their runtime resources. Any module may request retention with `host.requestKeepRunning(id, true)` while it has background work; otherwise selecting Desktop or another module destroys it. Escape or explicit Close always destroys it.
 - Keep lifecycle bookkeeping in `core/ShellState.qml`. Module hosts act on their owning instance; cross-module navigation uses `host.openPlugin(id, payload)` and destination `handleOpen(payload)`. The shell does not interpret feature records.
@@ -21,7 +21,7 @@
 
 ## Media modules
 
-- Movies and TV Series are separate manifests and thin entry points sharing `media/MediaBrowser.qml` and the owned `MediaService.qml` worker. Keep provider logic in `media/backend.py`, never in the shell host.
+- Movies and TV Series are separate built-in spaces and thin entry points sharing `media/MediaBrowser.qml` and the owned `MediaService.qml` worker. Keep provider logic in `media/backend.py`, never in the shell host.
 - Media secrets and provider templates live in `$XDG_CONFIG_HOME/zephyrus-shell/media.json`, not the repository or QML. The example file and `docs/media.md` describe configuration. Do not import NexFlix secrets automatically.
 - Preserve IMDb/TMDB identity aliases and personal records during metadata refresh. Ignore responses from older browse/title/episode generations. Keep loading states distinct from empty results and reserve artwork geometry.
 - Playback source resolution is separate from catalogue metadata, allowing future local sources. Movies have no episode controls. YouTube and local-library scanning are deferred.

@@ -12,6 +12,10 @@ Item {
     property int serial: 0
     property var callbacks: ({})
     property bool stopped: false
+    property int pendingCount: 0
+    property bool startOnDemand: false
+    property bool processReady: false
+    property var startupRequests: []
     signal failed(string message)
     signal ready()
 
@@ -19,6 +23,7 @@ Item {
         const pending = callbacks[id];
         delete callbacks[id];
         if (!pending) return;
+        pendingCount--;
         try { pending.callback(result, error || ""); }
         catch (exception) {
             console.error(serviceName + " response handler failed:", exception);
@@ -32,15 +37,21 @@ Item {
         const id = ++serial;
         callbacks[id] = {callback: callback || function() {},
                          deadline: timeoutMs === 0 ? Infinity : Date.now() + (timeoutMs || timeout)};
+        pendingCount++;
         if (stopped) {
             settle(id, null, serviceName + " service stopped. Close and reopen this module.");
             return id;
         }
-        worker.write(JSON.stringify(Object.assign({}, args || {}, {id: id, op: op})) + "\n");
+        const line = JSON.stringify(Object.assign({}, args || {}, {id: id, op: op})) + "\n";
+        if (processReady) worker.write(line);
+        else {
+            startupRequests.push({id: id, line: line});
+            worker.running = true;
+        }
         return id;
     }
     Timer {
-        interval: 1000; repeat: true; running: !root.stopped
+        interval: 1000; repeat: true; running: !root.stopped && root.pendingCount > 0
         onTriggered: {
             const now = Date.now();
             for (const id of Object.keys(root.callbacks))
@@ -51,8 +62,15 @@ Item {
     Process {
         id: worker
         command: ["python3", "-u", Paths.file(root.backend)]
-        running: true
-        onStarted: root.ready()
+        running: !root.startOnDemand
+        onStarted: {
+            root.processReady = true;
+            const requests = root.startupRequests;
+            root.startupRequests = [];
+            for (const request of requests)
+                if (root.callbacks[request.id]) worker.write(request.line);
+            root.ready();
+        }
         stdinEnabled: true
         stdout: SplitParser {
             onRead: data => {
@@ -71,6 +89,8 @@ Item {
             }
         }
         onExited: {
+            root.processReady = false;
+            root.startupRequests = [];
             root.stopped = true;
             root.failPending(root.serviceName + " service stopped. Close and reopen this module.");
         }

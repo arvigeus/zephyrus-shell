@@ -1,9 +1,9 @@
 import os
-from pathlib import Path
 import sys
 import tempfile
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from plugins.projects import backend
@@ -16,13 +16,16 @@ class ProjectsTests(unittest.TestCase):
         self.home = Path(self.temporary.name)
         self.projects = self.home / "Work"
         self.projects.mkdir()
-        environment = patch.dict(os.environ, {
-            "HOME": str(self.home),
-            "XDG_CONFIG_HOME": str(self.home / "config"),
-            "XDG_DATA_HOME": str(self.home / "data"),
-            "XDG_CACHE_HOME": str(self.home / "cache"),
-            "XDG_PROJECTS_DIR": str(self.projects),
-        })
+        environment = patch.dict(
+            os.environ,
+            {
+                "HOME": str(self.home),
+                "XDG_CONFIG_HOME": str(self.home / "config"),
+                "XDG_DATA_HOME": str(self.home / "data"),
+                "XDG_CACHE_HOME": str(self.home / "cache"),
+                "XDG_PROJECTS_DIR": str(self.projects),
+            },
+        )
         environment.start()
         self.addCleanup(environment.stop)
 
@@ -88,8 +91,11 @@ class ProjectsTests(unittest.TestCase):
         (project / "Cargo.toml").write_text("[package]\nname='rust'\n")
         cache = backend.profiles_path()
         cache.parent.mkdir(parents=True)
-        cache.write_text('{"version":1,"projects":{"' + str(project)
-                         + '":{"device":0,"inode":0,"badges":[{"icon":"../../other","label":"Bad"}]}}}')
+        cache.write_text(
+            '{"version":1,"projects":{"'
+            + str(project)
+            + '":{"device":0,"inode":0,"badges":[{"icon":"../../other","label":"Bad"}]}}}'
+        )
         result = backend.list_projects()
         self.assertEqual(result["projects"][0]["symbol"], "rust")
         self.assertEqual(backend.read_profiles()[str(project)]["badges"][0]["icon"], "rust")
@@ -110,18 +116,23 @@ class ProjectsTests(unittest.TestCase):
         beta.mkdir()
         registry = self.home / "data/syntaxis/workspaces.json"
         registry.parent.mkdir(parents=True)
-        registry.write_text('{"workspaces":['
-                            '{"root":"' + str(beta) + '","last_opened_unix_ms":500},'
-                            '{"root":"' + str(self.home / 'outside') + '","last_opened_unix_ms":900}'
-                            ']}')
-        self.assertEqual([entry["name"] for entry in backend.list_projects()["projects"]],
-                         ["beta", "alpha"])
+        registry.write_text(
+            '{"workspaces":['
+            '{"root":"' + str(beta) + '","last_opened_unix_ms":500},'
+            '{"root":"' + str(self.home / "outside") + '","last_opened_unix_ms":900}'
+            "]}"
+        )
+        self.assertEqual(
+            [entry["name"] for entry in backend.list_projects()["projects"]], ["beta", "alpha"]
+        )
 
     def test_open_uses_zed_and_persists_order(self):
         project = self.projects / "mine"
         project.mkdir()
-        with patch.object(backend.shutil, "which", return_value="/usr/bin/zed"), \
-             patch.object(backend.subprocess, "Popen") as launch:
+        with (
+            patch.object(backend.shutil, "which", return_value="/usr/bin/zed"),
+            patch.object(backend.subprocess, "Popen") as launch,
+        ):
             backend.open_project(str(project))
         self.assertEqual(launch.call_args.args[0], ["/usr/bin/zed", str(project)])
         self.assertGreater(backend.list_projects()["projects"][0]["opened"], 0)
@@ -152,7 +163,11 @@ class ProjectsTests(unittest.TestCase):
         self.assertFalse(script.exists())
 
     def test_vite_plus_uses_existing_vp_without_mise(self):
-        with patch.object(backend.shutil, "which", side_effect=lambda name: "/usr/bin/vp" if name == "vp" else None):
+        with patch.object(
+            backend.shutil,
+            "which",
+            side_effect=lambda name: "/usr/bin/vp" if name == "vp" else None,
+        ):
             result = backend.create_project("web", "vite-plus")
         self.assertIn("vp create --directory .", Path(result["setupScript"]).read_text())
         self.assertTrue((self.projects / "web").is_dir())
@@ -166,8 +181,9 @@ class ProjectsTests(unittest.TestCase):
         for command, success in (("true", True), ("false", False)):
             result = backend.prepare_setup(project, command)
             environment = dict(os.environ, SHELL=str(shell))
-            backend.subprocess.run(["bash", result["setupScript"]],
-                                   env=environment, capture_output=True, check=True)
+            backend.subprocess.run(
+                ["bash", result["setupScript"]], env=environment, capture_output=True, check=True
+            )
             self.assertEqual(backend.setup_status(result["setupId"])["success"], success)
             self.assertFalse(Path(result["setupScript"]).exists())
         abandoned = backend.prepare_setup(project, "true")
@@ -175,30 +191,44 @@ class ProjectsTests(unittest.TestCase):
         self.assertFalse(Path(abandoned["setupScript"]).exists())
 
     def test_clone_uses_argument_array_and_validates_url(self):
-        with patch.object(backend.shutil, "which", return_value="/usr/bin/git"), \
-             patch.object(backend, "run_managed") as command:
+        with (
+            patch.object(backend.shutil, "which", return_value="/usr/bin/git"),
+            patch.object(backend, "run_managed") as command,
+        ):
+
             def complete_clone(arguments, **_kwargs):
                 Path(arguments[-1]).mkdir()
                 return backend.subprocess.CompletedProcess(arguments, 0, "", "")
+
             command.side_effect = complete_clone
             backend.clone_project("https://example.org/team/repo.git", "repo")
         actual = command.call_args.args[0]
-        self.assertEqual(actual[:5], ["/usr/bin/git", "clone", "--progress", "--",
-                                      "https://example.org/team/repo.git"])
+        self.assertEqual(
+            actual[:5],
+            ["/usr/bin/git", "clone", "--progress", "--", "https://example.org/team/repo.git"],
+        )
         self.assertEqual(Path(actual[5]).name, "repo")
         self.assertEqual(Path(actual[5]).parent.parent, self.projects)
         self.assertTrue((self.projects / "repo").is_dir())
         with self.assertRaises(ValueError):
             backend.clone_project("file:///tmp/private", "other")
         with patch.object(backend.shutil, "which", return_value="/usr/bin/git"):
-            self.assertIn("--filter=blob:none", backend.clone_arguments("https://example.org/repo", "blob", "blobless")[2])
-            self.assertIn("--depth=1", backend.clone_arguments("https://example.org/repo", "shallow", "shallow")[2])
+            self.assertIn(
+                "--filter=blob:none",
+                backend.clone_arguments("https://example.org/repo", "blob", "blobless")[2],
+            )
+            self.assertIn(
+                "--depth=1",
+                backend.clone_arguments("https://example.org/repo", "shallow", "shallow")[2],
+            )
 
     def test_async_clone_finishes_and_cancellation_cleans_staging(self):
-        script = ("import pathlib, sys, time; "
-                  "pathlib.Path(sys.argv[2]).mkdir(); "
-                  "print('Receiving objects: 100%', file=sys.stderr, flush=True); "
-                  "time.sleep(float(sys.argv[1]))")
+        script = (
+            "import pathlib, sys, time; "
+            "pathlib.Path(sys.argv[2]).mkdir(); "
+            "print('Receiving objects: 100%', file=sys.stderr, flush=True); "
+            "time.sleep(float(sys.argv[1]))"
+        )
 
         def wait_for(job_id):
             for _ in range(100):
@@ -242,7 +272,9 @@ class ProjectsTests(unittest.TestCase):
     def test_template_catalogue_matches_syntaxis_categories(self):
         catalogue = backend.template_catalogue()
         self.assertEqual(len(catalogue), 30)
-        self.assertEqual({item["category"] for item in catalogue}, {"Basics", "Web", "Backend", "Native"})
+        self.assertEqual(
+            {item["category"] for item in catalogue}, {"Basics", "Web", "Backend", "Native"}
+        )
         self.assertFalse(any("command" in item for item in catalogue))
 
     def test_bootstrap_infers_tools_and_notes_are_private(self):
@@ -252,7 +284,9 @@ class ProjectsTests(unittest.TestCase):
         self.assertEqual(backend.bootstrap_plan(str(project))["tools"], ["rust@stable"])
         with patch.object(backend.shutil, "which", return_value="/usr/bin/mise"):
             result = backend.prepare_mise(str(project), "bootstrap")
-        self.assertIn("mise use --yes --env local rust@stable", Path(result["setupScript"]).read_text())
+        self.assertIn(
+            "mise use --yes --env local rust@stable", Path(result["setupScript"]).read_text()
+        )
         (project / "mise.toml").write_text("[tools]\nrust='stable'\n")
         self.assertTrue(backend.bootstrap_plan(str(project))["configured"])
         backend.save_notes(str(project), "Keep this in mind")
@@ -263,9 +297,13 @@ class ProjectsTests(unittest.TestCase):
         project = self.projects / "sample"
         project.mkdir()
         (project / ".git").mkdir()
-        with patch.object(backend.shutil, "which", return_value="/usr/bin/git"), \
-             patch.object(backend, "run_managed") as command:
-            command.return_value = backend.subprocess.CompletedProcess([], 0, "Would remove target/\n", "")
+        with (
+            patch.object(backend.shutil, "which", return_value="/usr/bin/git"),
+            patch.object(backend, "run_managed") as command,
+        ):
+            command.return_value = backend.subprocess.CompletedProcess(
+                [], 0, "Would remove target/\n", ""
+            )
             preview = backend.cleanup_preview(str(project))
             self.assertEqual(preview, [{"path": "target", "directory": True}])
             with self.assertRaises(ValueError):
@@ -280,8 +318,10 @@ class ProjectsTests(unittest.TestCase):
         self.assertIn(str(project), backend.read_profiles())
         with self.assertRaises(ValueError):
             backend.trash_project(str(project), "wrong")
-        with patch.object(backend.shutil, "which", return_value="/usr/bin/gio"), \
-             patch.object(backend, "run_managed") as command:
+        with (
+            patch.object(backend.shutil, "which", return_value="/usr/bin/gio"),
+            patch.object(backend, "run_managed") as command,
+        ):
             command.return_value = backend.subprocess.CompletedProcess([], 0, "", "")
             backend.trash_project(str(project), "sample")
         self.assertEqual(command.call_args.args[0], ["/usr/bin/gio", "trash", "--", str(project)])
@@ -305,13 +345,16 @@ class ProjectsTests(unittest.TestCase):
         self.assertTrue(bun_install.exists())
         self.assertTrue(project.exists())
 
-        with patch.object(backend.shutil, "which", return_value="/usr/bin/mise"), \
-             patch.object(backend, "run_managed") as command:
+        with (
+            patch.object(backend.shutil, "which", return_value="/usr/bin/mise"),
+            patch.object(backend, "run_managed") as command,
+        ):
             command.return_value = backend.subprocess.CompletedProcess([], 0, "", "")
             backend.free_space(False, True, True, "REMOVE TOOLS")
         self.assertEqual(command.call_count, 2)
-        self.assertEqual(command.call_args_list[0].args[0],
-                         ["/usr/bin/mise", "uninstall", "--all", "--yes"])
+        self.assertEqual(
+            command.call_args_list[0].args[0], ["/usr/bin/mise", "uninstall", "--all", "--yes"]
+        )
         self.assertFalse(bun_install.exists())
         self.assertTrue(project.exists())
 

@@ -1,6 +1,7 @@
 """Small line-based Radio Browser API worker for the Radio module."""
-import json
+
 import hashlib
+import json
 import os
 import random
 import re
@@ -12,18 +13,34 @@ import uuid
 from functools import lru_cache
 from itertools import product
 from pathlib import Path
+from typing import Any, TypedDict
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, quote, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
-
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.mpv import MpvIpc
-
+from services.storage import atomic_write
 
 PAGE_SIZE = 100
 USER_AGENT = "ZephyrusShell/1.0 (Radio module)"
-browse_sessions = {}
+
+
+class BrowseStream(TypedDict):
+    tags: list[str]
+    offset: int
+    items: list[dict[str, Any]]
+    cursor: int
+    done: bool
+
+
+class BrowseSession(TypedDict):
+    streams: list[BrowseStream]
+    seen: set[str]
+    returned: int
+
+
+browse_sessions: dict[str, BrowseSession] = {}
 genre_variants = {}
 browse_lock = threading.Lock()
 FAVICON_MAX_BYTES = 1024 * 1024
@@ -69,10 +86,13 @@ def api_hosts():
         addresses = socket.getaddrinfo("all.api.radio-browser.info", 443, type=socket.SOCK_STREAM)
         for address in addresses:
             try:
-                hostname = socket.gethostbyaddr(address[4][0])[0].rstrip(".").lower()
+                hostname = socket.gethostbyaddr(str(address[4][0]))[0].rstrip(".").lower()
             except (OSError, socket.herror):
                 continue
-            if hostname.endswith(".api.radio-browser.info") and hostname != "all.api.radio-browser.info":
+            if (
+                hostname.endswith(".api.radio-browser.info")
+                and hostname != "all.api.radio-browser.info"
+            ):
                 hosts.add(hostname)
     except OSError:
         pass
@@ -99,7 +119,10 @@ def api_get(path, params=None):
                 return json.loads(payload.decode("utf-8"))
         except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
             last_error = error
-    raise RadioError("Radio Browser is unavailable: " + (str(last_error) if last_error else "no API mirrors were found."))
+    raise RadioError(
+        "Radio Browser is unavailable: "
+        + (str(last_error) if last_error else "no API mirrors were found.")
+    )
 
 
 def station_record(raw):
@@ -138,13 +161,20 @@ def list_countries():
     if not isinstance(rows, list):
         raise RadioError("Radio Browser returned an invalid country list.")
     return [
-        {"name": str(row.get("name") or "").strip(), "stationcount": safe_int(row.get("stationcount"))}
-        for row in rows if isinstance(row, dict) and str(row.get("name") or "").strip()
+        {
+            "name": str(row.get("name") or "").strip(),
+            "stationcount": safe_int(row.get("stationcount")),
+        }
+        for row in rows
+        if isinstance(row, dict) and str(row.get("name") or "").strip()
     ]
 
 
 def list_genres():
-    rows = api_get("/json/tags", {"order": "stationcount", "reverse": "true", "hidebroken": "true", "limit": 2000})
+    rows = api_get(
+        "/json/tags",
+        {"order": "stationcount", "reverse": "true", "hidebroken": "true", "limit": 2000},
+    )
     if not isinstance(rows, list):
         raise RadioError("Radio Browser returned an invalid genre list.")
     grouped = {}
@@ -164,10 +194,18 @@ def list_genres():
     result = []
     genre_variants.clear()
     for key, group in grouped.items():
-        variants = sorted(group["variants"], key=lambda item: (-item["stationcount"], item["name"].casefold()))
+        variants = sorted(
+            group["variants"], key=lambda item: (-item["stationcount"], item["name"].casefold())
+        )
         label = GENRE_LABELS.get(key, variants[0]["name"])
         genre_variants[label] = [item["name"] for item in variants]
-        result.append({"name": label, "stationcount": group["stationcount"], "variants": genre_variants[label]})
+        result.append(
+            {
+                "name": label,
+                "stationcount": group["stationcount"],
+                "variants": genre_variants[label],
+            }
+        )
     return sorted(result, key=lambda item: (-item["stationcount"], item["name"].casefold()))
 
 
@@ -204,12 +242,15 @@ def station_search(query, country, offset, tags):
 
 def browse_union(query, country, tag_filters, offset):
     key = json.dumps([query, country, tag_filters], ensure_ascii=False)
-    session = None if offset == 0 else browse_sessions.get(key)
+    session: BrowseSession | None = None if offset == 0 else browse_sessions.get(key)
     if session is None:
         if offset != 0:
             raise RadioError("The genre result page expired. Search again to continue.")
         session = {
-            "streams": [{"tags": tags, "offset": 0, "items": [], "cursor": 0, "done": False} for tags in tag_filters],
+            "streams": [
+                {"tags": tags, "offset": 0, "items": [], "cursor": 0, "done": False}
+                for tags in tag_filters
+            ],
             "seen": set(),
             "returned": 0,
         }
@@ -219,7 +260,7 @@ def browse_union(query, country, tag_filters, offset):
     elif offset != session["returned"]:
         raise RadioError("The genre result page expired. Search again to continue.")
 
-    def stream_has_item(stream):
+    def stream_has_item(stream: BrowseStream):
         while stream["cursor"] >= len(stream["items"]) and not stream["done"]:
             result = station_search(query, country, stream["offset"], stream["tags"])
             stream["items"] = result["items"]
@@ -242,7 +283,7 @@ def browse_union(query, country, tag_filters, offset):
             if best_station is None or candidate["clickcount"] > best_station["clickcount"]:
                 best_stream = stream
                 best_station = candidate
-        if best_station is None:
+        if best_station is None or best_stream is None:
             break
         best_stream["cursor"] += 1
         if best_station["stationuuid"] in session["seen"]:
@@ -251,7 +292,10 @@ def browse_union(query, country, tag_filters, offset):
         items.append(best_station)
 
     session["returned"] += len(items)
-    has_more = any(stream["cursor"] < len(stream["items"]) or not stream["done"] for stream in session["streams"])
+    has_more = any(
+        stream["cursor"] < len(stream["items"]) or not stream["done"]
+        for stream in session["streams"]
+    )
     return {"items": items, "nextOffset": session["returned"] if has_more else -1}
 
 
@@ -286,7 +330,7 @@ def play(args):
     try:
         station_uuid = str(uuid.UUID(station_uuid))
     except (ValueError, AttributeError):
-        raise RadioError("The selected station has an invalid ID.")
+        raise RadioError("The selected station has an invalid ID.") from None
 
     result = api_get("/json/url/" + quote(station_uuid, safe=""))
     stream_url = str(result.get("url") or "").strip() if isinstance(result, dict) else ""
@@ -319,7 +363,9 @@ player_ipc = MpvIpc("radio", timeout=0.35)
 def metadata_title(metadata):
     if not isinstance(metadata, dict):
         return ""
-    normalized = {re.sub(r"[^a-z0-9]", "", str(key).casefold()): value for key, value in metadata.items()}
+    normalized = {
+        re.sub(r"[^a-z0-9]", "", str(key).casefold()): value for key, value in metadata.items()
+    }
     title = ""
     for key in ("icytitle", "streamtitle", "nowplaying", "title", "song"):
         value = normalized.get(key)
@@ -365,7 +411,9 @@ def clean_favorite(raw):
     if not base:
         return None
     variants = raw.get("variants") if isinstance(raw.get("variants"), list) else []
-    base["variants"] = [station for item in variants if (station := station_record(item)) is not None]
+    base["variants"] = [
+        station for item in variants if (station := station_record(item)) is not None
+    ]
     base["groupKey"] = str(raw.get("groupKey") or "")
     return base
 
@@ -387,10 +435,7 @@ def save_favorites(args):
         raise RadioError("Invalid favorites list.")
     favorites = [favorite for raw in values[:1000] if (favorite := clean_favorite(raw)) is not None]
     path = favorite_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(favorites, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
+    atomic_write(path, json.dumps(favorites, ensure_ascii=False, indent=2))
     return {"saved": len(favorites)}
 
 
@@ -412,7 +457,12 @@ def fetch_favicon(args):
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         return {"source": ""}
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()
-    cache_root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "zephyrus-shell" / "radio" / "favicons"
+    cache_root = (
+        Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+        / "zephyrus-shell"
+        / "radio"
+        / "favicons"
+    )
     try:
         cache_root.mkdir(parents=True, exist_ok=True)
         for cached in cache_root.glob(digest + ".*"):
@@ -472,7 +522,14 @@ def handle(request):
 
 def main():
     from services.worker import serve
-    serve(handle, errors=(RadioError,), background=("favicon",), latest=("browse", "play"), controls=("metadata", "metadata-cleanup", "favorites-save", "favorites-load"))
+
+    serve(
+        handle,
+        errors=(RadioError,),
+        background=("favicon",),
+        latest=("browse", "play"),
+        controls=("metadata", "metadata-cleanup", "favorites-save", "favorites-load"),
+    )
 
 
 if __name__ == "__main__":

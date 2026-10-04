@@ -71,9 +71,9 @@ ScrollArea {
         spacing: 14
         Heading { text: root.page === "system" ? "SYSTEM" : root.page.toUpperCase() }
         Label {
-            visible: root.page !== "system"
+            visible: root.page === "cpu" || (root.page === "gpu" && !!(root.machine.snapshot.gpu || {}).error)
             Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.muted
-            text: root.page === "cpu" ? "Load average · " + (root.hw.load || "—") + "\nCPU boost · " + (root.hw.boost === "1" ? "Enabled" : root.hw.boost === "0" ? "Disabled" : "Unavailable") : ((root.machine.snapshot.gpu || {}).error || "Applications use switcheroo-control for GPU selection. Firmware controls are available in ROG Control Center.")
+            text: root.page === "cpu" ? "Load average · " + (root.hw.load || "—") + "\nCPU boost · " + (root.hw.boost === "1" ? "Enabled" : root.hw.boost === "0" ? "Disabled" : "Unavailable") : ((root.machine.snapshot.gpu || {}).error || "")
         }
         Action {
             objectName: "cpu-boost-toggle"
@@ -81,13 +81,14 @@ ScrollArea {
             Layout.fillWidth: true
             iconName: "cpu"
             text: root.hw.boost === "1" ? "Disable CPU boost" : "Enable CPU boost"
+            toolTip: "Higher CPU frequencies for this boot. Disable to reduce heat and power use."
             enabled: !root.machine.busy && ["0", "1"].includes(root.hw.boost) && root.hw.boostControlError === ""
             onClicked: root.machine.run("cpu-boost", root.hw.boost === "1" ? "off" : "on")
         }
         Label {
-            visible: root.page === "cpu"
+            visible: root.page === "cpu" && !!root.hw.boostControlError
             Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.muted
-            text: root.hw.boostControlError || "Boost allows higher CPU frequencies. Turning it off may reduce heat and CPU performance. This setting applies to the current boot; it does not set a temperature limit."
+            text: root.hw.boostControlError || ""
         }
         Heading { text: "SENSORS"; visible: root.page !== "system" }
         Repeater {
@@ -95,7 +96,6 @@ ScrollArea {
             Label { required property var modelData; text: modelData.label + " · " + modelData.value + "°C"; color: Theme.muted }
         }
         Repeater { model: root.page === "cpu" ? root.hw.fans || [] : []; Label { required property var modelData; text: modelData.label + " · " + modelData.value + " RPM"; color: Theme.muted } }
-        Label { visible: root.page === "cpu"; text: "Firmware / ASUS manages fans and power limits. Performance does not impose a temperature ceiling."; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.muted }
         Action { visible: root.page !== "system"; text: "Refresh readings"; enabled: !root.machine.busy; onClicked: root.machine.refresh() }
 
         Label {

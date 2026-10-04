@@ -40,7 +40,7 @@ ShellRoot {
             function require(value, message) { if (!value) { console.error("MEDIA FAIL",message); Qt.quit(); throw new Error(message); } }
             onTriggered: {
                 if (++attempts > 50) { require(false,"Timed out at step " + step); return; }
-                if (step === 0) { if (!Plugins.find("movies")) return; ShellState.openPlugin("movies"); step++; }
+                if (step === 0) { if (!Modules.find("movies")) return; ShellState.openPlugin("movies"); step++; }
                 else if (step === 1) {
                     const loader=overlay.item ? find(overlay.item,"moduleContent") : null;
                     if (!loader || !loader.item || loader.item.loading) return;

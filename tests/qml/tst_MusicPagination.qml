@@ -95,6 +95,16 @@ TestCase {
         tryCompare(findChild(songsPane, "musicResultList"), "count", 1);
         tryCompare(findChild(albumsPane, "musicResultList"), "count", 1);
         tryCompare(findChild(songTable, "musicSongList"), "count", 1);
+        // The preceding pagination test leaves the views scrolled. Delegate
+        // creation happens after model counts change and the next layout pass.
+        for (const view of [findChild(songsPane, "musicResultList"),
+                            findChild(albumsPane, "musicResultList"),
+                            findChild(songTable, "musicSongList")])
+            view.positionViewAtBeginning();
+        tryVerify(() => findChild(songsPane, "musicPaneTrackDownload")
+                     && findChild(albumsPane, "musicPaneAlbumDownload")
+                     && findChild(songTable, "musicTableTrackDownload")
+                     && findChild(songTable, "musicTableAlbumDownload"));
         const trackPane = findChild(songsPane, "musicPaneTrackDownload");
         const albumPane = findChild(albumsPane, "musicPaneAlbumDownload");
         const trackTable = findChild(songTable, "musicTableTrackDownload");

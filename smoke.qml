@@ -24,7 +24,7 @@ ShellRoot {
             switch (step++) {
             case 0: ShellState.toggle("left"); break;
             case 1:
-                if (!Plugins.find("apps")) throw new Error("Apps plugin was not discovered");
+                if (!Modules.find("apps")) throw new Error("Apps plugin was not discovered");
                 ShellState.openPlugin("apps");
                 if (ShellState.panel !== "module") throw new Error("Module did not replace drawer");
                 break;

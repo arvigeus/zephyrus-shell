@@ -1,26 +1,45 @@
 #!/usr/bin/env python3
 """Read, apply or restore Zephyrus appearance. All paths honor XDG variables."""
+
 import argparse
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from services.theme import Synchronizer, atomic_write, effective, load, locations, notify, run, source
 import shutil
 import subprocess
+
+from services.theme import (
+    Synchronizer,
+    atomic_write,
+    effective,
+    load,
+    locations,
+    notify,
+    run,
+    source,
+)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("get", "apply", "restore", "set-mode", "defaults"))
     parser.add_argument("mode", choices=("dark", "light"), nargs="?")
-    parser.add_argument("--no-notify", action="store_true", help="Generate files without contacting desktop services")
+    parser.add_argument(
+        "--no-notify",
+        action="store_true",
+        help="Generate files without contacting desktop services",
+    )
     args = parser.parse_args()
     if args.action == "defaults":
         root = Path(__file__).resolve().parents[1]
-        content = ("// Generated from config/theme.json. Regenerate with scripts/theme.py defaults.\n"
-                   ".pragma library\nvar settings = " + (root / "config/theme.json").read_text().strip() + ";\n")
+        content = (
+            "// Generated from config/theme.json. Regenerate with scripts/theme.py defaults.\n"
+            ".pragma library\nvar settings = "
+            + (root / "config/theme.json").read_text().strip()
+            + ";\n"
+        )
         atomic_write(root / "core/theme/Defaults.js", content, 0o644)
         return
     config, data, state = locations()
@@ -40,7 +59,9 @@ def main():
             flatpak_ids = []
             if not args.no_notify and shutil.which("flatpak"):
                 try:
-                    flatpak_ids = run(["flatpak", "list", "--app", "--columns=application"]).splitlines()
+                    flatpak_ids = run(
+                        ["flatpak", "list", "--app", "--columns=application"]
+                    ).splitlines()
                 except (OSError, ValueError, subprocess.TimeoutExpired) as error:
                     warnings.append("Flatpak theme access: " + str(error))
             changed = sync.apply(theme, flatpak_ids)

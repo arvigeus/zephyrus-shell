@@ -1,7 +1,20 @@
 import QtQuick
 import QtQuick.Controls
+import Quickshell
 import "../core"
 import "../widgets"
+
+import "../plugins/apps" as Apps
+import "../plugins/files" as Files
+import "../plugins/terminal" as Terminal
+import "../plugins/projects" as Projects
+import "../plugins/movies" as Movies
+import "../plugins/series" as Series
+import "../plugins/music" as Music
+import "../plugins/radio" as Radio
+import "../plugins/pictures" as Pictures
+import "../plugins/games" as Games
+import "../plugins/books" as Books
 
 Item {
     id: root
@@ -10,25 +23,13 @@ Item {
     property var currentModule: null
     property string currentModuleId: ""
     property bool currentLoadFailed: false
-    readonly property var entry: Plugins.find(ShellState.pluginId)
+    readonly property var entry: Modules.find(ShellState.pluginId)
     // Modules may tune backdrop opacity and decode width; defaults preserve prior behavior.
     readonly property url backgroundImage: currentModule && currentModule.backgroundImage !== undefined ? currentModule.backgroundImage : ""
     readonly property real backgroundImageOpacity: currentModule && currentModule.backgroundImageOpacity !== undefined
         ? Math.max(0, Math.min(1, Number(currentModule.backgroundImageOpacity))) : 1
     readonly property int backgroundImageWidth: currentModule && currentModule.backgroundImageWidth !== undefined
         ? Math.max(1, Number(currentModule.backgroundImageWidth)) : 2560
-    function syncRetainedRegistry() {
-        const wanted = Plugins.entries.map(value => value.id);
-        for (let index = retainedRegistry.count - 1; index >= 0; --index)
-            if (!wanted.includes(retainedRegistry.get(index).pluginId)) retainedRegistry.remove(index);
-        for (const id of wanted) {
-            let found = false;
-            for (let index = 0; index < retainedRegistry.count; ++index)
-                if (retainedRegistry.get(index).pluginId === id) { found = true; break; }
-            if (!found) retainedRegistry.append({pluginId: id});
-        }
-        Qt.callLater(root.syncCurrentModule);
-    }
     function syncCurrentModule() {
         let item = null;
         let failed = !root.entry && !!ShellState.pluginId;
@@ -80,11 +81,6 @@ Item {
             Qt.callLater(root.syncCurrentModule);
         }
     }
-    Connections {
-        target: Plugins
-        function onEntriesChanged() { root.syncRetainedRegistry(); }
-    }
-
     Rectangle {
         anchors.fill: parent
         color: root.backgroundImage.toString() ? Theme.background : Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.88)
@@ -98,7 +94,7 @@ Item {
     Shortcut { sequence: "Escape"; enabled: ShellState.panel === "module"; onActivated: ShellState.close() }
     Component.onCompleted: {
         forceActiveFocus();
-        syncRetainedRegistry();
+        Qt.callLater(root.syncCurrentModule);
     }
     Column {
         anchors.centerIn: parent
@@ -107,13 +103,41 @@ Item {
         BusySpinner { anchors.horizontalCenter: parent.horizontalCenter; running: parent.visible }
         Label { text: "Loading " + (root.entry ? root.entry.name : "space") + "…"; color: Theme.muted }
     }
-    ListModel { id: retainedRegistry }
+    // Components are compiled with the shell; instances and workers remain lazy.
+    readonly property var components: ({
+        apps: appsComponent,
+        files: filesComponent,
+        terminal: terminalComponent,
+        projects: projectsComponent,
+        movies: moviesComponent,
+        series: seriesComponent,
+        music: musicComponent,
+        radio: radioComponent,
+        pictures: picturesComponent,
+        games: gamesComponent,
+        books: booksComponent
+    })
+    Component { id: appsComponent; Apps.Main {} }
+    Component { id: filesComponent; Files.Main {} }
+    Component { id: terminalComponent; Terminal.Main {} }
+    Component { id: projectsComponent; Projects.Main {} }
+    Component { id: moviesComponent; Movies.Main {} }
+    Component { id: seriesComponent; Series.Main {} }
+    Component { id: musicComponent; Music.Main {} }
+    Component { id: radioComponent; Radio.Main {} }
+    Component { id: picturesComponent; Pictures.Main {} }
+    Component { id: gamesComponent; Games.Main {} }
+    Component { id: booksComponent; Books.Main {} }
+
     Repeater {
         id: retainedModules
-        model: retainedRegistry
+        model: ScriptModel {
+            values: ShellState.runningPluginIds
+        }
         delegate: Item {
             id: retained
-            required property string pluginId
+            required property string modelData
+            readonly property string pluginId: modelData
             readonly property var contentItem: retainedLoader.item
             readonly property int loadStatus: retainedLoader.status
             objectName: "retained-" + pluginId
@@ -132,7 +156,7 @@ Item {
                         if (pluginId === retained.pluginId) ShellState.requestKeepRunning(pluginId, enabled);
                     }
                     function openPlugin(pluginId, payload) {
-                        if (!Plugins.find(pluginId)) return false;
+                        if (!Modules.find(pluginId)) return false;
                         ShellState.openPlugin(pluginId, payload);
                         return true;
                     }
@@ -150,12 +174,7 @@ Item {
                     && (root.readyToLoad || loadedOnce)
                 asynchronous: true
                 visible: status === Loader.Ready && ShellState.pluginId === retained.pluginId
-                source: {
-                    const retainedEntry = Plugins.find(retained.pluginId);
-                    // Resolve through this QML context so modules and the shell share
-                    // Quickshell's configuration URL (and its singleton instances).
-                    return retainedEntry ? Qt.resolvedUrl("../plugins/" + retainedEntry.entryPath.split("/").map(encodeURIComponent).join("/")) : "";
-                }
+                sourceComponent: root.components[retained.pluginId] || null
                 onActiveChanged: if (!active) loadedOnce = false
                 onLoaded: {
                     loadedOnce = true;
@@ -171,7 +190,7 @@ Item {
     Label {
         anchors.centerIn: parent
         visible: !!ShellState.pluginId && root.currentLoadFailed
-        text: "This space could not load. Close it with Escape, then reload spaces."
+        text: "This space could not load. Close it with Escape and try again."
         color: Theme.danger
         width: Math.min(500, parent.width - 56); wrapMode: Text.Wrap
     }

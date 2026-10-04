@@ -16,7 +16,7 @@ DrawerFrame {
     canGoBack: page !== ""
     backLabel: "Back to Settings"
     onBackRequested: page = ""
-    subtitle: machineService.snapshot.model || "Your machine"
+    subtitle: machineService.snapshot.model || ""
     reserveTitleArtwork: page === ""
     titleArtwork: page === "" && machineService.snapshot.asus ? Qt.resolvedUrl("../assets/asus-rog-logo.svg") : ""
     headerActionText: "Refresh hardware readings"

@@ -21,8 +21,6 @@ DrawerFrame {
             onClicked: root.searchRequested("")
         }
     }
-    headerActionText: "Reload spaces"
-    onHeaderActionRequested: Plugins.reload()
     ColumnLayout {
         anchors.fill: parent; spacing: 12
         ScrollArea {
@@ -39,7 +37,7 @@ DrawerFrame {
                     onClicked: ShellState.showDesktop()
                 }
                 Repeater {
-                    model: Plugins.entries
+                    model: Modules.entries
                     RowLayout {
                         required property var modelData
                         Layout.fillWidth: true; spacing: 4
@@ -58,11 +56,6 @@ DrawerFrame {
                             onClicked: ShellState.stopPlugin(modelData.id)
                         }
                     }
-                }
-                Label { visible: Plugins.entries.length === 0; text: "No spaces installed yet."; color: Theme.muted }
-                Repeater {
-                    model: Plugins.errors
-                    Label { required property string modelData; text: modelData; color: Theme.danger; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 }
             }
         }

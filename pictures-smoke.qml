@@ -40,7 +40,7 @@ ShellRoot {
                 if (++ticks > 100) { fail("Timed out in phase " + phase); return; }
                 if (restoring) { if (desktopsReady()) pass(); return; }
                 if (phase === 0) {
-                    if (!Plugins.find("pictures")) return;
+                    if (!Modules.find("pictures")) return;
                     if (desktop.wallpaperSource.toString()) { fail("Unexpected initial wallpaper"); return; }
                     ShellState.openPlugin("pictures"); phase = 1;
                 } else if (phase === 1) {

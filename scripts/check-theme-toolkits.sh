@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory() as directory:
             subprocess.run(["python3", "scripts/theme.py", "apply", "--no-notify"], env=env, check=True, stdout=subprocess.DEVNULL)
             result = subprocess.check_output([executable, f"tests/artifacts/qt{version}-theme-{mode}.png"], env=env, text=True).splitlines()
             palette = settings["palettes"][mode]
-            assert result == [palette["background"], palette["background"], palette["accent"], "DejaVu Sans", "13", "kvantum", palette["surface"]], result
+            assert result == [palette["background"], palette["background"], palette["accent"], "DejaVu Sans", "13", "kvantum", palette["surface"], palette["border"], palette["border"]], result
             print(f"Qt {version} {mode}: native palette and font PASS")
     for version in (3, 4):
         script = '''

@@ -258,6 +258,8 @@ def qt_style(c):
 
     def color(match):
         value = match[0].lower()
+        if len(value) == 4:
+            value = "#" + "".join(channel * 2 for channel in value[1:])
         r, g, b = (int(value[i : i + 2], 16) for i in (1, 3, 5))
         if max(r, g, b) - min(r, g, b) > 12:
             return c["accent"]
@@ -269,7 +271,9 @@ def qt_style(c):
             return c["border"]
         return c["surface"]
 
-    svg = re.sub(r"#[0-9a-fA-F]{6}\b", color, svg)
+    # KvFlat uses shorthand colors for button fills and some indicators.
+    # Only match paint values, leaving SVG fragment references untouched.
+    svg = re.sub(r"(?<=:)#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b", color, svg)
     svg = svg.replace("opacity:.92", "opacity:1")
     # Flat document tabs: quiet labels, a subtle selected surface and an
     # accent underline, rather than boxed button borders.

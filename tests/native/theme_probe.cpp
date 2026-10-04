@@ -6,8 +6,12 @@
 #include <QMainWindow>
 #include <QMenu>
 #include <QPainter>
+#include <QPushButton>
 #include <QStyle>
 #include <QTabWidget>
+#include <QToolButton>
+#include <QWidgetAction>
+#include <QHBoxLayout>
 #include <iostream>
 
 // Inspect the real platform theme, rather than parsing generated INI ourselves.
@@ -45,6 +49,22 @@ int main(int argc, char **argv) {
     QMenu menu(&window);
     menu.addAction("Open in New Tab");
     menu.addAction("Copy");
+    // Dolphin embeds normal buttons in its folder-color context-menu row.
+    auto *buttonRow = new QWidget(&menu);
+    auto *buttonLayout = new QHBoxLayout(buttonRow);
+    auto *folderButton = new QPushButton(QIcon::fromTheme("folder"), "", buttonRow);
+    folderButton->setFixedSize(48, 28);
+    buttonLayout->addWidget(folderButton);
+    auto *otherButton = new QToolButton(buttonRow);
+    otherButton->setText("Other");
+    otherButton->setPopupMode(QToolButton::InstantPopup);
+    auto *otherMenu = new QMenu(otherButton);
+    otherMenu->addAction("More colors");
+    otherButton->setMenu(otherMenu);
+    buttonLayout->addWidget(otherButton);
+    auto *buttonAction = new QWidgetAction(&menu);
+    buttonAction->setDefaultWidget(buttonRow);
+    menu.addAction(buttonAction);
     menu.addAction("Properties");
     menu.popup(QPoint(430, 100));
     app.processEvents();
@@ -61,5 +81,7 @@ int main(int argc, char **argv) {
               << app.font().family().toStdString() << "\n"
               << app.font().pointSizeF() << "\n"
               << app.style()->objectName().toStdString() << "\n"
-              << popup.pixelColor(popup.width() / 2, popup.height() - 10).name().toStdString() << "\n";
+              << popup.pixelColor(popup.width() / 2, popup.height() - 10).name().toStdString() << "\n"
+              << folderButton->grab().toImage().pixelColor(10, 14).name().toStdString() << "\n"
+              << otherButton->grab().toImage().pixelColor(10, 5).name().toStdString() << "\n";
 }

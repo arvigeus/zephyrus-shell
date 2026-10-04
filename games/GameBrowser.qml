@@ -36,6 +36,8 @@ Item {
     property bool updatingCatalogue: false
     property bool favorites: false
     property bool localMode: false
+    property bool libraryMode: false
+    property string libraryFilter: "all"
     property var localFiles: []
     property bool torrentOpen: false
     property bool searchOpen: false
@@ -45,6 +47,9 @@ Item {
     property bool gridMode: false
     property bool searchHasFocus: false
     property int browseGeneration: 0
+    property int metadataGeneration: 0
+    property var metadataQueue: []
+    property bool metadataBusy: false
     property int selectionGeneration: 0
     property int nextOffset: 0
     property int matchGeneration: 0
@@ -99,6 +104,7 @@ Item {
     }
 
     function browse(append, forceRefresh) {
+        if (!append) { ++metadataGeneration; metadataQueue = []; }
         if (localMode) {
             const generation = ++browseGeneration;
             loading = true; error = ""; nextOffset = 0; setupRequired = false;
@@ -120,7 +126,7 @@ Item {
         error = "";
         notice = "";
         if (!append) nextOffset = 0;
-        service.request("browse", {query:search.text, offset:requestedOffset, filters:filters, favorites:favorites, refresh:!!forceRefresh}, (result, failure) => {
+        service.request(libraryMode ? "library_games" : "browse", {query:search.text, offset:requestedOffset, filters:filters, favorites:favorites, mode:libraryFilter, refresh:!!forceRefresh}, (result, failure) => {
             if (generation !== browseGeneration) return;
             loading = false;
             if (failure) { error = failure; return; }
@@ -136,7 +142,41 @@ Item {
                     if (!titles.some(game => sameGame(game, selected))) selectGame(titles[0]);
                 } else clearSelection();
             }
+            if (libraryMode) {
+                metadataQueue = metadataQueue.concat((result.items || []).filter(game => game.metadataPending).map(game => game.id));
+                metadataDelay.restart();
+            }
         });
+    }
+
+    function hydrateLibrary() {
+        if (metadataBusy || !libraryMode || loading) return;
+        let queue = metadataQueue.slice();
+        while (queue.length && queue[0] === selected.id) queue.shift();
+        metadataQueue = queue;
+        if (!queue.length) return;
+        const gameId = queue.shift();
+        metadataQueue = queue;
+        const generation = metadataGeneration;
+        metadataBusy = true;
+        service.request("library_metadata", {gameId:gameId}, (result, failure) => {
+            metadataBusy = false;
+            if (generation === metadataGeneration && libraryMode && !failure && result && result.game) {
+                patchCatalogue(result.game);
+                // Selection details own the selected artwork and loading state.
+                if (sameGame(result.game, selected) && !detailLoading) applyGame(result.game);
+            }
+            metadataDelay.restart();
+        });
+    }
+
+    function patchCatalogue(game) {
+        const index = titles.findIndex(item => sameGame(item, game));
+        if (index < 0) return;
+        const next = titles.slice();
+        next[index] = Object.assign({}, next[index], game);
+        titles = next;
+        catalogue.setProperty(index, "payload", JSON.stringify(next[index]));
     }
 
     function clearSelection() {
@@ -202,6 +242,7 @@ Item {
         const backdrop = backdropFor(patch);
         if (backdrop) backgroundImage = backdrop;
         selected = Object.assign({}, selected, patch);
+        patchCatalogue(selected);
     }
 
     function refreshLibraries() {
@@ -307,8 +348,18 @@ Item {
         });
     }
 
+    function showLibrary() {
+        localMode = false;
+        libraryMode = true;
+        favorites = false;
+        filtersOpen = false;
+        clearSelection();
+        browse(false);
+    }
+
     function discover() {
         localMode = false;
+        libraryMode = false;
         favorites = false;
         filtersOpen = false;
         searchDelay.stop();
@@ -331,6 +382,7 @@ Item {
 
     Component.onCompleted: {
         gridMode = preferences.value("catalogue/grid", false);
+        const startupGeneration = browseGeneration;
         service.request("init", {}, (result, failure) => {
             if (failure) error = failure;
             if (result) {
@@ -340,14 +392,19 @@ Item {
                 refreshLibraries();
             }
             service.request("local_list", {kind:"game"}, (local, localFailure) => {
-                localMode = !localFailure && !!local && local.length > 0;
-                initializing = false;
-                if (!failure || localMode) browse(false);
+                service.request("library_games", {}, (library, libraryFailure) => {
+                    initializing = false;
+                    if (startupGeneration !== browseGeneration) return;
+                    libraryMode = !libraryFailure && !!library && (library.items || []).length > 0;
+                    localMode = !libraryMode && !localFailure && !!local && local.length > 0;
+                    if (!failure || localMode || libraryMode) browse(false);
+                });
             });
         });
     }
 
     Timer { id: detailDelay; interval: 80; onTriggered: root.hydrateSelection(false) }
+    Timer { id: metadataDelay; interval: 160; onTriggered: root.hydrateLibrary() }
     Timer { id: searchDelay; interval: 360; onTriggered: root.browse(false) }
     Timer { id: pagination; interval: 110; onTriggered: root.maybeLoadMore() }
 
@@ -407,16 +464,41 @@ Item {
             Layout.maximumHeight: 46
             spacing: 8
 
-            W.Action { iconName: "folder-open"; text: "Local"; highlighted: root.localMode; onClicked: { root.localMode = true; root.favorites = false; root.filtersOpen = false; root.browse(false); } }
-            W.Action { objectName: "discoverTab"; iconName: "globe"; text: "Discover"; highlighted: !root.localMode && !root.favorites; onClicked: root.discover() }
-            W.Action { objectName: "favoritesTab"; iconName: "star"; text: "Favorites"; highlighted: !root.localMode && root.favorites; onClicked: { root.localMode = false; root.favorites = true; root.filtersOpen = false; root.browse(false); } }
+            W.Action { iconName: "folder-open"; text: "Local"; highlighted: root.localMode; onClicked: { root.localMode = true; root.libraryMode = false; root.favorites = false; root.filtersOpen = false; root.browse(false); } }
+            W.Action { objectName: "gamesLibraryTab"; iconName: "gamepad-2"; text: "Library"; highlighted: root.libraryMode; onClicked: root.showLibrary() }
+            W.Action { objectName: "discoverTab"; iconName: "globe"; text: "Discover"; highlighted: !root.localMode && !root.libraryMode && !root.favorites; onClicked: root.discover() }
+            W.Action { objectName: "favoritesTab"; iconName: "star"; text: "Favorites"; highlighted: !root.localMode && !root.libraryMode && root.favorites; onClicked: { root.localMode = false; root.libraryMode = false; root.favorites = true; root.filtersOpen = false; root.browse(false); } }
+            W.Choice {
+                objectName: "gamesLibraryFilter"
+                visible: root.libraryMode
+                Layout.preferredWidth: 150
+                model: ["All games", "Installed", "Purchased"]
+                currentIndex: ["all", "installed", "owned"].indexOf(root.libraryFilter)
+                Accessible.name: "Library games"
+                onActivated: index => { root.libraryFilter = ["all", "installed", "owned"][index]; root.browse(false); }
+            }
+            W.IconButton {
+                objectName: "gamesLibraryRefresh"
+                visible: root.libraryMode
+                iconName: "refresh-cw"
+                text: "Refresh store libraries"
+                enabled: !root.librariesLoading
+                onClicked: root.refreshLibraries()
+            }
+            W.Label {
+                visible: root.libraryMode && (root.metadataBusy || root.metadataQueue.length > 0 || root.detailLoading)
+                text: "Loading metadata…"
+                color: Theme.muted
+            }
+            Item { Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 0 }
             Flickable {
                 id: inlineFilters
                 objectName: "gamesInlineFilters"
-                visible: root.filtersOpen && !root.favorites && !root.localMode
+                visible: root.filtersOpen && !root.favorites && !root.localMode && !root.libraryMode
                 Layout.fillWidth: true
-                Layout.preferredWidth: Math.min(filterFields.implicitWidth, root.width * 0.58)
-                Layout.minimumWidth: 0
+                Layout.preferredWidth: filterFields.implicitWidth
+                Layout.maximumWidth: filterFields.implicitWidth
+                Layout.minimumWidth: 120
                 Layout.preferredHeight: 46
                 clip: true
                 contentWidth: filterFields.implicitWidth
@@ -462,7 +544,6 @@ Item {
                     }
                 }
             }
-            Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
             W.SearchField {
                 id: search
                 objectName: "gamesSearchField"
@@ -478,7 +559,7 @@ Item {
                 BusyIndicator { anchors.fill: parent; running: root.initializing || root.loading; visible: running }
             }
             W.IconButton { objectName: "gamesSearchButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; highlighted: root.searchOpen; iconName: "search"; text: "Search games"; onClicked: { root.searchOpen = !root.searchOpen; if (root.searchOpen) search.forceActiveFocus(); else { search.clear(); root.browse(false); } } }
-            W.IconButton { objectName: "gamesFiltersButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; enabled: !root.favorites && !!root.catalogState.configured; highlighted: root.filtersOpen; iconName: "sliders-horizontal"; text: "Filters"; onClicked: { root.filtersOpen = !root.filtersOpen; if (root.filtersOpen) root.loadFilterOptions(); } }
+            W.IconButton { objectName: "gamesFiltersButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; enabled: !root.favorites && !root.localMode && !root.libraryMode && !!root.catalogState.configured; highlighted: root.filtersOpen; iconName: "sliders-horizontal"; text: "Filters"; onClicked: { root.filtersOpen = !root.filtersOpen; if (root.filtersOpen) root.loadFilterOptions(); } }
             W.IconButton { objectName: "gamesGridButton"; Layout.minimumWidth: 42; Layout.maximumWidth: 42; iconName: root.gridMode ? "panels-top-left" : "layout-grid"; text: root.gridMode ? "Show game rail" : "Show game grid"; onClicked: { root.gridMode = !root.gridMode; preferences.setValue("catalogue/grid", root.gridMode); } }
         }
 
@@ -991,7 +1072,7 @@ Item {
             ColumnLayout {
                 anchors.centerIn: parent
                 width: Math.min(560, parent.width - 64)
-                visible: !root.localMode && !root.initializing && !root.loading && !root.titles.length && root.setupRequired && !root.error
+                visible: !root.localMode && !root.libraryMode && !root.initializing && !root.loading && !root.titles.length && root.setupRequired && !root.error
                 spacing: 12
                 W.Label { text: "Set up the Games catalogue"; font.family: Theme.font; font.pixelSize: Theme.sp(24); font.bold: true; Layout.fillWidth: true; wrapMode: Text.Wrap }
                 W.Label {
@@ -1007,10 +1088,10 @@ Item {
             ColumnLayout {
                 anchors.centerIn: parent
                 width: Math.min(480, parent.width - 64)
-                visible: !root.initializing && !root.loading && !root.titles.length && (root.localMode || root.catalogState.configured) && !root.error && !root.setupRequired
+                visible: !root.initializing && !root.loading && !root.titles.length && (root.localMode || root.libraryMode || root.catalogState.configured) && !root.error && !root.setupRequired
                 spacing: 8
-                W.Label { Layout.fillWidth: true; text: root.localMode ? "No local game files yet." : root.favorites ? "No favorite games yet." : search.text ? "No games found." : "No catalogue results are available."; font.family: Theme.font; font.pixelSize: Theme.sp(20); horizontalAlignment: Text.AlignHCenter }
-                W.Label { Layout.fillWidth: true; text: root.localMode ? "Find a local copy from a game in Discover." : root.favorites ? "Add a game to Favorites from its details." : "Try another title or refresh the catalogue."; color: Theme.muted; horizontalAlignment: Text.AlignHCenter }
+                W.Label { Layout.fillWidth: true; text: root.localMode ? "No local game files yet." : root.libraryMode ? (search.text ? "No library games found." : "No games in this library view.") : root.favorites ? "No favorite games yet." : search.text ? "No games found." : "No catalogue results are available."; font.family: Theme.font; font.pixelSize: Theme.sp(20); horizontalAlignment: Text.AlignHCenter }
+                W.Label { Layout.fillWidth: true; text: root.localMode ? "Find a local copy from a game in Discover." : root.libraryMode ? "Try All games or refresh your store libraries." : root.favorites ? "Add a game to Favorites from its details." : "Try another title or refresh the catalogue."; color: Theme.muted; horizontalAlignment: Text.AlignHCenter }
             }
 
             ColumnLayout {

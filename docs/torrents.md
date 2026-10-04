@@ -23,8 +23,8 @@ and password or an API key. API key authentication requires qBittorrent 5.2.0
 or newer. When `api_key` is set, it is used instead of username/password.
 Use the file to set a different Web UI address too. Keep it private with
 `chmod 600`. Credentials stay in the Python worker and are not sent to QML.
-The qBittorrent process must see the **same absolute staging
-path** as the shell. A remote Web UI works only when its download filesystem
+The qBittorrent process must see the **same absolute library and download
+paths** as the shell. A remote Web UI works only when its download filesystem
 is mounted at that same path on both machines.
 If a local Web UI cannot be reached and qBittorrent is not running, **Find**
 offers **Start qBittorrent** for a native or Flatpak installation. It waits for
@@ -79,11 +79,28 @@ This requires qBittorrent Web API 2.11.9 or newer. Selected album and artist
 tracks still need individual catalogue matches after download; `ffprobe` tags
 are shown as clues when available.
 
-The shell queues the chosen magnet or torrent URL into a unique staging folder
-under `$XDG_DATA_HOME/zephyrus-shell/media/torrents/`. The worker checks
-completion while the module is open. On completion it asks qBittorrent to rename
-the selected files and move the torrent into the organized library. Seeding
-continues from the final path. If a release contains
+Movies and TV Series queue the chosen magnet or torrent URL directly into
+`$XDG_VIDEOS_DIR/Movies/Title (Year)/` or
+`$XDG_VIDEOS_DIR/Series/Title (Year)/`. Find reports that destination as soon as
+qBittorrent accepts the request. Individual episodes, seasons, and complete
+series all use the same show folder. Unique job tags, then torrent hashes,
+associate downloads with their selected catalogue identities; sharing a save
+folder does not mix up their jobs. Duplicate tracked requests are rejected.
+
+The owned Movies/TV Series worker checks completion across all tabs. Selecting
+Desktop or another space keeps that module running while it has an active
+download. On completion, qBittorrent renames the files within their title folder
+and TV videos go into their season folders. Seeding continues from those paths,
+and the files appear in Local and in the selected catalogue title automatically.
+Escape or explicit Close still destroys the module; qBittorrent keeps downloading
+to the chosen library folder, and reopening the module resumes indexing.
+Restarting the shell likewise resumes indexing when the module opens. A download
+that needs review releases background retention. Tracking uses the current
+download schema; older staged jobs are not migrated or resumed.
+
+Music, Books, and Games still use unique staging folders under
+`$XDG_DATA_HOME/zephyrus-shell/media/torrents/`. On completion their import moves
+the torrent into the organized library. If a release contains
 several plausible files, names a different movie year, or lacks an episode number,
 **Review files** lets you
 choose the correct file and enter numbering. A Music review can also fill in
@@ -99,7 +116,9 @@ tracked downloads.
 ## Scan and delete
 
 Movies and TV Series have **Local → Scan**. Scan checks completed qBittorrent
-files first, then the Movies or Series folder under `$XDG_VIDEOS_DIR`. Press
+files first, then the Movies or Series folder under `$XDG_VIDEOS_DIR`. Active
+and tracked torrent payloads are excluded from ordinary folder imports, so a
+partially downloaded video is not moved away from qBittorrent. Press
 **Scan** without entering a path for the normal scan. A path overrides that
 folder. `guessit` reads video names and episode numbers;
 an existing NFO or a unique exact catalogue match supplies identity.
@@ -123,7 +142,7 @@ its title's **Findy** view with the same hold action. Deletion is permanent.
 | Type | Destination |
 | --- | --- |
 | Movie | `$XDG_VIDEOS_DIR/Movies/Title (Year)/Title (Year).ext` |
-| TV episode | `$XDG_VIDEOS_DIR/Series/Title (Year)/Season 01/Title (Year) - S01E01.ext` |
+| TV episode | `$XDG_VIDEOS_DIR/Series/Title (Year)/Season 01/Title (Year) - S01E01 - Episode title.ext` |
 | Song | `$XDG_MUSIC_DIR/Title - Artist - Album (YYYY-MM-DD).ext` |
 | Book | `$XDG_DOCUMENTS_DIR/Books/Author/Title (Year)/Title (Year).ext` |
 | Game file | `$XDG_DATA_HOME/zephyrus-shell/games/Title (Year)/Title (Year).ext` |
@@ -134,6 +153,15 @@ those roots. Game files are archives or installers to inspect; they are not
 installed or launched by this feature. A game bundle with several files keeps
 each original filename inside its game folder. Music needs a complete release date to
 meet the flat filename convention.
+
+TV download and scan imports fetch episode titles from the configured catalogue,
+including paginated season metadata. A selected episode's known title is
+preserved. If metadata is unavailable, an episode title parsed from the original
+filename is used; when neither is available, the filename keeps `S01E01` alone.
+Local episode rows show the saved episode title without needing a provider.
+Local → Scan also adds missing episode names to previously registered TV files.
+Torrent files are renamed through qBittorrent, and ordinary files and matching
+subtitles move together. Existing files are not renamed merely by opening a module.
 
 The SQLite library stores the selected catalogue ID and exact path. Movies
 also get `movie.nfo`; series get `tvshow.nfo`. Those files contain the title,

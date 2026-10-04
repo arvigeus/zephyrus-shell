@@ -22,6 +22,7 @@ from functools import cached_property
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from games import store_metadata
 from games.igdb import Client as IGDBClient
 from games.igdb import normalize as normalize_igdb_game
 from media.local import LocalLibrary
@@ -66,21 +67,61 @@ def protondb_url(app_id):
 
 
 def _title_key(title):
-    """Conservative title comparison. Edition words and numerals are retained."""
-    normalized = unicodedata.normalize("NFKC", str(title or "")).casefold()
+    """Compare titles while retaining edition words and sequel numbers."""
+    normalized = unicodedata.normalize("NFKC", str(title or ""))
+    # Catalogue and launcher names sometimes spell sequels differently (Alan
+    # Wake II / Alan Wake 2). Only standalone Roman numerals II–X qualify;
+    # edition and DLC words still have to match, and ambiguous matches fail.
+    roman_numbers = {
+        "II": "2",
+        "III": "3",
+        "IV": "4",
+        "V": "5",
+        "VI": "6",
+        "VII": "7",
+        "VIII": "8",
+        "IX": "9",
+        "X": "10",
+    }
+    normalized = re.sub(
+        r"\b(?:VIII|VII|III|VI|IV|II|IX|V|X)\b",
+        lambda match: roman_numbers[match[0].upper()],
+        normalized,
+        flags=re.IGNORECASE,
+    ).casefold()
     return " ".join(re.findall(r"[\w]+", normalized, flags=re.UNICODE))
 
 
-def match_library_item(game, store, library_items, override=""):
+def _library_indexes(libraries):
+    indexes = {}
+    for store in ("steam", "epic"):
+        items = (libraries or {}).get(store, {}).get("items", [])
+        titles = {}
+        for item in items:
+            titles.setdefault(_title_key(item.get("title", "")), []).append(item)
+        indexes[store] = {
+            "ids": {str(item["externalId"]): item for item in items if item.get("externalId")},
+            "titles": titles,
+        }
+    return indexes
+
+
+def match_library_item(game, store, library_items, override="", index=None):
     """Match by an intentional override, an exact store ID, then unique exact title."""
     references = [
         str(reference.get("externalId", ""))
         for reference in (game.get("storeReferences") or [])
         if reference.get("store") == store and reference.get("externalId")
     ]
-    by_id = {
-        str(item.get("externalId", "")): item for item in library_items if item.get("externalId")
-    }
+    by_id = (
+        index["ids"]
+        if index is not None
+        else {
+            str(item.get("externalId", "")): item
+            for item in library_items
+            if item.get("externalId")
+        }
+    )
     if override:
         return (by_id[override], "override") if override in by_id else (None, "")
     for external_id in references:
@@ -90,13 +131,20 @@ def match_library_item(game, store, library_items, override=""):
     # from a failed explicit ID risks selecting another edition. Epic catalog
     # product IDs may differ from Legendary's app names, so an exact title can
     # still help unless the user supplied a deliberate override.
-    if store == "steam" and references:
+    # Library records carry launcher IDs, so they need no catalogue fallback.
+    # In particular, an ambiguous title split into separate rows must not gain
+    # another store's game just because that store has one title match.
+    if (store == "steam" and references) or game.get("catalogProvider") == "library":
         return None, ""
 
     key = _title_key(game.get("title", ""))
     if not key:
         return None, ""
-    matching = [item for item in library_items if _title_key(item.get("title", "")) == key]
+    matching = (
+        index["titles"].get(key, [])
+        if index is not None
+        else [item for item in library_items if _title_key(item.get("title", "")) == key]
+    )
     # Edition names are intentionally not stripped; duplicate exact-title entries are ambiguous.
     if len(matching) == 1:
         return matching[0], "exact-title"
@@ -123,7 +171,7 @@ def steam_app_id(game, libraries, override=""):
     return _steam_id((match or {}).get("externalId", ""))
 
 
-def derive_store_state(game, libraries, overrides=None):
+def derive_store_state(game, libraries, overrides=None, indexes=None):
     """Return store availability and user actions without exposing launcher internals to QML."""
     overrides = overrides or {}
     references = game.get("storeReferences") or []
@@ -138,7 +186,9 @@ def derive_store_state(game, libraries, overrides=None):
         provider = (libraries or {}).get(store, {})
         owned_ids = set(str(value) for value in provider.get("ownedIds", []))
         items = provider.get("items", [])
-        match, match_source = match_library_item(game, store, items, override)
+        match, match_source = match_library_item(
+            game, store, items, override, (indexes or {}).get(store)
+        )
         matched_id = str((match or {}).get("externalId", ""))
         identity_ids = {override} if override else {value for value in reference_ids if value}
         identity_ids.update([matched_id] if matched_id else [])
@@ -440,7 +490,11 @@ def parse_legendary_owned(raw):
         if not app_name or not title or app_name in seen:
             continue
         seen.add(app_name)
-        games.append({"store": "epic", "externalId": app_name, "title": title, "installed": False})
+        game = {"store": "epic", "externalId": app_name, "title": title, "installed": False}
+        metadata = store_metadata.epic_details(item)
+        if any(metadata.values()):
+            game["metadata"] = metadata
+        games.append(game)
     return games
 
 
@@ -527,6 +581,8 @@ class GamesBackend:
         self._library_lock = threading.Lock()
         self._library_snapshot = None
         self._library_updated = 0.0
+        self._metadata_lock = threading.Lock()
+        self._metadata_locks = {}
         with self._db() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS cache (
@@ -740,6 +796,7 @@ class GamesBackend:
 
     def _with_library_indicators(self, items):
         state = self._library_snapshot or self._cache_get("libraries:v1", 86400)[0] or {}
+        indexes = _library_indexes(state)
         ids = [str(game.get("id", "")) for game in items if game.get("id")]
         favorite_ids = set()
         overrides = {}
@@ -759,11 +816,261 @@ class GamesBackend:
         output = []
         for game in items:
             displayed = dict(game)
-            rows = derive_store_state(game, state, overrides.get(game.get("id", ""), {}))
+            rows = derive_store_state(game, state, overrides.get(game.get("id", ""), {}), indexes)
             displayed["installedBy"] = [row["store"] for row in rows if row["installed"]]
+            displayed["ownedBy"] = [row["store"] for row in rows if row["ownership"] == "owned"]
             displayed["favorite"] = str(game.get("id", "")) in favorite_ids
             output.append(displayed)
         return output
+
+    def library_games(self, request):
+        """List installed/owned store games without requiring the catalogue."""
+        state = self.libraries()
+        indexes = _library_indexes(state)
+        query = _title_key(_safe_text(request.get("query", ""), 120).strip())
+        mode = request.get("mode", "all")
+        if mode not in ("all", "installed", "owned"):
+            raise GamesError("Choose a valid library view.")
+        offset = max(0, min(int(request.get("offset", 0) or 0), 100000))
+        with self._db() as db:
+            saved_rows = db.execute("SELECT payload FROM games").fetchall()
+            match_rows = db.execute(
+                "SELECT game_id,store,external_id FROM store_matches"
+            ).fetchall()
+        overrides = {}
+        for row in match_rows:
+            overrides.setdefault(row["game_id"], {})[row["store"]] = row["external_id"]
+        candidates = {}
+        for row in saved_rows:
+            try:
+                game = json.loads(row["payload"])
+            except (TypeError, ValueError):
+                continue
+            if game.get("catalogProvider") != "igdb":
+                continue
+            for store in ("steam", "epic"):
+                item, source = match_library_item(
+                    game,
+                    store,
+                    state.get(store, {}).get("items", []),
+                    overrides.get(game["id"], {}).get(store, ""),
+                    indexes[store],
+                )
+                if item:
+                    rank = {"override": 0, "store-id": 1, "exact-title": 2}[source]
+                    candidates.setdefault((store, item["externalId"]), []).append((rank, game))
+
+        groups = {}
+        for store in ("steam", "epic"):
+            provider = state.get(store, {})
+            owned_ids = (
+                set(str(value) for value in provider.get("ownedIds", []))
+                if provider.get("ownershipKnown")
+                else set()
+            )
+            seen = set()
+            for item in provider.get("items", []):
+                identity = (store, str(item.get("externalId", "")))
+                if not identity[1] or identity in seen:
+                    continue
+                seen.add(identity)
+                if not item.get("installed") and identity[1] not in owned_ids:
+                    continue
+                matches = candidates.get(identity, [])
+                best_rank = min((rank for rank, _ in matches), default=3)
+                best = [game for rank, game in matches if rank == best_rank]
+                catalogue_game = best[0] if len(best) == 1 else None
+                key = (
+                    "catalogue:" + catalogue_game["id"]
+                    if catalogue_game
+                    else "title:" + _title_key(item.get("title", ""))
+                )
+                groups.setdefault(key, []).append((store, item, catalogue_game))
+
+        records = []
+        with self._db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            for key, members in groups.items():
+                # Multiple editions with the same launcher title remain separate.
+                stores = [store for store, _, _ in members]
+                partitions = (
+                    [[member] for member in members]
+                    if len(stores) != len(set(stores))
+                    else [members]
+                )
+                for group in partitions:
+                    catalogue_game = group[0][2]
+                    if catalogue_game:
+                        game = dict(catalogue_game)
+                    else:
+                        references = [
+                            {"store": store, "externalId": item["externalId"]}
+                            for store, item, _ in group
+                        ]
+                        identity = (
+                            key
+                            if len(partitions) == 1
+                            else group[0][0] + ":" + group[0][1]["externalId"]
+                        )
+                        game = self._save_game(
+                            identity,
+                            {
+                                "catalogProvider": "library",
+                                "catalogProviderId": identity,
+                                "title": group[0][1]["title"],
+                                "storeReferences": references,
+                            },
+                            merge=False,
+                            connection=db,
+                        )
+                    game["libraryEntry"] = True
+                    game["libraryStores"] = stores if len(partitions) == 1 else [group[0][0]]
+                    records.append(game)
+        records = self._with_library_indicators(records)
+        records = [
+            game
+            for game in records
+            if (not query or query in _title_key(game.get("title", "")))
+            and (mode != "installed" or game["installedBy"])
+            and (mode != "owned" or game["ownedBy"])
+        ]
+        records.sort(key=lambda game: (_title_key(game.get("title", "")), game["id"]))
+        warnings = [
+            STORE_LABELS[store] + ": " + provider["message"]
+            for store in ("steam", "epic")
+            if (provider := state.get(store, {})).get("message")
+        ]
+        return {
+            "items": [
+                self._enrich_library_game(game, fetch=False)[0]
+                for game in records[offset : offset + PAGE_SIZE]
+            ],
+            "next": offset + PAGE_SIZE if len(records) > offset + PAGE_SIZE else None,
+            "setupRequired": False,
+            "warning": "\n".join(warnings),
+        }
+
+    def _library_metadata_key(self, game, overrides=None):
+        identity = [
+            game.get("title"),
+            sorted(
+                (ref.get("store", ""), str(ref.get("externalId", "")))
+                for ref in game.get("storeReferences", [])
+            ),
+            overrides or {},
+        ]
+        return "library-igdb:v1:" + hashlib.sha256(json.dumps(identity).encode()).hexdigest()
+
+    def _enrich_library_game(self, game, fetch=True, refresh=False):
+        """Keep store identities intact; fill descriptions/art without blocking the list."""
+        state = self._library_snapshot or self._cache_get("libraries:v1", 86400)[0] or {}
+        overrides = self._store_overrides(game["id"])
+        fallback = {}
+        pending = False
+        warning = ""
+        # Prefer Epic's supplied portrait over Steam's generic CDN fallback.
+        epic, _ = match_library_item(
+            game, "epic", state.get("epic", {}).get("items", []), overrides.get("epic", "")
+        )
+        if epic:
+            fallback = store_metadata.fill_missing(fallback, epic.get("metadata") or {})
+        app_id = steam_app_id(game, state, overrides.get("steam", ""))
+        if app_id:
+            key = f"steam-metadata:v1:{app_id}"
+            cached, fresh = self._cache_get(key, 7 * 86400, allow_stale=True)
+            cooling, _ = self._cache_get(key + ":retry", 300)
+            needs_store = not fresh and not cooling
+            pending = needs_store or refresh
+            if fetch and (refresh or needs_store):
+                try:
+                    raw = self._request(
+                        "https://store.steampowered.com/api/appdetails?"
+                        + urllib.parse.urlencode({"appids": app_id, "l": "english"}),
+                        "GET",
+                        {"Accept": "application/json"},
+                        None,
+                        8,
+                        4 * 1024 * 1024,
+                    )
+                    metadata = store_metadata.steam_details(raw, app_id)
+                    if metadata:
+                        cached = metadata
+                        self._cache_put(key, cached)
+                    else:
+                        self._cache_put(key + ":retry", True)
+                except GamesError:
+                    self._cache_put(key + ":retry", True)
+                    warning = "Steam metadata is unavailable. Showing saved and launcher data."
+            fallback = store_metadata.fill_missing(fallback, cached or {})
+            fallback = store_metadata.fill_missing(fallback, store_metadata.steam_artwork(app_id))
+
+        enriched = store_metadata.fill_missing(game, fallback)
+        if game.get("catalogProvider") == "library":
+            # Refresh launcher substitutions too, then apply IGDB's preferred
+            # fields below. Missing responses still retain saved metadata.
+            for field, value in fallback.items():
+                if value:
+                    enriched[field] = value
+        if game.get("catalogProvider") == "library" and self.config_state()["configured"]:
+            key = self._library_metadata_key(game, overrides)
+            cached, fresh = self._cache_get(key, 86400, allow_stale=True)
+            cooling, _ = self._cache_get(key + ":retry", 300)
+            needs_catalogue = not fresh and not cooling
+            pending = pending or needs_catalogue or refresh
+            if fetch and (refresh or needs_catalogue):
+                try:
+                    raw = self.catalogue.browse(game["title"], {}, 0, 50)
+                    matches = []
+                    for record in raw:
+                        try:
+                            candidate = normalize_igdb_game(record)
+                        except (KeyError, ValueError, TypeError):
+                            continue
+                        if _title_key(candidate["title"]) != _title_key(game["title"]):
+                            continue
+                        ids = [
+                            ref["externalId"]
+                            for ref in candidate["storeReferences"]
+                            if ref["store"] == "steam"
+                        ]
+                        if app_id and ids and app_id not in ids:
+                            continue
+                        matches.append(candidate)
+                    exact = [
+                        candidate
+                        for candidate in matches
+                        if app_id
+                        and any(
+                            ref["store"] == "steam" and ref["externalId"] == app_id
+                            for ref in candidate["storeReferences"]
+                        )
+                    ]
+                    matches = exact or matches
+                    cached = (
+                        {field: matches[0].get(field) for field in store_metadata.FIELDS}
+                        if len(matches) == 1
+                        else {}
+                    )
+                    self._cache_put(key, cached)
+                except GamesError as error:
+                    self._cache_put(key + ":retry", True)
+                    warning = str(error) + " Using store metadata where available."
+            # Catalogue fields take precedence over earlier store substitutions.
+            for field, value in (cached or {}).items():
+                if value:
+                    enriched[field] = value
+        enriched["metadataPending"] = pending if not fetch else False
+        return enriched, warning
+
+    def library_metadata(self, request):
+        game_id = str(request.get("gameId", ""))
+        with self._metadata_lock:
+            lock = self._metadata_locks.setdefault(game_id, threading.Lock())
+        with lock:
+            _, saved = self._catalog_id(game_id)
+            game, warning = self._enrich_library_game(saved, refresh=bool(request.get("refresh")))
+            game = self._save_game(game["catalogProviderId"], game)
+            return {"game": self._with_library_indicators([game])[0], "warning": warning}
 
     def _filter_options(self):
         key = "catalog-filters:igdb:v1"
@@ -915,13 +1222,33 @@ class GamesBackend:
             raise
 
     def details(self, request):
+        result = self._details(request)
+        game = result["game"]
+        if game.get("catalogProvider") == "igdb":
+            game, warning = self._enrich_library_game(
+                game,
+                fetch=not game.get("summary") or not game.get("cover"),
+                refresh=bool(request.get("refresh")),
+            )
+            # Keep catalogue ownership and personal identity when substituting fields.
+            game = self._save_game(game["catalogProviderId"], game)
+            result["game"] = self._with_library_indicators([game])[0]
+            if warning:
+                result["warning"] = "\n".join(filter(None, [result.get("warning"), warning]))
+        return result
+
+    def _details(self, request):
         game_id = str(request.get("gameId", ""))
         _, saved = self._catalog_id(game_id)
         provider_id = str(saved.get("catalogProviderId", ""))
         if saved.get("catalogProvider") != "igdb":
+            if saved.get("catalogProvider") == "library":
+                return self.library_metadata(request)
             return {
                 "game": self._with_library_indicators([saved])[0],
-                "warning": "Search the catalogue to refresh this saved game.",
+                "warning": ""
+                if saved.get("catalogProvider") == "library"
+                else "Search the catalogue to refresh this saved game.",
             }
         key = f"detail:v3:igdb:{provider_id}"
         cached, fresh = self._cache_get(key, 7 * 86400)
@@ -1548,6 +1875,10 @@ class GamesBackend:
             return self.init()
         if op == "browse":
             return self.browse(request)
+        if op == "library_games":
+            return self.library_games(request)
+        if op == "library_metadata":
+            return self.library_metadata(request)
         if op == "catalog_filters":
             if not self.config_state()["configured"]:
                 raise GamesError(
@@ -1587,8 +1918,8 @@ def main():
     serve(
         backend.handle,
         errors=(GamesError, ValueError, OSError),
-        background=("refresh_libraries", "availability", "protondb"),
-        latest=("browse", "details", "availability", "protondb"),
+        background=("refresh_libraries", "library_games", "availability", "protondb"),
+        latest=("browse", "library_games", "details", "availability", "protondb"),
         controls=("set_favorite", "set_match", "action"),
     )
 

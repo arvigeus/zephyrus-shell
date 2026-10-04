@@ -10,6 +10,6 @@ W.ArtworkCard {
     fallbackIcon: "gamepad-2"
     highlighted: selected
     favorite: !!game.favorite
-    badge: installed ? "Installed" : ""
-    subtitle: [game.releaseDate ? game.releaseDate.slice(0, 4) : "", (game.genres || []).slice(0, 1).join("")].filter(Boolean).join(" · ")
+    badge: installed ? "Installed" : (game.ownedBy || []).length ? "Owned" : ""
+    subtitle: [game.releaseDate ? game.releaseDate.slice(0, 4) : "", (game.genres || []).slice(0, 1).join(""), game.libraryEntry ? (game.libraryStores || []).map(store => store === "steam" ? "Steam" : "Epic").join(" / ") : ""].filter(Boolean).join(" · ")
 }

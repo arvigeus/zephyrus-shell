@@ -41,7 +41,12 @@ ColumnLayout {
     signal trackLookupRequested(string query)
     spacing: 8
 
-    TorrentService { id: service; onFailed: message => root.error = message }
+    property var service: ownedService
+    TorrentService { id: ownedService; onFailed: message => root.error = message }
+    Connections {
+        target: root.service
+        function onJobsChanged() { root.applyJobs(root.service.jobs); }
+    }
 
     function currentContextId() {
         const item = title || {};
@@ -74,6 +79,8 @@ ColumnLayout {
         if (searchId >= 0) service.request("stop", {job_id:searchId}, () => {});
         searchId = -1; results = []; resultTotal = 0; searching = false; pollLoading = false; moreLoading = false; error = ""; lookupError = ""; info = ""; reviewJobId = ""; reviewFiles = []; reviewLoading = false; inspectRow = ({}); inspectFiles = []; selectedFiles = []; inspectLoading = false;
         query = suggestedQuery();
+        if (service.monitorJobs) applyJobs(service.jobs);
+        else jobs = [];
         if (visible) connect();
     }
     function connect() {
@@ -162,14 +169,18 @@ ColumnLayout {
         });
     }
     function refreshJobs() {
+        if (service.monitorJobs) { service.refreshJobs(); applyJobs(service.jobs); return; }
         service.request("jobs", {}, (result, failure) => {
             if (failure) { if (connected) error = failure; return; }
-            const previous = jobs.filter(job => job.status === "imported").map(job => job.id);
-            const aliases = [title.id, title.imdbId].filter(Boolean);
-            if (title.tmdbId) aliases.push("tmdb:" + title.kind + ":" + title.tmdbId);
-            jobs = result.filter(job => aliases.includes(job.titleId));
-            if (jobs.some(job => job.status === "imported" && !previous.includes(job.id))) imported();
+            applyJobs(result);
         });
+    }
+    function applyJobs(result) {
+        const previous = jobs.filter(job => job.status === "imported").map(job => job.id);
+        const aliases = [title.id, title.imdbId].filter(Boolean);
+        if (title.tmdbId) aliases.push("tmdb:" + title.kind + ":" + title.tmdbId);
+        jobs = result.filter(job => job.kind === title.kind && aliases.includes(job.titleId));
+        if (!service.monitorJobs && jobs.some(job => job.status === "imported" && !previous.includes(job.id))) imported();
     }
     function queue(row) {
         if (row.yearMismatch) { error = "This result names a different year. Refine the search before downloading."; return; }
@@ -195,10 +206,19 @@ ColumnLayout {
     }
     function commitQueue(row, selected) {
         const args = {title:title,url:row.url};
+        const context = currentContextId();
         if (selected !== null) args.selected_files = selected;
+        service.pendingDownloads++;
         service.request("queue", args, (result, failure) => {
+            if (!failure && service.monitorJobs)
+                service.jobs = service.jobs.concat([{id:result.id,titleId:result.titleId,kind:args.title.kind,status:"queued",active:true,savePath:result.savePath}]);
+            service.pendingDownloads--;
+            if (context !== currentContextId()) { refreshJobs(); return; }
             if (failure) error = failure;
-            else { info = "Added to qBittorrent. Import starts when the download completes."; inspectRow = ({}); inspectFiles = []; selectedFiles = []; refreshJobs(); }
+            else { info = args.title.kind === "movie" || args.title.kind === "tv"
+                ? "Downloading to " + result.savePath + ". Completed files appear in Local automatically."
+                : "Added to qBittorrent. Import starts when the download completes.";
+                inspectRow = ({}); inspectFiles = []; selectedFiles = []; refreshJobs(); }
         });
     }
     function review(job) {
@@ -230,7 +250,7 @@ ColumnLayout {
             args.album = albumField.text;
             args.releaseDate = dateField.text;
         }
-        service.request("import_selected", args, (result, failure) => {
+        service.change("import_selected", args, (result, failure) => {
             if (failure) error = failure;
             else {
                 info = result.remaining ? "Imported into Local. " + result.remaining + " audio files remain to match." : "Imported into Local.";
@@ -242,7 +262,7 @@ ColumnLayout {
         });
     }
     function deleteJob(job) {
-        service.request("delete_job", {job_id:job.id}, (result, failure) => {
+        service.change("delete_job", {job_id:job.id}, (result, failure) => {
             if (failure) { error = failure; return; }
             info = "Removed the download and its files.";
             if (reviewJobId === job.id) { reviewJobId = ""; reviewFiles = []; }
@@ -256,7 +276,7 @@ ColumnLayout {
     Component.onDestruction: if (searchId >= 0) service.request("stop", {job_id:searchId}, () => {})
     Timer { interval: 1800; repeat: true; running: root.visible && root.searching; onTriggered: root.pollSearch() }
     Timer { interval: 1500; repeat: true; running: root.visible && !!root.inspectRow.url && !root.inspectFiles.length; onTriggered: root.fetchFiles() }
-    Timer { interval: 5000; repeat: true; running: root.visible && root.connected; onTriggered: root.refreshJobs() }
+    Timer { interval: 5000; repeat: true; running: root.visible && root.connected && !root.service.monitorJobs; onTriggered: root.refreshJobs() }
     Timer {
         interval: 1800; repeat: true; running: root.visible && root.launchPending
         onTriggered: {

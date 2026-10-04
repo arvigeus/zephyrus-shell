@@ -53,10 +53,29 @@ ShellRoot {
                     require(!!find(games, "gamesSearchButton") && !!find(games, "gamesFiltersButton"), "Games discovery controls missing");
                     step++;
                 } else if (step === 2) {
-                    if (games.initializing) return;
-                    require(games.setupRequired, "Missing IGDB credentials did not show setup state");
+                    if (games.initializing || games.loading) return;
+                    require(games.libraryMode && games.titles.length > 0 && !games.setupRequired,
+                            "Store Library was not the default without catalogue credentials");
                     require(games.catalogState.configured === false, "Unexpected catalog configuration state");
                     require(games.error === "", "Missing credentials became a fatal error: " + games.error);
+                    step++;
+                } else if (step === 3) {
+                    if (games.loading || games.detailLoading) return;
+                    require(games.libraryMode && games.titles.length > 0 && !games.setupRequired,
+                            "Store Library did not work without catalogue credentials");
+                    const steam = games.titles.find(game => game.title === "Smoke Game");
+                    require(steam && steam.summary === "Steam library fallback description.",
+                            "Library did not substitute Steam metadata without IGDB");
+                    require(games.error === "", "Library failed without catalogue credentials: " + games.error);
+                    games.patchCatalogue(Object.assign({}, steam, {summary:""}));
+                    games.metadataQueue = [steam.id];
+                    games.hydrateLibrary();
+                    step++;
+                } else if (step === 4) {
+                    if (games.metadataBusy) return;
+                    require(games.titles.find(game => game.title === "Smoke Game").summary === "Steam library fallback description.",
+                            "Background metadata did not update the Library card");
+                    require(games.selected.title === "Alan Wake 2", "Background metadata changed the selection");
                     ShellState.close();
                     require(!overlay.item, "Games overlay did not close");
                     console.log("GAMES PASS: entry point, setup fallback, worker startup, overlay destruction");

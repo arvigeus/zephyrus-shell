@@ -27,6 +27,7 @@ class FakeQBit:
         self.save_path = ""
         self.files = []
         self.calls = []
+        self.tags = ""
 
     def call(self, path, values=None):
         self.calls.append((path, values))
@@ -50,6 +51,7 @@ class FakeQBit:
             return [{"id": 1907502276, "status": "Running", "total": 145}]
         if path == "torrents/add":
             self.save_path = values["savepath"]
+            self.tags = values.get("tags", "")
             return "Ok."
         if path == "torrents/fetchMetadata":
             return {
@@ -87,6 +89,7 @@ class FakeQBit:
                 [
                     {
                         "save_path": self.save_path,
+                        "tags": self.tags,
                         "progress": 1,
                         "hash": "a" * 40,
                         "name": "The General 1926 WEB-DL",
@@ -112,10 +115,15 @@ class TorrentTests(unittest.TestCase):
                 "XDG_MUSIC_DIR": str(self.root / "Music"),
                 "XDG_DOCUMENTS_DIR": str(self.root / "Documents"),
                 "XDG_DATA_HOME": str(self.root / "data"),
+                "XDG_CONFIG_HOME": str(self.root / "config"),
             },
         )
         self.env.start()
         self.addCleanup(self.env.stop)
+        # Import naming tests never depend on a user's configured catalogue providers.
+        episodes = patch("media.backend.Backend.episodes", return_value={"items": [], "next": ""})
+        episodes.start()
+        self.addCleanup(episodes.stop)
         self.movie = {
             "id": "tt0017925",
             "imdbId": "tt0017925",
@@ -312,10 +320,7 @@ class TorrentTests(unittest.TestCase):
                 for path, values in self.fake.calls
             )
         )
-        self.assertIn(
-            ("torrents/setLocation", {"hashes": "a" * 40, "location": str(target.parent)}),
-            self.fake.calls,
-        )
+        self.assertFalse(any(path == "torrents/setLocation" for path, _ in self.fake.calls))
         self.assertEqual(self.backend.library.files(self.movie)[0]["path"], str(target))
         nfo = (target.parent / "movie.nfo").read_text()
         self.assertIn("tt0017925", nfo)
@@ -327,6 +332,7 @@ class TorrentTests(unittest.TestCase):
             self.backend.handle({"op": "local_list", "kind": "movie"})[0]["id"], self.movie["id"]
         )
         self.assertEqual(jobs[0]["id"], queued["id"])
+        self.assertEqual(self.backend.jobs({})[0]["progress"], 1)
 
     def test_series_names_episodes_and_keeps_other_title_separate(self):
         title = {"id": "tt9", "imdbId": "tt9", "kind": "tv", "title": "Example", "year": 2020}
@@ -342,6 +348,278 @@ class TorrentTests(unittest.TestCase):
         self.assertEqual(library.files(title | {"id": "tt-other", "imdbId": "tt-other"}), [])
         self.assertEqual(library.files({"kind": "tv", "title": "Unknown"}), [])
         self.assertEqual(library.files({"kind": "tv", "id": "tt-other"}), [])
+
+    def test_video_queue_downloads_directly_into_title_folder(self):
+        queued = self.backend.queue({"title": self.movie, "url": "magnet:?xt=urn:btih:abc"})
+        folder = self.root / "Videos/Movies/The General (1926)"
+        self.assertEqual(Path(queued["savePath"]), folder)
+        self.assertEqual(Path(self.fake.save_path), folder)
+        self.assertIn(self.backend.job_tag(queued["id"]), self.fake.tags)
+        with self.backend.db() as db:
+            saved = Path(db.execute("SELECT save_path FROM torrent_downloads").fetchone()[0])
+        self.assertEqual(saved, folder)
+        self.assertFalse((self.backend.data / "torrents").exists())
+
+    def test_shared_series_folder_is_not_used_as_job_identity(self):
+        show = {"kind": "tv", "id": "tt9", "title": "Example", "year": 2020}
+        first = self.backend.queue(
+            {"title": show | {"season": 1, "episode": 1}, "url": "magnet:?xt=urn:btih:first"}
+        )
+        second = self.backend.queue(
+            {"title": show | {"season": 1, "episode": 2}, "url": "magnet:?xt=urn:btih:second"}
+        )
+        folder = second["savePath"]
+        self.assertEqual(first["savePath"], folder)
+        torrents = [
+            {
+                "hash": "b" * 40,
+                "save_path": folder,
+                "tags": "zephyrus-shell," + self.backend.job_tag(first["id"]),
+                "progress": 0.3,
+            },
+            {
+                "hash": "c" * 40,
+                "save_path": folder,
+                "tags": "zephyrus-shell, " + self.backend.job_tag(second["id"]),
+                "progress": 0.8,
+            },
+            {"hash": "d" * 40, "save_path": folder, "tags": "", "progress": 1},
+        ]
+        with patch.object(self.fake, "call", return_value=torrents):
+            jobs = self.backend.jobs({"kind": "tv"})
+        self.assertEqual(
+            {j["id"]: j["progress"] for j in jobs}, {first["id"]: 0.3, second["id"]: 0.8}
+        )
+        with self.backend.db() as db:
+            hashes = dict(db.execute("SELECT id,torrent_hash FROM torrent_downloads"))
+        self.assertEqual(hashes, {first["id"]: "b" * 40, second["id"]: "c" * 40})
+
+    def test_duplicate_queue_is_rejected_without_a_second_add(self):
+        request = {"title": self.movie, "url": "magnet:?xt=urn:btih:abc"}
+        self.backend.queue(request)
+        with self.assertRaisesRegex(TorrentError, "already tracked"):
+            self.backend.queue(request)
+        self.assertEqual(sum(path == "torrents/add" for path, _ in self.fake.calls), 1)
+
+    def test_untagged_torrent_in_title_folder_does_not_claim_job(self):
+        queued = self.backend.queue({"title": self.movie, "url": "magnet:?xt=urn:btih:abc"})
+        torrents = [{"hash": "b" * 40, "save_path": queued["savePath"], "progress": 1, "tags": ""}]
+        with patch.object(self.fake, "call", return_value=torrents):
+            job = self.backend.jobs({})[0]
+        self.assertEqual(job["status"], "queued")
+        self.assertEqual(job["progress"], 0)
+        with self.backend.db() as db:
+            self.assertEqual(
+                db.execute("SELECT torrent_hash FROM torrent_downloads").fetchone()[0], ""
+            )
+
+    def test_unaccepted_download_uses_persisted_queue_time(self):
+        with patch("media.torrent_backend.time.time", return_value=1000):
+            self.backend.queue({"title": self.movie, "url": "magnet:?xt=urn:btih:abc"})
+        with (
+            patch.object(self.fake, "call", return_value=[]),
+            patch("media.torrent_backend.time.time", return_value=1121),
+        ):
+            job = self.backend.jobs({})[0]
+        self.assertFalse(job["active"])
+        self.assertIn("did not add", job["message"])
+
+    def test_download_resumes_by_tag_after_worker_reopens(self):
+        self.backend.queue({"title": self.movie, "url": "magnet:?xt=urn:btih:abc"})
+        source = Path(self.fake.save_path) / "The.General.1926.mkv"
+        source.write_bytes(b"video" * 250000)
+        self.fake.files = [{"name": source.name, "priority": 1}]
+        reopened = TorrentBackend(self.backend.config_path, self.backend.data, self.fake)
+        self.assertEqual(reopened.jobs({})[0]["status"], "imported")
+        self.assertTrue(destination(self.movie, source).is_file())
+        self.assertFalse(source.exists())
+
+    def test_episode_download_preserves_selected_episode_title(self):
+        show = {
+            "kind": "tv",
+            "id": "tt9",
+            "title": "Example",
+            "year": 2020,
+            "season": 1,
+            "episode": 3,
+            "episodeTitle": "A New Beginning",
+        }
+        self.backend.queue({"title": show, "url": "magnet:?xt=urn:btih:abc"})
+        source = Path(self.fake.save_path) / "release-S01E03.mkv"
+        source.write_bytes(b"video" * 250000)
+        self.fake.files = [{"name": source.name, "priority": 1}]
+        self.assertEqual(self.backend.jobs({})[0]["status"], "imported")
+        file = self.backend.library.files(show)[0]
+        self.assertEqual(Path(file["path"]).name, "Example (2020) - S01E03 - A New Beginning.mkv")
+        self.assertEqual(file["episodeTitle"], "A New Beginning")
+        self.assertNotIn("episode", self.backend.library.list("tv")[0])
+
+    def test_season_import_fetches_paginated_episode_names_once(self):
+        show = {"kind": "tv", "id": "tt9", "title": "Example", "year": 2020}
+        self.backend.queue({"title": show | {"season": 1}, "url": "magnet:?xt=urn:btih:abc"})
+        for episode in (1, 2):
+            source = Path(self.fake.save_path) / f"release-S01E{episode:02d}.mkv"
+            source.write_bytes(b"video" * 250000)
+            self.fake.files.append({"name": source.name, "priority": 1})
+        with patch(
+            "media.backend.Backend.episodes",
+            side_effect=[
+                {"items": [{"number": 1, "title": "Pilot"}], "next": "page-two"},
+                {"items": [{"number": 2, "title": "Second: chapter"}], "next": ""},
+            ],
+        ) as episodes:
+            self.assertEqual(self.backend.jobs({})[0]["status"], "imported")
+        self.assertEqual(episodes.call_count, 2)
+        names = {Path(file["path"]).name for file in self.backend.library.files(show)}
+        self.assertEqual(
+            names,
+            {"Example (2020) - S01E01 - Pilot.mkv", "Example (2020) - S01E02 - Second chapter.mkv"},
+        )
+
+    def test_folder_scan_includes_catalogue_episode_name(self):
+        show = {"kind": "tv", "id": "tt9", "title": "Fargo", "year": 2014}
+        incoming = self.root / "Incoming/Season 01"
+        incoming.mkdir(parents=True)
+        source = incoming / "Fargo.S01E01.mkv"
+        source.write_bytes(b"video")
+        with (
+            patch("media.torrent_backend.catalogue_match", return_value=show),
+            patch(
+                "media.backend.Backend.episodes",
+                return_value={"items": [{"number": 1, "title": "The Crocodile's Dilemma"}]},
+            ),
+        ):
+            result = self.backend.scan({"kind": "tv", "path": str(incoming)})
+        self.assertEqual(len(result["imported"]), 1)
+        self.assertIn("S01E01 - The Crocodile's Dilemma.mkv", result["imported"][0]["path"])
+
+    def test_scan_never_imports_incomplete_torrent_as_ordinary_video(self):
+        folder = self.root / "Videos/Movies/Incomplete"
+        folder.mkdir(parents=True)
+        source = folder / "The.General.1926.mkv"
+        source.write_bytes(b"partial video")
+        self.fake.save_path = str(folder)
+        self.fake.files = [{"name": source.name, "priority": 1}]
+        torrents = [{"save_path": str(folder), "hash": "a" * 40, "progress": 0.2}]
+        from media.scanner import candidates
+
+        self.assertEqual(
+            list(candidates("movie", self.root / "Videos/Movies", self.fake, torrents=torrents)), []
+        )
+        self.assertTrue(source.exists())
+
+    def test_scan_adds_names_to_registered_episodes_and_managed_subtitles(self):
+        show = {"kind": "tv", "id": "tt9", "title": "Example", "year": 2020}
+        incoming = self.root / "Example.S01E01.mkv"
+        incoming.write_bytes(b"video")
+        old = Path(
+            self.backend.library.add(show, incoming, move=True, release_name="Example S01 WEB-DL")
+        )
+        subtitle = old.with_name(old.stem + ".en.srt")
+        subtitle.write_text("subtitle")
+        with self.backend.library.db() as db:
+            db.execute(
+                "CREATE TABLE subtitle_managed(path TEXT PRIMARY KEY,video_path TEXT NOT NULL)"
+            )
+            db.execute("INSERT INTO subtitle_managed VALUES (?,?)", (str(subtitle), str(old)))
+        with patch(
+            "media.backend.Backend.episodes",
+            return_value={"items": [{"number": 1, "title": "Pilot"}]},
+        ):
+            result = self.backend.scan({"kind": "tv"})
+        file = self.backend.library.files(show)[0]
+        renamed = Path(file["path"])
+        self.assertTrue(renamed.name.endswith("S01E01 - Pilot.mkv"))
+        self.assertFalse(old.exists())
+        self.assertFalse(subtitle.exists())
+        new_subtitle = renamed.with_name(renamed.stem + ".en.srt")
+        self.assertTrue(new_subtitle.exists())
+        release = renamed.with_suffix(".release.nfo").read_text()
+        self.assertIn("Example S01 WEB-DL", release)
+        self.assertIn("Example.S01E01.mkv", release)
+        self.assertEqual(len(result["imported"]), 1)
+        with self.backend.library.db() as db:
+            self.assertEqual(
+                db.execute("SELECT path,video_path FROM subtitle_managed").fetchall(),
+                [(str(new_subtitle), str(renamed))],
+            )
+            self.assertEqual(
+                db.execute("SELECT path FROM local_files").fetchall(), [(str(renamed),)]
+            )
+
+    def test_registered_torrent_episode_scan_renames_through_qbittorrent(self):
+        show = {"kind": "tv", "id": "tt9", "title": "Example", "year": 2020}
+        self.backend.queue({"title": show, "url": "magnet:?xt=urn:btih:abc"})
+        source = Path(self.fake.save_path) / "Example.S01E01.mkv"
+        source.write_bytes(b"video" * 250000)
+        self.fake.files = [{"name": source.name, "priority": 1}]
+        self.backend.jobs({})
+        old = Path(self.backend.library.files(show)[0]["path"])
+        self.fake.calls = []
+        with patch(
+            "media.backend.Backend.episodes",
+            return_value={"items": [{"number": 1, "title": "Pilot"}]},
+        ):
+            self.backend.scan({"kind": "tv"})
+        files = self.backend.library.files(show)
+        self.assertEqual(len(files), 1)
+        self.assertTrue(files[0]["path"].endswith("S01E01 - Pilot.mkv"))
+        self.assertFalse(old.exists())
+        self.assertTrue(any(path == "torrents/renameFile" for path, _ in self.fake.calls))
+        self.assertTrue(files[0]["torrent"])
+
+    def test_scan_preserves_registered_episode_when_renamed_path_exists(self):
+        show = {"kind": "tv", "id": "tt9", "title": "Example", "year": 2020}
+        source = self.root / "Example.S01E01.mkv"
+        source.write_bytes(b"original")
+        old = Path(self.backend.library.add(show, source, move=True))
+        occupied = destination(show | {"episodeTitle": "Pilot"}, old)
+        occupied.write_bytes(b"other release")
+        with patch(
+            "media.backend.Backend.episodes",
+            return_value={"items": [{"number": 1, "title": "Pilot"}]},
+        ):
+            result = self.backend.scan({"kind": "tv"})
+        self.assertTrue(old.exists())
+        self.assertEqual(occupied.read_bytes(), b"other release")
+        self.assertIn("already exists", result["warning"])
+
+    def test_scan_with_unavailable_qbittorrent_excludes_tracked_title_folder(self):
+        self.backend.queue({"title": self.movie, "url": "magnet:?xt=urn:btih:abc"})
+        source = Path(self.fake.save_path) / "The.General.1926.mkv"
+        source.write_bytes(b"partial video" * 250000)
+        with patch.object(self.fake, "call", side_effect=QBitConnectionError("Offline")):
+            result = self.backend.scan({"kind": "movie"})
+        self.assertEqual(result["imported"], [])
+        self.assertEqual(result["review"], [])
+        self.assertTrue(source.exists())
+
+    def test_jobs_waits_while_qbittorrent_is_moving_completed_files(self):
+        self.backend.queue({"title": self.movie, "url": "magnet:?xt=urn:btih:abc"})
+        torrents = [
+            {
+                "save_path": self.fake.save_path,
+                "hash": "a" * 40,
+                "tags": self.fake.tags,
+                "progress": 1,
+                "state": "moving",
+            }
+        ]
+        with patch.object(self.fake, "call", return_value=torrents):
+            jobs = self.backend.jobs({})
+        self.assertEqual(jobs[0]["status"], "moving")
+        self.assertTrue(jobs[0]["active"])
+
+    def test_delete_unlinked_job_uses_tag_and_preserves_shared_folder(self):
+        show = {"kind": "tv", "id": "tt9", "title": "Example", "year": 2020}
+        queued = self.backend.queue({"title": show, "url": "magnet:?xt=urn:btih:abc"})
+        unrelated = Path(self.fake.save_path) / "other-episode.mkv"
+        unrelated.write_bytes(b"another download")
+        self.backend.delete_job({"job_id": queued["id"]})
+        self.assertTrue(unrelated.exists())
+        self.assertIn(
+            ("torrents/delete", {"hashes": "a" * 40, "deleteFiles": "true"}), self.fake.calls
+        )
 
     def test_ambiguous_movie_requires_explicit_file(self):
         queued = self.backend.handle(
@@ -730,13 +1008,15 @@ class TorrentTests(unittest.TestCase):
         download.write_bytes(b"video")
         self.fake.files = [{"name": download.name, "priority": 1}]
         with self.backend.db() as db:
-            db.execute("UPDATE torrent_jobs SET status='imported' WHERE id=?", (queued["id"],))
+            db.execute("UPDATE torrent_downloads SET status='imported' WHERE id=?", (queued["id"],))
         result = self.backend.handle({"op": "delete_job", "job_id": queued["id"]})
         self.assertTrue(result["torrent"])
         self.assertFalse(staging.exists())
         with self.backend.db() as db:
             self.assertIsNone(
-                db.execute("SELECT id FROM torrent_jobs WHERE id=?", (queued["id"],)).fetchone()
+                db.execute(
+                    "SELECT id FROM torrent_downloads WHERE id=?", (queued["id"],)
+                ).fetchone()
             )
 
     def test_book_and_game_destinations(self):

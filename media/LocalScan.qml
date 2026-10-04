@@ -17,12 +17,13 @@ ColumnLayout {
     property var matches: []
     signal imported()
     spacing: 10
-    TorrentService { id: service; onFailed: message => root.error = message }
+    property var service: ownedService
+    TorrentService { id: ownedService; onFailed: message => root.error = message }
 
     function scan() {
         if (scanning) return;
         ++lookupGeneration; scanning = true; matching = false; error = ""; info = ""; review = []; current = ({}); matches = [];
-        service.request("scan", {kind:kind,path:pathField.text.trim()}, (result, failure) => {
+        service.change("scan", {kind:kind,path:pathField.text.trim()}, (result, failure) => {
             scanning = false;
             if (failure) { error = failure; return; }
             review = result.review;
@@ -68,7 +69,7 @@ ColumnLayout {
             args.season = Number(seasonField.text); args.episode = Number(episodeField.text);
         }
         if (kind === "music" && dateField.text.trim()) args.releaseDate = dateField.text.trim();
-        service.request("scan_import", args, (result, failure) => {
+        service.change("scan_import", args, (result, failure) => {
             if (failure) { error = failure; return; }
             review = review.filter(item => !(result.removedTokens || [current.token]).includes(item.token));
             current = ({}); matches = [];

@@ -29,7 +29,7 @@ ScrollArea {
                 Layout.fillWidth: true
                 Icon { name: "monitor"; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
                 Label { text: (index + 1) + ". " + modelData.label; Layout.fillWidth: true; elide: Text.ElideRight }
-                IconButton { iconName: "arrow-left"; text: "Move " + modelData.label + " left"; enabled: index > 0 && !root.machine.busy; onClicked: root.moveMonitor(modelData.name, -1) }
+                IconButton { iconName: "chevron-left"; text: "Move " + modelData.label + " left"; enabled: index > 0 && !root.machine.busy; onClicked: root.moveMonitor(modelData.name, -1) }
                 IconButton { iconName: "chevron-right"; text: "Move " + modelData.label + " right"; enabled: index < root.enabledMonitors.length - 1 && !root.machine.busy; onClicked: root.moveMonitor(modelData.name, 1) }
             }
         }

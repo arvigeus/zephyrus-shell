@@ -2,7 +2,12 @@
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 media_test_root=$(mktemp -d)
-trap 'rm -rf -- "$media_test_root"' EXIT
+media_qbit_pid=""
+cleanup_media() {
+    if [[ -n "$media_qbit_pid" ]]; then kill "$media_qbit_pid" 2>/dev/null || true; wait "$media_qbit_pid" 2>/dev/null || true; fi
+    rm -rf -- "$media_test_root"
+}
+trap cleanup_media EXIT
 export XDG_CONFIG_HOME="$media_test_root/config" XDG_DATA_HOME="$media_test_root/data" XDG_CACHE_HOME="$media_test_root/cache" XDG_VIDEOS_DIR="$media_test_root/videos"
 export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
 mkdir -p "$XDG_CONFIG_HOME/zephyrus-shell" tests/artifacts
@@ -119,3 +124,18 @@ assert any(any(arg.startswith('--sub-file=') for arg in args) for args in launch
 assert ['https://example.org/hidden-owner'] in launches, launches
 print('EXTERNAL DETACHED PASS: all seven applications survive module destruction')
 PYVERIFY
+
+# The real owned torrent worker talks to an isolated Web UI fixture; lifecycle
+# actions use the real Movies/Series entry points and ShellState retention.
+export NO_PROXY=127.0.0.1 no_proxy=127.0.0.1
+python3 tests/fixtures/media-qbittorrent.py > "$media_test_root/qbit-log" 2>&1 &
+media_qbit_pid=$!
+for attempt in {1..50}; do
+    [[ -f "$XDG_CONFIG_HOME/zephyrus-shell/torrents.json" ]] && break
+    sleep 0.1
+done
+[[ -f "$XDG_CONFIG_HOME/zephyrus-shell/torrents.json" ]] || { cat "$media_test_root/qbit-log"; exit 1; }
+timeout 25s dbus-run-session quickshell -p "$PWD/media-download-smoke.qml" --no-color > "$media_test_root/download-log" 2>&1 || { cat "$media_test_root/download-log" "$media_test_root/qbit-log"; exit 1; }
+cat "$media_test_root/download-log"
+rg -q 'DOWNLOAD PASS' "$media_test_root/download-log"
+if rg -q 'ReferenceError|TypeError|Cannot assign|Binding loop|DOWNLOAD FAIL' "$media_test_root/download-log"; then exit 1; fi

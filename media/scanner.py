@@ -131,24 +131,41 @@ def catalogue_match(catalogue, kind, parsed):
     return next(iter(matches.values())) if len(matches) == 1 else None
 
 
-def candidates(kind, root, qbit, managed_staging=(), torrents=None):
+def candidates(kind, root, qbit, managed_staging=(), torrents=None, managed_hashes=()):
     """Yield qBittorrent sources first, then ordinary files, with no mutation."""
     seen = set()
+    # Remember every torrent payload so incomplete and tracked files cannot be
+    # mistaken for ordinary completed videos during the filesystem pass.
+    excluded = set()
     for torrent in torrents if torrents is not None else qbit.call("torrents/info"):
-        if float(torrent.get("progress") or 0) < 1:
-            continue
         save = Path(torrent.get("save_path") or "").resolve()
-        if not save.is_dir() or str(save) in managed_staging:
+        if not save.is_dir():
             continue
+        managed = str(torrent.get("hash") or "") in managed_hashes
+        complete = float(torrent.get("progress") or 0) >= 1 and torrent.get("state") not in (
+            "moving",
+            "checkingUP",
+            "checkingDL",
+            "checkingResumeData",
+        )
         for file in qbit.call("torrents/files?hash=" + str(torrent["hash"])):
             relative = Path(file.get("name") or "")
             raw = save / relative
             path = raw.resolve()
+            if (
+                not relative.is_absolute()
+                and ".." not in relative.parts
+                and path.is_relative_to(save)
+            ):
+                excluded.add(path)
+                excluded.add(path.with_name(path.name + ".!qB"))
             episodic = bool(
                 episode_numbers(path.name) or re.search(r"(?i)\b\d{1,2}(?:E|x)\d{1,3}\b", path.name)
             )
             if (
                 relative.is_absolute()
+                or managed
+                or not complete
                 or ".." in relative.parts
                 or not path.is_relative_to(save)
                 or not path.is_file()
@@ -179,5 +196,9 @@ def candidates(kind, root, qbit, managed_staging=(), torrents=None):
             and not path.is_symlink()
             and path.suffix.lower() in EXTENSIONS[kind]
             and path.resolve() not in seen
+            and path.resolve() not in excluded
+            and not any(
+                path.resolve().is_relative_to(Path(folder).resolve()) for folder in managed_staging
+            )
         ):
             yield {"path": str(path.resolve()), "torrent_hash": "", "source": "Folder"}

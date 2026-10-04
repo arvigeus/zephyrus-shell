@@ -31,6 +31,7 @@ from media.local import (
     destination,
     episode_numbers,
     identity,
+    label,
     library_root,
     subtitle_associations,
 )
@@ -244,16 +245,33 @@ class TorrentBackend:
         self.client_config = None
         self.scan_pending = {}
         with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
             db.execute(
-                "CREATE TABLE IF NOT EXISTS torrent_jobs ("
-                "id TEXT PRIMARY KEY, search_url TEXT NOT NULL, staging TEXT NOT NULL UNIQUE, "
+                "CREATE TABLE IF NOT EXISTS torrent_downloads ("
+                "id TEXT PRIMARY KEY, search_url TEXT NOT NULL, save_path TEXT NOT NULL, "
                 "title_json TEXT NOT NULL, status TEXT NOT NULL, message TEXT NOT NULL DEFAULT '', "
-                "torrent_hash TEXT NOT NULL DEFAULT '')"
+                "torrent_hash TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL)"
             )
             db.execute(
-                "CREATE TABLE IF NOT EXISTS torrent_imported_files ("
+                "CREATE TABLE IF NOT EXISTS torrent_file_matches ("
                 "job_id TEXT NOT NULL, path TEXT NOT NULL, PRIMARY KEY(job_id,path))"
             )
+
+    @staticmethod
+    def job_tag(job_id):
+        return "zephyrus-job-" + job_id
+
+    def find_job_torrent(self, job_id, torrent_hash, torrents):
+        # A title folder is shared by season/episode downloads. Never use it as identity.
+        if torrent_hash:
+            return next((t for t in torrents if t.get("hash") == torrent_hash), None)
+        tag = self.job_tag(job_id)
+        tagged = [
+            t for t in torrents if tag in {v.strip() for v in str(t.get("tags") or "").split(",")}
+        ]
+        if tagged:
+            return tagged[0]
+        return None
 
     @contextmanager
     def db(self):
@@ -265,8 +283,10 @@ class TorrentBackend:
             db.close()
 
     @contextmanager
-    def import_lock(self, staging):
-        with (Path(staging) / ".import.lock").open("a+b") as lock:
+    def import_lock(self, job_id):
+        locks = self.data / "torrent-locks"
+        locks.mkdir(exist_ok=True)
+        with (locks / job_id).open("a+b") as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
@@ -436,6 +456,11 @@ class TorrentBackend:
                 ):
                     raise ValueError("A file already exists at the library destination.")
             planned.append((source, target, location))
+        targets = [target for _, target, _ in planned]
+        if len(targets) != len(set(targets)):
+            raise ValueError(
+                "Several files would have the same library name. Review the selected files."
+            )
         if len(locations) != 1:
             raise ValueError(
                 "Torrent files must share one library folder before they can be moved."
@@ -539,7 +564,82 @@ class TorrentBackend:
             backup.unlink(missing_ok=True)
         return [(source, target) for source, target, _ in planned]
 
+    def episode_assignments(self, assignments, catalogue=None):
+        """Attach episode metadata per file, fetching each season only once per import."""
+        seasons = {}
+        enriched = []
+        for source, title, season, episode, preserve in assignments:
+            if title["kind"] != "tv":
+                enriched.append((source, title, season, episode, preserve))
+                continue
+            numbers = (
+                (season, episode)
+                if season is not None and episode is not None
+                else episode_numbers(Path(source).name)
+            )
+            if not numbers:
+                enriched.append((source, title, season, episode, preserve))
+                continue
+            season, episode = map(int, numbers)
+            supplied = (
+                title.get("episodeTitle")
+                if (
+                    title.get("episode") is None
+                    or (
+                        title.get("season") is not None
+                        and (int(title["season"]), int(title["episode"])) == (season, episode)
+                    )
+                )
+                else ""
+            )
+            if supplied and re.fullmatch(r"(?i)Episode\s+\d+", supplied):
+                supplied = ""
+            key = (identity(title), season)
+            if not supplied and key not in seasons:
+                names = {}
+                try:
+                    if catalogue is None:
+                        from media.backend import Backend
+
+                        catalogue = Backend(data=self.data)
+                    page = ""
+                    seen = set()
+                    for _ in range(100):
+                        result = catalogue.episodes(
+                            {"title": title, "season": str(season), "page": page}
+                        )
+                        names.update(
+                            {
+                                int(row["number"]): row.get("title") or ""
+                                for row in result.get("items", [])
+                            }
+                        )
+                        page = result.get("next") or ""
+                        if not page or page in seen:
+                            break
+                        seen.add(page)
+                except Exception:
+                    # Provider availability must not block a completed download.
+                    pass
+                seasons[key] = names
+            name = (
+                supplied
+                or seasons.get(key, {}).get(episode)
+                or guess(Path(source), "tv").get("episodeTitle")
+                or ""
+            )
+            if re.fullmatch(r"(?i)Episode\s+\d+", name):
+                name = ""
+            item = {
+                key: value
+                for key, value in title.items()
+                if key not in ("season", "episode", "episodeTitle")
+            }
+            enriched.append((source, item | {"episodeTitle": name}, season, episode, preserve))
+        return enriched
+
     def import_torrent_files(self, torrent, assignments):
+        assignments = self.episode_assignments(assignments)
         moved = self.move_torrent_files(torrent, assignments)
         for (source, target), (_, title, season, episode, preserve_name) in zip(
             moved, assignments, strict=True
@@ -554,7 +654,69 @@ class TorrentBackend:
                 source_path=source,
                 release_name=str(torrent.get("name") or source.name),
             )
+            self.library.replace_registered_path(source, target)
         return [str(target) for _, target in moved]
+
+    def refresh_registered_episodes(self, root, torrents, catalogue):
+        """A requested scan also adds missing names to previously indexed episodes."""
+        with self.db() as db:
+            rows = db.execute(
+                "SELECT f.path,f.title_json,f.season,f.episode,s.torrent_hash FROM local_files f "
+                "JOIN local_sources s ON s.path=f.path WHERE f.kind='tv'"
+            ).fetchall()
+        pending = []
+        hashes = {}
+        root = root.resolve()
+        for path, payload, season, episode, torrent_hash in rows:
+            source = Path(path)
+            title = json.loads(payload)
+            if (
+                title.get("episodeTitle")
+                or not source.is_file()
+                or source.is_symlink()
+                or not (source.resolve() == root or source.resolve().is_relative_to(root))
+            ):
+                continue
+            pending.append((source, title, season, episode, False))
+            hashes[source] = torrent_hash
+            if len(pending) >= 500:
+                break
+        groups = {}
+        for assignment in self.episode_assignments(pending, catalogue):
+            source, title, season, episode, _ = assignment
+            if title.get("episodeTitle"):
+                torrent_hash = hashes[source]
+                groups.setdefault((torrent_hash, None if torrent_hash else source), []).append(
+                    assignment
+                )
+        imported, errors = [], []
+        for (torrent_hash, _), assignments in groups.items():
+            try:
+                if torrent_hash:
+                    torrent = next((t for t in torrents if t.get("hash") == torrent_hash), None)
+                    if (
+                        not torrent
+                        or float(torrent.get("progress") or 0) < 1
+                        or torrent.get("state")
+                        in ("moving", "checkingUP", "checkingDL", "checkingResumeData")
+                    ):
+                        continue
+                    targets = self.import_torrent_files(torrent, assignments)
+                else:
+                    targets = []
+                    for source, title, season, episode, _ in assignments:
+                        target = self.library.add(
+                            title, source, season=season, episode=episode, move=True
+                        )
+                        self.library.replace_registered_path(source, target)
+                        targets.append(target)
+                imported.extend(
+                    {"source": str(source), "path": target, "title": title["title"]}
+                    for (source, title, _, _, _), target in zip(assignments, targets, strict=True)
+                )
+            except (TorrentError, OSError, ValueError) as error:
+                errors.append(str(error))
+        return imported, errors
 
     def init(self, request):
         plugins = self.qbit().call("search/plugins")
@@ -647,31 +809,54 @@ class TorrentBackend:
                 raise TorrentError("Select at least one audio file from this torrent.")
             priorities = ",".join("1" if index in selected else "0" for index in range(len(files)))
         job_id = uuid.uuid4().hex
-        staging = (self.data / "torrents" / job_id).resolve()
-        staging.mkdir(parents=True, exist_ok=False)
+        save = (
+            library_root(kind) / label(title)
+            if kind in ("movie", "tv")
+            else self.data / "torrents" / job_id
+        ).resolve()
+        existing = self.qbit().call("torrents/info")
+        magnet_hash = re.search(r"(?i)(?:[?&])xt=urn:btih:([a-f0-9]{40})(?:&|$)", url)
+        if magnet_hash and any(
+            str(t.get("hash") or "").lower() == magnet_hash[1].lower() for t in existing
+        ):
+            raise TorrentError(
+                "This torrent is already in qBittorrent. Scan it from Local when complete."
+            )
+        with self.db() as db:
+            duplicate = db.execute(
+                "SELECT id FROM torrent_downloads WHERE search_url=? AND status<>'imported'", (url,)
+            ).fetchone()
+        if duplicate:
+            raise TorrentError(
+                "This download is already tracked. Check its progress or review its files."
+            )
+        save.mkdir(parents=True, exist_ok=True)
         with self.db() as db:
             db.execute(
-                "INSERT INTO torrent_jobs(id,search_url,staging,title_json,status,message) "
-                "VALUES (?,?,?,?,?,?)",
-                (job_id, url, str(staging), json.dumps(title), "queued", ""),
+                "INSERT INTO torrent_downloads(id,search_url,save_path,title_json,status,message,created_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (job_id, url, str(save), json.dumps(title), "queued", "", time.time()),
             )
         try:
-            # A unique save path links an add request to its torrent after metadata arrives.
+            # A unique tag links this job even when several downloads share a title folder.
             values = {
                 "urls": url,
-                "savepath": str(staging),
+                "savepath": str(save),
                 "autoTMM": "false",
-                "tags": "zephyrus-shell",
+                "tags": "zephyrus-shell," + self.job_tag(job_id),
             }
             if priorities:
                 values["filePriorities"] = priorities
             self.qbit().call("torrents/add", values)
         except Exception:
             with self.db() as db:
-                db.execute("DELETE FROM torrent_jobs WHERE id=?", (job_id,))
-            staging.rmdir()
+                db.execute("DELETE FROM torrent_downloads WHERE id=?", (job_id,))
+            try:
+                save.rmdir()
+            except OSError:
+                pass
             raise
-        return {"id": job_id, "titleId": identifier}
+        return {"id": job_id, "titleId": identifier, "savePath": str(save)}
 
     def inspect(self, request):
         url = str(request.get("url") or "")
@@ -695,60 +880,63 @@ class TorrentBackend:
     def jobs(self, request):
         with self.db() as db:
             saved = db.execute(
-                "SELECT id,staging,title_json,status,message,torrent_hash "
-                "FROM torrent_jobs ORDER BY rowid DESC"
+                "SELECT id,save_path,title_json,status,message,torrent_hash,created_at "
+                "FROM torrent_downloads ORDER BY rowid DESC"
             ).fetchall()
+        if request.get("kind"):
+            saved = [row for row in saved if json.loads(row[2])["kind"] == request["kind"]]
         active = [row for row in saved if row[3] not in ("imported", "review")]
-        torrents = {}
-        by_hash = {}
+        torrents = []
         if active:
-            for torrent in self.qbit().call("torrents/info"):
-                torrents[str(Path(torrent.get("save_path") or "").resolve())] = torrent
-                by_hash[str(torrent.get("hash") or "")] = torrent
+            torrents = self.qbit().call("torrents/info")
         output = []
-        for job_id, staging, payload, status, message, torrent_hash in saved:
+        for job_id, save_path, payload, status, message, torrent_hash, created_at in saved:
             title = json.loads(payload)
-            torrent = (
-                by_hash.get(torrent_hash)
-                if torrent_hash
-                else torrents.get(str(Path(staging).resolve()))
-            )
+            torrent = self.find_job_torrent(job_id, torrent_hash, torrents)
             if torrent and not torrent_hash:
                 with self.db() as db:
                     db.execute(
-                        "UPDATE torrent_jobs SET torrent_hash=? WHERE id=?",
+                        "UPDATE torrent_downloads SET torrent_hash=? WHERE id=?",
                         (torrent["hash"], job_id),
                     )
             progress = float(torrent.get("progress") or 0) if torrent else 0
-            if torrent and progress >= 1 and status not in ("imported", "review"):
-                with self.import_lock(staging) as acquired:
+            if status in ("imported", "review"):
+                progress = 1.0
+            settling = torrent and torrent.get("state") in (
+                "moving",
+                "checkingUP",
+                "checkingDL",
+                "checkingResumeData",
+            )
+            if torrent and progress >= 1 and not settling and status not in ("imported", "review"):
+                with self.import_lock(job_id) as acquired:
                     if acquired:
                         with self.db() as db:
                             current = db.execute(
-                                "SELECT status,message FROM torrent_jobs WHERE id=?", (job_id,)
+                                "SELECT status,message FROM torrent_downloads WHERE id=?", (job_id,)
                             ).fetchone()
                         status, message = current if current else (status, message)
                         if status not in ("imported", "review"):
                             try:
-                                self.import_job(job_id, title, Path(staging), torrent)
+                                self.import_job(title, torrent)
                                 status, message = "imported", ""
                             except (TorrentError, OSError, ValueError) as error:
                                 status, message = "review", str(error)
                             with self.db() as db:
                                 db.execute(
-                                    "UPDATE torrent_jobs SET status=?,message=? WHERE id=?",
+                                    "UPDATE torrent_downloads SET status=?,message=? WHERE id=?",
                                     (status, message, job_id),
                                 )
-            if (
-                not torrent
-                and status == "queued"
-                and time.time() - Path(staging).stat().st_mtime > 120
-            ):
+            if not torrent and status == "queued" and time.time() - created_at > 120:
                 message = "qBittorrent did not add this torrent. Check for a duplicate or invalid search result."
             output.append(
                 {
                     "id": job_id,
                     "titleId": identity(title),
+                    "kind": title["kind"],
+                    "savePath": torrent["save_path"] if torrent else save_path,
+                    "active": status not in ("imported", "review")
+                    and (bool(torrent) or not message),
                     "title": title.get("title") or "",
                     "status": status
                     if status in ("imported", "review")
@@ -759,8 +947,8 @@ class TorrentBackend:
             )
         return output
 
-    def import_job(self, job_id, title, staging, torrent):
-        save = Path(torrent.get("save_path") or staging).resolve()
+    def import_job(self, title, torrent):
+        save = Path(torrent["save_path"]).resolve()
         files = self.qbit().call(
             "torrents/files?" + urllib.parse.urlencode({"hash": torrent["hash"]})
         )
@@ -852,27 +1040,27 @@ class TorrentBackend:
         job_id = str(request["job_id"])
         with self.db() as db:
             row = db.execute(
-                "SELECT staging,title_json,torrent_hash FROM torrent_jobs WHERE id=?", (job_id,)
+                "SELECT title_json,torrent_hash FROM torrent_downloads WHERE id=?", (job_id,)
             ).fetchone()
         if not row:
             raise TorrentError("This download is no longer tracked.")
-        staging, payload = Path(row[0]), json.loads(row[1])
+        payload = json.loads(row[0])
         torrent = next(
             (
                 entry
                 for entry in self.qbit().call("torrents/info")
-                if row[2] and entry.get("hash") == row[2]
+                if row[1] and entry.get("hash") == row[1]
             ),
             None,
         )
         if not torrent or float(torrent.get("progress") or 0) < 1:
             raise TorrentError("This download is not complete yet.")
-        save = Path(torrent.get("save_path") or staging).resolve()
+        save = Path(torrent["save_path"]).resolve()
         with self.db() as db:
             imported = {
                 row[0]
                 for row in db.execute(
-                    "SELECT path FROM torrent_imported_files WHERE job_id=?", (job_id,)
+                    "SELECT path FROM torrent_file_matches WHERE job_id=?", (job_id,)
                 )
             }
         files = self.qbit().call(
@@ -909,14 +1097,14 @@ class TorrentBackend:
             raise TorrentError("Choose a completed file from this download.")
         with self.db() as db:
             row = db.execute(
-                "SELECT staging,title_json,torrent_hash FROM torrent_jobs WHERE id=?", (job_id,)
+                "SELECT title_json,torrent_hash FROM torrent_downloads WHERE id=?", (job_id,)
             ).fetchone()
-        staging, title = Path(row[0]), json.loads(row[1])
+        title = json.loads(row[0])
         torrent = next(
             (
                 entry
                 for entry in self.qbit().call("torrents/info")
-                if row[2] and entry.get("hash") == row[2]
+                if row[1] and entry.get("hash") == row[1]
             ),
             None,
         )
@@ -937,7 +1125,7 @@ class TorrentBackend:
             if field in request and isinstance(request[field], str):
                 title[field] = request[field].strip()
         try:
-            source = Path(torrent.get("save_path") or staging) / selected
+            source = Path(torrent["save_path"]) / selected
             if matching_music:
                 target = self.library.add(title, source, torrent_hash=torrent["hash"])
             else:
@@ -949,7 +1137,7 @@ class TorrentBackend:
         if matching_music:
             with self.db() as db:
                 db.execute(
-                    "INSERT OR IGNORE INTO torrent_imported_files VALUES (?,?)", (job_id, selected)
+                    "INSERT OR IGNORE INTO torrent_file_matches VALUES (?,?)", (job_id, selected)
                 )
             remaining = len(self.review(request))
             status = "review" if remaining else "imported"
@@ -973,7 +1161,8 @@ class TorrentBackend:
             remaining, status, message = 0, "imported", ""
         with self.db() as db:
             db.execute(
-                "UPDATE torrent_jobs SET status=?,message=? WHERE id=?", (status, message, job_id)
+                "UPDATE torrent_downloads SET status=?,message=? WHERE id=?",
+                (status, message, job_id),
             )
         return {"path": target, "remaining": remaining}
 
@@ -985,9 +1174,21 @@ class TorrentBackend:
         root = Path(given or library_root(kind)).expanduser()
         if given and not root.exists():
             raise TorrentError("The scan folder or file does not exist.")
+        # Register completed tracked downloads before looking for untracked files.
+        try:
+            self.jobs({"kind": kind})
+        except TorrentError:
+            pass
         with self.db() as db:
-            managed = {row[0] for row in db.execute("SELECT staging FROM torrent_jobs")}
-            registered = {row[0] for row in db.execute("SELECT path FROM local_files")}
+            managed = {
+                row[0]
+                for row in db.execute(
+                    "SELECT save_path FROM torrent_downloads WHERE status<>'imported'"
+                )
+            }
+            managed_hashes = {
+                row[0] for row in db.execute("SELECT torrent_hash FROM torrent_downloads") if row[0]
+            }
         catalogue = None
         if kind in ("movie", "tv"):
             from media.backend import Backend
@@ -1002,7 +1203,13 @@ class TorrentBackend:
             warning = str(error) + " Scanned the folder only."
         self.scan_pending = {}
         imported, review, checked = [], [], 0
-        discovered = list(candidates(kind, root, qbit, managed, torrents))
+        if kind == "tv":
+            imported, rename_errors = self.refresh_registered_episodes(root, torrents, catalogue)
+            if rename_errors:
+                warning = " ".join([warning, *rename_errors]).strip()
+        with self.db() as db:
+            registered = {row[0] for row in db.execute("SELECT path FROM local_files")}
+        discovered = list(candidates(kind, root, qbit, managed, torrents, managed_hashes))
         source_videos = [entry["path"] for entry in discovered] if kind in ("movie", "tv") else []
         torrent_counts = {}
         for item in discovered:
@@ -1088,6 +1295,10 @@ class TorrentBackend:
                             ],
                         )[0]
                     else:
+                        _, title, _, _, _ = self.episode_assignments(
+                            [(path, title, parsed.get("season"), parsed.get("episode"), False)],
+                            catalogue,
+                        )[0]
                         target = self.library.add(
                             title,
                             path,
@@ -1242,6 +1453,9 @@ class TorrentBackend:
                     )
                 target = self.import_torrent_files(torrent, assignments)[list(related).index(token)]
             else:
+                _, title, _, _, _ = self.episode_assignments(
+                    [(Path(item["path"]), title, season, episode, False)]
+                )[0]
                 target = self.library.add(
                     title,
                     Path(item["path"]),
@@ -1261,27 +1475,22 @@ class TorrentBackend:
         path = str(request.get("path") or "")
         with self.db() as db:
             rows = [
-                dict(kind=kind, path=saved, hash=torrent_hash, source=source_path)
-                for kind, saved, torrent_hash, source_path in db.execute(
+                dict(kind=kind, path=saved, hash=torrent_hash)
+                for kind, saved, torrent_hash in db.execute(
                     "SELECT f.kind,f.path,"
-                    "COALESCE(s.torrent_hash,''),COALESCE(s.source_path,'') "
+                    "COALESCE(s.torrent_hash,'') "
                     "FROM local_files f LEFT JOIN local_sources s ON s.path=f.path"
                 )
             ]
             jobs = [
-                dict(id=job_id, staging=staging, hash=torrent_hash)
-                for job_id, staging, torrent_hash in db.execute(
-                    "SELECT id,staging,torrent_hash FROM torrent_jobs"
+                dict(id=job_id, save_path=save_path, hash=torrent_hash)
+                for job_id, save_path, torrent_hash in db.execute(
+                    "SELECT id,save_path,torrent_hash FROM torrent_downloads"
                 )
             ]
         selected = next((row for row in rows if row["path"] == path), None)
         if not selected:
             raise TorrentError("The selected file is no longer in Local.")
-        source_jobs = {
-            job["id"]
-            for job in jobs
-            if selected["source"] and Path(selected["source"]).is_relative_to(job["staging"])
-        }
         nearby = [
             row
             for row in rows
@@ -1292,20 +1501,13 @@ class TorrentBackend:
                 and Path(row["path"]).parent == Path(path).parent
             )
         ]
-        nearby_sources = any(
-            row["source"] and Path(row["source"]).is_relative_to(job["staging"])
-            for row in nearby
-            for job in jobs
-        )
-        needs_qbit = bool(source_jobs or nearby_sources or any(row["hash"] for row in nearby))
+        needs_qbit = any(row["hash"] for row in nearby)
         torrents = self.qbit().call("torrents/info") if needs_qbit else []
         by_hash = {str(item.get("hash") or ""): item for item in torrents}
-        by_save = {str(Path(item.get("save_path") or "").resolve()): item for item in torrents}
         paths = {path}
         hashes = set()
-        related_jobs = set()
         while True:
-            previous = (paths.copy(), hashes.copy(), related_jobs.copy())
+            previous = (paths.copy(), hashes.copy())
             hashes.update(row["hash"] for row in rows if row["path"] in paths and row["hash"])
             folders = {
                 Path(row["path"]).parent
@@ -1317,22 +1519,10 @@ class TorrentBackend:
                 for row in rows
                 if row["kind"] in ("movie", "tv") and Path(row["path"]).parent in folders
             )
-            source_paths = [row["source"] for row in rows if row["path"] in paths and row["source"]]
-            for job in jobs:
-                if (
-                    job["hash"]
-                    and job["hash"] in hashes
-                    or any(Path(source).is_relative_to(job["staging"]) for source in source_paths)
-                ):
-                    related_jobs.add(job["id"])
-                    torrent = by_hash.get(job["hash"]) or by_save.get(
-                        str(Path(job["staging"]).resolve())
-                    )
-                    if torrent:
-                        hashes.add(str(torrent["hash"]))
             paths.update(row["path"] for row in rows if row["hash"] and row["hash"] in hashes)
-            if (paths, hashes, related_jobs) == previous:
+            if (paths, hashes) == previous:
                 break
+        related_jobs = {job["id"] for job in jobs if job["hash"] and job["hash"] in hashes}
         if hashes:
             active = sorted(hashes & set(by_hash))
             if active:
@@ -1343,50 +1533,53 @@ class TorrentBackend:
         if related_jobs:
             with self.db() as db:
                 for job_id in related_jobs:
-                    db.execute("DELETE FROM torrent_imported_files WHERE job_id=?", (job_id,))
-                    db.execute("DELETE FROM torrent_jobs WHERE id=?", (job_id,))
+                    db.execute("DELETE FROM torrent_file_matches WHERE job_id=?", (job_id,))
+                    db.execute("DELETE FROM torrent_downloads WHERE id=?", (job_id,))
             for job in jobs:
                 if job["id"] in related_jobs:
-                    self.remove_staging(job["id"], job["staging"])
+                    self.remove_download_files(job["id"], job["save_path"])
         return {"removed": sorted(paths), "torrent": bool(hashes)}
 
-    def remove_staging(self, job_id, staging):
-        folder = Path(staging)
+    def remove_download_files(self, job_id, save_path):
+        folder = Path(save_path)
         expected = self.data / "torrents" / job_id
         if folder == expected and folder.is_dir() and not folder.is_symlink():
             shutil.rmtree(folder)
+        (self.data / "torrent-locks" / job_id).unlink(missing_ok=True)
 
     def delete_job(self, request):
         job_id = str(request.get("job_id") or "")
         with self.db() as db:
             job = db.execute(
-                "SELECT staging,torrent_hash FROM torrent_jobs WHERE id=?", (job_id,)
+                "SELECT save_path,torrent_hash FROM torrent_downloads WHERE id=?", (job_id,)
             ).fetchone()
             if not job:
                 raise TorrentError("This download is no longer tracked.")
             linked = db.execute(
                 "SELECT f.path FROM local_files f JOIN local_sources s ON s.path=f.path "
-                "WHERE (? <> '' AND s.torrent_hash=?) OR s.source_path LIKE ? LIMIT 1",
-                (job[1], job[1], job[0] + "/%"),
+                "WHERE ?<>'' AND s.torrent_hash=? LIMIT 1",
+                (job[1], job[1]),
             ).fetchone()
         if linked:
             return self.delete_local({"path": linked[0]})
         torrents = self.qbit().call("torrents/info")
-        torrent = next(
-            (
-                item
-                for item in torrents
-                if (job[1] and item.get("hash") == job[1])
-                or Path(item.get("save_path") or "").resolve() == Path(job[0]).resolve()
-            ),
-            None,
-        )
+        torrent = self.find_job_torrent(job_id, job[1], torrents)
         if torrent:
             self.qbit().call("torrents/delete", {"hashes": torrent["hash"], "deleteFiles": "true"})
         with self.db() as db:
-            db.execute("DELETE FROM torrent_imported_files WHERE job_id=?", (job_id,))
-            db.execute("DELETE FROM torrent_jobs WHERE id=?", (job_id,))
-        self.remove_staging(job_id, job[0])
+            db.execute("DELETE FROM torrent_file_matches WHERE job_id=?", (job_id,))
+            db.execute("DELETE FROM torrent_downloads WHERE id=?", (job_id,))
+        self.remove_download_files(job_id, job[0])
+        folder = Path(job[0])
+        if not folder.is_symlink() and any(
+            folder.resolve().is_relative_to(library_root(kind).resolve())
+            and folder.resolve() != library_root(kind).resolve()
+            for kind in ("movie", "tv")
+        ):
+            try:
+                folder.rmdir()  # Another torrent may still use this title directory.
+            except OSError:
+                pass
         return {"removed": [], "torrent": bool(torrent)}
 
     def handle(self, request):

@@ -165,7 +165,9 @@ def destination(title, source, season=None, episode=None, preserve_name=False):
         s, e = map(int, numbers)
         if not (0 <= s <= 99 and 1 <= e <= 999):
             raise ValueError("Season must be 0–99 and episode must be 1–999.")
-        return root / name / f"Season {s:02d}" / f"{name} - S{s:02d}E{e:02d}{suffix}"
+        episode_title = str(title.get("episodeTitle") or "").strip()
+        episode_name = f" - {safe_name(episode_title)}" if episode_title else ""
+        return root / name / f"Season {s:02d}" / f"{name} - S{s:02d}E{e:02d}{episode_name}{suffix}"
     if kind == "music":
         artist = safe_name(title.get("artist"))
         album = safe_name(title.get("album"))
@@ -421,6 +423,61 @@ class LocalLibrary:
             else {"torrent_hash": "", "source_path": ""}
         )
 
+    def replace_registered_path(self, source, target):
+        """Retire a renamed file's old index entry and follow its managed subtitles."""
+        source, target = Path(source), Path(target)
+        if source == target:
+            return
+        with self.db() as db:
+            if not db.execute("SELECT 1 FROM local_files WHERE path=?", (str(source),)).fetchone():
+                return
+            old_release, new_release = (
+                source.with_suffix(".release.nfo"),
+                target.with_suffix(".release.nfo"),
+            )
+            if (
+                old_release.is_file()
+                and not old_release.is_symlink()
+                and not new_release.is_symlink()
+            ):
+                try:
+                    old_root = ET.parse(old_release).getroot()
+                    new_root = ET.parse(new_release).getroot()
+                    for element in old_root:
+                        current = new_root.find(element.tag)
+                        if element.tag == "zephyrusrelease" and current is not None:
+                            new_root.remove(current)
+                            current = None
+                        if current is None:
+                            new_root.append(element)
+                    new_release.write_bytes(
+                        ET.tostring(new_root, encoding="utf-8", xml_declaration=True)
+                    )
+                    old_release.unlink()
+                except (OSError, ET.ParseError):
+                    pass
+            if db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='subtitle_managed'"
+            ).fetchone():
+                subtitles = db.execute(
+                    "SELECT path FROM subtitle_managed WHERE video_path=?", (str(source),)
+                ).fetchall()
+                for (path,) in subtitles:
+                    old = Path(path)
+                    remainder = old.stem[len(source.stem) :]
+                    renamed = target.with_name(target.stem + remainder + old.suffix)
+                    if (
+                        old.parent == source.parent
+                        and old.stem.startswith(source.stem)
+                        and renamed.is_file()
+                    ):
+                        db.execute(
+                            "UPDATE OR REPLACE subtitle_managed SET path=?,video_path=? WHERE path=?",
+                            (str(renamed), str(target), path),
+                        )
+            db.execute("DELETE FROM local_files WHERE path=?", (str(source),))
+            db.execute("DELETE FROM local_sources WHERE path=?", (str(source),))
+
     def remove(self, paths):
         """Remove registered files; movie and season folders include their extra files."""
         paths = [str(path) for path in paths]
@@ -506,12 +563,17 @@ class LocalLibrary:
         for identifier, path, payload in rows:
             if Path(path).is_file():
                 title = json.loads(payload)
+                title = {
+                    key: value
+                    for key, value in title.items()
+                    if key not in ("season", "episode", "episodeTitle")
+                }
                 titles[identifier] = title | {
                     "local": True,
                     "localPath": path,
                     "torrent": bool(self.source(path)["torrent_hash"]),
                 }
-        return sorted(titles.values(), key=lambda item: (item.get("title") or "").casefold())
+        return sorted(titles.values(), key=lambda item: str(item.get("title") or "").casefold())
 
     def files(self, title):
         aliases = {str(value) for value in (title.get("id"), title.get("imdbId")) if value}
@@ -537,6 +599,7 @@ class LocalLibrary:
                     {
                         "season": season,
                         "episode": episode,
+                        "episodeTitle": stored.get("episodeTitle") or "",
                         "path": path,
                         "torrent": bool(self.source(path)["torrent_hash"]),
                     }

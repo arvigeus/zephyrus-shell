@@ -11,6 +11,7 @@ import "../widgets/Catalogue.js" as Catalogue
 Item {
     id: root
     property var host
+    onHostChanged: updateRetention()
     property string kind: "movie"
     property url backgroundImage: ""
     property var titles: []
@@ -94,7 +95,31 @@ Item {
         location: "file://" + (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/zephyrus-shell/media-ui.ini"
     }
     MediaService { id: service; onFailed: message => root.error = message }
-    TorrentService { id: localService; onFailed: message => root.detailError = message }
+    TorrentService {
+        id: localService
+        objectName: "torrentService"
+        monitorJobs: true
+        monitorKind: root.kind
+        onFailed: message => root.detailError = message
+        onKeepRunningChanged: root.updateRetention()
+        onLibraryChanged: root.refreshLocalLibrary()
+    }
+
+    function updateRetention() {
+        if (host) host.requestKeepRunning(kind === "movie" ? "movies" : "series", localService.keepRunning);
+    }
+
+    function refreshLocalLibrary() {
+        if (selected.id) {
+            const selection = selectionGeneration;
+            service.request("local_files", {title:selected}, (result, failure) => {
+                if (selection !== selectionGeneration || failure) return;
+                localFiles = result;
+                if (kind === "tv" && tab === "episodes" && localMode) showLocalEpisodes();
+            });
+        }
+        if (localMode) browse(false);
+    }
     W.DetailScrim {
         gridMode: root.gridMode
         opacity: root.backgroundImage.toString() ? 1 : 0
@@ -364,7 +389,7 @@ Item {
     function showLocalEpisodes() {
         if (!localFiles.length) return;
         const chosen = Number(seasons[Math.max(0,seasonPicker.currentIndex)]);
-        const rows = localFiles.filter(file => Number(file.season) === chosen).map(file => ({season:file.season,number:file.episode,title:"Episode " + file.episode}));
+        const rows = localFiles.filter(file => Number(file.season) === chosen).map(file => ({season:file.season,number:file.episode,title:file.episodeTitle || "Episode " + file.episode}));
         episodeCatalogue.clear();
         episodes = rows;
         for (const episode of rows) episodeCatalogue.append({payload:JSON.stringify(episode)});
@@ -372,7 +397,7 @@ Item {
     }
     function deleteLocal(path) {
         if (!path) return;
-        localService.request("delete_local", {path:path}, (result, failure) => {
+        localService.change("delete_local", {path:path}, (result, failure) => {
             if (failure) { detailError = failure; return; }
             service.request("local_files", {title:selected}, (files, error) => {
                 if (!error) { localFiles = files; if (!files.length) { watchIndex = 0; if (tab === "subtitles") tab = "overview"; } }
@@ -468,6 +493,7 @@ Item {
         Item {
             Layout.fillWidth: true; Layout.fillHeight: true
             LocalScan {
+                service: localService
                 anchors.fill: parent; visible: root.localMode && root.scanOpen
                 kind: root.kind
                 onImported: root.browse(false)
@@ -589,19 +615,13 @@ Item {
                     onActivated: title => root.animeMode ? root.openRelated(title) : root.selectTitle(title)
                 }
                 TorrentSearch {
+                    service: localService
                     host: root.host
                     objectName: "torrentSearch"
                     visible: root.tab === "torrent"
                     Layout.fillWidth: true; Layout.fillHeight: true
                     title: Object.assign({}, root.selected, root.torrentEpisode)
-                    onImported: {
-                        const selection = root.selectionGeneration;
-                        service.request("local_files", {title:root.selected}, (result, failure) => {
-                            if (selection !== root.selectionGeneration) return;
-                            if (!failure) { root.localFiles = result; if (result.length && root.tab === "torrent") root.tab = "subtitles"; }
-                        });
-                        if (root.localMode) root.browse(false);
-                    }
+                    onImported: root.refreshLocalLibrary()
                 }
                 Subtitles {
                     host: root.host
@@ -688,7 +708,7 @@ Item {
                             findAvailable: true
                             localFile: root.localFiles.find(file => Number(file.season) === Number(episode.season) && Number(file.episode) === Number(episode.number)) || ({})
                             onClicked: root.play(episode, false)
-                            onFindRequested: { root.torrentEpisode = ({season:episode.season,episode:episode.number}); root.tab = "torrent"; }
+                            onFindRequested: { root.torrentEpisode = ({season:episode.season,episode:episode.number,episodeTitle:episode.title}); root.tab = "torrent"; }
                             onSubtitlesRequested: { root.subtitlePath = localFile.path; root.tab = "subtitles"; }
                             onDeleteRequested: path => root.deleteLocal(path)
                         }

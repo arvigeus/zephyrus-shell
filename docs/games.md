@@ -12,6 +12,42 @@ When IGDB lists an official website, a small globe link in the game details open
 The local library scan supplies those states independently. Favorites and manual
 store matches live in the local SQLite database.
 
+**Local** lists imported game files. **Library**, between Local and Discover,
+lists your Steam and Epic games without requiring IGDB credentials. Choose
+**All games** for installed or owned games, **Installed** for games on this
+computer, or **Purchased** for games confirmed as owned. Purchased also includes
+claimed free games; launchers report ownership rather than payment history.
+Games opens **Library** by default when it contains any installed or owned games.
+With an empty store library, it opens **Local** when imported files exist,
+otherwise **Discover**.
+Refresh the store libraries from the Library toolbar. Steam ownership requires
+the configured public profile below; Epic ownership requires Legendary sign-in.
+Unknown ownership is never treated as proof that an uninstalled game is owned.
+
+Matching games in both stores share one Library row, with both stores still
+available in its details. Unique saved catalogue matches supply metadata and
+artwork; games without a saved match use their launcher title. Exact title
+matching treats standalone Roman sequel numbers II–X as their Arabic equivalents
+(for example, IGDB's **Alan Wake II** matches Epic's **Alan Wake 2**). Edition and
+DLC names remain significant, and ambiguous matches stay separate.
+
+Library shows available launcher metadata immediately: Epic descriptions and
+portrait/backdrop images from Legendary, plus Steam artwork by AppID. It then
+enriches the displayed games in the background, updating cards in place and
+showing **Loading metadata…** while work is pending. With IGDB configured,
+unmatched entries request a unique exact title match; Roman sequel numbers are
+normalized, conflicting Steam AppIDs are rejected, and a matching Steam AppID
+breaks title ties. The launcher identity and favorites remain intact.
+
+IGDB fields take precedence. Missing fields fall back to Epic's supplied data
+or Steam store details (description, images, genres, platforms and companies).
+Steam store metadata needs no Steam Web API key or IGDB credentials. Available
+store data also remains usable when IGDB has no unique match or is unavailable.
+Steam details are cached for seven days and IGDB library matches for one day;
+failed requests wait five minutes before automatic retry, preserving saved data.
+**Refresh game details** retries metadata for the selected game immediately.
+Some delisted products or launcher records may still lack artwork/descriptions.
+
 Search, filters, and the rail/grid views share the same presentation patterns as
 Movies, TV Series, and Books. The game worker in `games/backend.py` owns the
 catalogue, library scans, launches, and cached results; `games/igdb.py` owns
@@ -56,7 +92,7 @@ supports the genre, platform, year, and sort filters used here.
   controlled, so the action opens the product page.
 
 Store matching uses a saved manual match, an explicit store ID, then a unique
-exact title. An ambiguous title never launches another edition. Steam AppIDs
+normalized title. An ambiguous title never launches another edition. Steam AppIDs
 also identify ProtonDB reports; that lookup happens only in game details and
 uses a seven-day cache. ProtonDB ratings are guidance, never a launch gate.
 [Steam ownership API](https://partner.steamgames.com/doc/webapi/IPlayerService#GetOwnedGames) ·

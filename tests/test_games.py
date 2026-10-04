@@ -148,6 +148,25 @@ class GamesIdentityTests(unittest.TestCase):
         self.assertIsNone(match)
         self.assertEqual(source, "")
 
+    def test_roman_sequel_number_matches_epic_without_matching_editions_or_dlc(self):
+        game = {"title": "Alan Wake II", "storeReferences": []}
+        items = [{"externalId": "aw2", "title": "Alan Wake 2", "installed": False}]
+        state = {
+            "epic": {
+                "available": True,
+                "ownershipKnown": True,
+                "installationKnown": True,
+                "ownedIds": ["aw2"],
+                "items": items,
+            }
+        }
+        row = games.derive_store_state(game, state)[1]
+        self.assertEqual(row["ownership"], "owned")
+        self.assertEqual(row["primaryAction"]["id"], "epic:install:aw2")
+        for title in ("Alan Wake II: Deluxe Edition", "Alan Wake II: Night Springs", "Alan Wake"):
+            self.assertIsNone(games.match_library_item({"title": title}, "epic", items)[0])
+        self.assertEqual(games._title_key("alan wake ii"), games._title_key("Alan Wake 2"))
+
     def test_manual_override_is_first_exact_match(self):
         game = {
             "title": "Example Game",
@@ -492,6 +511,8 @@ class GamesBackendTests(unittest.TestCase):
         self.calls.append((url, method, headers, body))
         if "protondb.com/api/v1/reports/summaries/" in url:
             return {"tier": "gold", "trendingTier": "platinum", "total": 42, "confidence": "strong"}
+        if "store.steampowered.com/api/appdetails" in url:
+            return {"123": {"success": False}}
         raise AssertionError("Unexpected network request")
 
     def save_game(self, refs=None, title="Example Game"):
@@ -1005,6 +1026,334 @@ class GamesBackendTests(unittest.TestCase):
         self.assertEqual(
             self.backend._popen.call_args.args[0], ["/fake/legendary", "--yes", "install", "Catnip"]
         )
+
+    def set_library_state(self, steam, epic, steam_known=True, epic_known=True):
+        self.backend._library_snapshot = {
+            store: {
+                "available": True,
+                "ownershipKnown": known,
+                "installationKnown": True,
+                "items": items,
+                "ownedIds": [item["externalId"] for item in items if item.get("owned")],
+            }
+            for store, items, known in (("steam", steam, steam_known), ("epic", epic, epic_known))
+        }
+        self.backend._library_updated = self.backend._clock()
+
+    def test_library_union_deduplicates_stores_and_filters_after_merging(self):
+        self.set_library_state(
+            [
+                {
+                    "externalId": "123",
+                    "title": "Shared Game",
+                    "installed": True,
+                    "launchable": True,
+                },
+                {"externalId": "456", "title": "Steam Game", "owned": True},
+            ],
+            [
+                {"externalId": "shared", "title": "Shared Game", "owned": True},
+                {"externalId": "epic", "title": "Epic Game", "owned": True},
+            ],
+        )
+        all_games = self.backend.handle({"op": "library_games"})
+        self.assertFalse(all_games["setupRequired"])
+        self.assertEqual(len(all_games["items"]), 3)
+        shared = next(game for game in all_games["items"] if game["title"] == "Shared Game")
+        self.assertEqual(shared["libraryStores"], ["steam", "epic"])
+        self.assertEqual(shared["installedBy"], ["steam"])
+        self.assertEqual(shared["ownedBy"], ["epic"])
+        availability = self.backend.availability({"gameId": shared["id"]})["stores"]
+        self.assertEqual(
+            [row["primaryAction"]["type"] for row in availability], ["play", "install"]
+        )
+        installed = self.backend.library_games({"mode": "installed"})["items"]
+        self.assertEqual([game["id"] for game in installed], [shared["id"]])
+        self.assertEqual(len(self.backend.library_games({"mode": "owned"})["items"]), 3)
+        self.assertEqual(self.calls, [])
+
+    def test_library_unknown_ownership_does_not_claim_uninstalled_games(self):
+        self.set_library_state(
+            [
+                {"externalId": "123", "title": "Installed", "installed": True},
+                {"externalId": "456", "title": "Unknown", "owned": True},
+            ],
+            [],
+            steam_known=False,
+        )
+        result = self.backend.library_games({})
+        self.assertEqual([game["title"] for game in result["items"]], ["Installed"])
+        self.assertEqual(result["items"][0]["ownedBy"], [])
+        self.assertEqual(self.backend.library_games({"mode": "owned"})["items"], [])
+        detail = self.backend.details({"gameId": result["items"][0]["id"]})
+        self.assertEqual(detail["warning"], "")
+        self.assertEqual(len(self.calls), 1)
+        self.assertIn("store.steampowered.com/api/appdetails", self.calls[0][0])
+
+    def test_library_epic_supplies_description_and_portrait_without_network(self):
+        items = games.parse_legendary_owned(
+            [
+                {
+                    "app_name": "Example",
+                    "app_title": "Example Game",
+                    "metadata": {
+                        "description": "A &amp; B <b>adventure</b>.",
+                        "keyImages": [
+                            {"type": "DieselGameBox", "url": "https://epic.example/wide.jpg"},
+                            {"type": "DieselGameBoxTall", "url": "https://epic.example/tall.jpg"},
+                            {"type": "Thumbnail", "url": "file:///private"},
+                        ],
+                    },
+                }
+            ]
+        )
+        items[0]["owned"] = True
+        self.set_library_state([], items)
+        game = self.backend.library_games({})["items"][0]
+        self.assertEqual(game["summary"], "A & B adventure.")
+        self.assertEqual(game["cover"]["url"], "https://epic.example/tall.jpg")
+        self.assertEqual(game["artwork"][0]["url"], "https://epic.example/wide.jpg")
+        self.assertFalse(game["metadataPending"])
+        self.assertEqual(self.calls, [])
+
+    def test_library_steam_metadata_is_lazy_cached_and_keeps_personal_state(self):
+        self.set_library_state([{"externalId": "123", "title": "Example Game", "owned": True}], [])
+        game = self.backend.library_games({})["items"][0]
+        self.assertTrue(game["metadataPending"])
+        self.assertIn("/123/library_600x900.jpg", game["cover"]["url"])
+        self.assertEqual(self.calls, [])
+        self.backend.set_favorite({"gameId": game["id"], "favorite": True})
+        self.backend._request = Mock(
+            return_value={
+                "123": {
+                    "success": True,
+                    "data": {
+                        "steam_appid": 123,
+                        "short_description": "Steam <b>description</b>",
+                        "header_image": "https://steam.example/header.jpg",
+                        "developers": ["Developer"],
+                        "genres": [{"description": "Adventure"}],
+                        "platforms": {"linux": True},
+                        "screenshots": [{"path_full": "https://steam.example/shot.jpg"}],
+                    },
+                }
+            }
+        )
+        hydrated = self.backend.handle({"op": "library_metadata", "gameId": game["id"]})["game"]
+        self.assertEqual(hydrated["summary"], "Steam description")
+        self.assertTrue(hydrated["favorite"])
+        self.assertEqual(hydrated["id"], game["id"])
+        self.assertEqual(hydrated["ownedBy"], ["steam"])
+        again = self.backend.library_games({})["items"][0]
+        self.assertEqual(again["summary"], hydrated["summary"])
+        self.assertEqual(again["screenshots"], hydrated["screenshots"])
+        self.assertFalse(again["metadataPending"])
+        self.backend.details({"gameId": game["id"]})
+        self.assertEqual(self.backend._request.call_count, 1)
+        self.backend._request.return_value["123"]["data"]["short_description"] = (
+            "Updated Steam description"
+        )
+        refreshed = self.backend.details({"gameId": game["id"], "refresh": True})["game"]
+        self.assertEqual(refreshed["summary"], "Updated Steam description")
+        self.assertEqual(self.backend._request.call_count, 2)
+
+    def test_library_igdb_match_overrides_store_artwork_without_changing_store_identity(self):
+        self.set_library_state(
+            [],
+            [
+                {
+                    "externalId": "Example",
+                    "title": "Alan Wake 2",
+                    "owned": True,
+                    "metadata": {
+                        "summary": "Store",
+                        "cover": {"url": "https://epic.example/cover"},
+                    },
+                }
+            ],
+        )
+        catalogue = Mock(
+            return_value=[
+                {
+                    "id": 111,
+                    "name": "Alan Wake II",
+                    "summary": "IGDB",
+                    "cover": {"image_id": "co123"},
+                }
+            ]
+        )
+        self.configure_igdb(lambda url, body: [])
+        self.backend.catalogue.browse = catalogue
+        game = self.backend.library_games({})["items"][0]
+        self.assertEqual(game["summary"], "Store")
+        self.assertTrue(game["metadataPending"])
+        catalogue.assert_not_called()
+        enriched = self.backend.library_metadata({"gameId": game["id"]})["game"]
+        self.assertEqual(enriched["summary"], "IGDB")
+        self.assertIn("co123", enriched["cover"]["url"])
+        self.assertEqual(enriched["id"], game["id"])
+        self.assertEqual(enriched["storeReferences"], game["storeReferences"])
+        self.assertEqual(enriched["ownedBy"], ["epic"])
+        self.assertEqual(self.backend.library_games({})["items"][0]["summary"], "IGDB")
+        self.assertEqual(catalogue.call_count, 1)
+
+    def test_library_igdb_outage_uses_store_data_and_cools_down(self):
+        self.configure_igdb(lambda url, body: [])
+        self.set_library_state(
+            [],
+            [
+                {
+                    "externalId": "Example",
+                    "title": "Example",
+                    "owned": True,
+                    "metadata": {"summary": "Epic description"},
+                }
+            ],
+        )
+        self.backend.catalogue.browse = Mock(side_effect=games.GamesError("IGDB unavailable."))
+        game = self.backend.library_games({})["items"][0]
+        first = self.backend.library_metadata({"gameId": game["id"]})
+        self.assertEqual(first["game"]["summary"], "Epic description")
+        self.assertIn("Using store metadata", first["warning"])
+        self.backend.library_metadata({"gameId": game["id"]})
+        self.assertEqual(self.backend.catalogue.browse.call_count, 1)
+
+    def test_library_igdb_ambiguity_editions_and_conflicting_ids_keep_store_data(self):
+        self.configure_igdb(lambda url, body: [])
+        self.backend._request = Mock(return_value={"123": {"success": False}})
+        self.set_library_state([{"externalId": "123", "title": "Example", "owned": True}], [])
+        self.backend._cache_put("steam-metadata:v1:123", {"summary": "Steam description"})
+        game = self.backend.library_games({})["items"][0]
+        for records in (
+            [
+                {
+                    "id": 1,
+                    "name": "Example",
+                    "summary": "Wrong ID",
+                    "websites": [{"url": "https://store.steampowered.com/app/456/"}],
+                }
+            ],
+            [{"id": 1, "name": "Example Deluxe Edition", "summary": "Wrong edition"}],
+            [
+                {"id": 1, "name": "Example", "summary": "First"},
+                {"id": 2, "name": "Example", "summary": "Second"},
+            ],
+        ):
+            self.backend.catalogue.browse = Mock(return_value=records)
+            enriched = self.backend.library_metadata({"gameId": game["id"], "refresh": True})[
+                "game"
+            ]
+            self.assertEqual(enriched["summary"], "Steam description")
+        self.backend.catalogue.browse = Mock(
+            return_value=[
+                {"id": 1, "name": "Example", "summary": "Title only"},
+                {
+                    "id": 2,
+                    "name": "Example",
+                    "summary": "Exact Steam ID",
+                    "websites": [{"url": "https://store.steampowered.com/app/123/"}],
+                },
+            ]
+        )
+        matched = self.backend.library_metadata({"gameId": game["id"], "refresh": True})["game"]
+        self.assertEqual(matched["summary"], "Exact Steam ID")
+        self.assertEqual(matched["storeReferences"], game["storeReferences"])
+
+    def test_partial_saved_igdb_details_fill_missing_fields_from_store(self):
+        game = self.save_game([{"store": "steam", "externalId": "123"}])
+        self.backend._cache_put(
+            "steam-metadata:v1:123",
+            {
+                "summary": "Steam",
+                "cover": {"url": "https://steam.example/header.jpg"},
+                "genres": ["Action"],
+            },
+        )
+        enriched = self.backend.details({"gameId": game["id"]})["game"]
+        self.assertEqual(enriched["summary"], "Description")
+        self.assertEqual(enriched["cover"]["url"], "https://steam.example/header.jpg")
+        self.assertEqual(enriched["genres"], ["Action"])
+        self.assertEqual(enriched["catalogProvider"], "igdb")
+        self.assertEqual(self.calls, [])
+
+    def test_steam_metadata_failure_keeps_stale_data_and_retries_later(self):
+        self.set_library_state([{"externalId": "123", "title": "Example", "owned": True}], [])
+        game = self.backend.library_games({})["items"][0]
+        self.backend._cache_put("steam-metadata:v1:123", {"summary": "Saved description"})
+        now = self.backend._clock()
+        self.backend._clock = lambda: now + 8 * 86400
+        self.backend._request = Mock(side_effect=games.GamesError("Offline"))
+        enriched = self.backend.library_metadata({"gameId": game["id"]})
+        self.assertEqual(enriched["game"]["summary"], "Saved description")
+        self.assertIn("Steam metadata is unavailable", enriched["warning"])
+        self.backend.library_metadata({"gameId": game["id"]})
+        self.assertEqual(self.backend._request.call_count, 1)
+
+    def test_library_preserves_same_store_ambiguity_and_edition_names(self):
+        self.set_library_state(
+            [
+                {"externalId": "123", "title": "Example", "owned": True},
+                {"externalId": "456", "title": "Example", "owned": True},
+            ],
+            [
+                {"externalId": "example", "title": "Example", "owned": True},
+                {"externalId": "deluxe", "title": "Example Deluxe Edition", "owned": True},
+            ],
+        )
+        records = self.backend.library_games({})["items"]
+        self.assertEqual(len(records), 4)
+        self.assertTrue(all(len(game["libraryStores"]) == 1 for game in records))
+        self.assertEqual(len({game["id"] for game in records}), 4)
+        for game in records:
+            rows = self.backend.availability({"gameId": game["id"]})["stores"]
+            linked = [row for row in rows if row["ownership"] == "owned"]
+            self.assertEqual(len(linked), 1)
+            self.assertEqual(linked[0]["externalId"], game["storeReferences"][0]["externalId"])
+
+    def test_library_reuses_unique_catalogue_identity_artwork_and_favorite(self):
+        game = self.save_game([{"store": "steam", "externalId": "123"}], title="Alan Wake II")
+        game["cover"] = {"url": "file:///test-cover.png"}
+        self.backend._save_game(111, game)
+        self.backend.set_favorite({"gameId": game["id"], "favorite": True})
+        self.set_library_state(
+            [{"externalId": "123", "title": "Alan Wake 2", "owned": True}],
+            [{"externalId": "aw2", "title": "Alan Wake 2", "owned": True}],
+        )
+        records = self.backend.library_games({"query": "Alan Wake 2"})["items"]
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["id"], game["id"])
+        self.assertTrue(records[0]["favorite"])
+        self.assertEqual(records[0]["cover"], game["cover"])
+        self.assertEqual(records[0]["ownedBy"], ["steam", "epic"])
+
+    def test_library_never_merges_conflicting_explicit_steam_identity(self):
+        self.save_game([{"store": "steam", "externalId": "123"}], title="Example")
+        self.set_library_state(
+            [{"externalId": "456", "title": "Example", "owned": True}],
+            [{"externalId": "epic", "title": "Example", "owned": True}],
+        )
+        records = self.backend.library_games({})["items"]
+        self.assertEqual(len(records), 2)
+        self.assertTrue(all(len(game["libraryStores"]) == 1 for game in records))
+
+    def test_library_pages_search_and_saved_personal_state_without_network(self):
+        items = [
+            {"externalId": str(index + 1), "title": f"Game {index:03}", "owned": True}
+            for index in range(games.PAGE_SIZE + 3)
+        ]
+        self.set_library_state(items, [])
+        first = self.backend.library_games({})
+        second = self.backend.library_games({"offset": first["next"]})
+        self.assertEqual(len(first["items"]), games.PAGE_SIZE)
+        self.assertEqual(len(second["items"]), 3)
+        self.assertIsNone(second["next"])
+        game = first["items"][0]
+        self.backend.set_favorite({"gameId": game["id"], "favorite": True})
+        found = self.backend.library_games({"query": game["title"]})["items"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["id"], game["id"])
+        self.assertTrue(found[0]["favorite"])
+        self.assertEqual(self.calls, [])
 
 
 if __name__ == "__main__":

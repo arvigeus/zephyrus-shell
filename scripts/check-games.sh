@@ -13,6 +13,17 @@ cat > "$games_test_root/bin/steam" <<'SH'
 printf '%s\n' "$*" >> "$GAMES_SMOKE_LAUNCH_LOG"
 SH
 chmod +x "$games_test_root/bin/steam"
+cat > "$games_test_root/bin/legendary" <<'SH'
+#!/usr/bin/env bash
+if [[ "$1" == "list" ]]; then
+    printf '%s\n' '[{"app_name":"SmokeEpic","app_title":"Smoke Game"},{"app_name":"AlanWake2","app_title":"Alan Wake 2"}]'
+elif [[ "$1" == "list-installed" ]]; then
+    printf '%s\n' '[]'
+else
+    exit 1
+fi
+SH
+chmod +x "$games_test_root/bin/legendary"
 cat > "$HOME/.steam/steam/steamapps/libraryfolders.vdf" <<EOF
 "libraryfolders"
 {
@@ -28,6 +39,17 @@ cat > "$HOME/.steam/steam/steamapps/appmanifest_123.acf" <<'EOF'
     "installdir" "Smoke Game"
 }
 EOF
+
+# Keep both entry-point runs deterministic and offline while exercising store
+# metadata enrichment through the real worker.
+python3 - <<'PY'
+from games.backend import GamesBackend
+backend = GamesBackend()
+backend._cache_put("steam-metadata:v1:123", {
+    "summary": "Steam library fallback description.",
+    "cover": {"url": ""},
+})
+PY
 
 timeout 15s dbus-run-session quickshell -p "$PWD/games-smoke.qml" --no-color > "$games_test_root/setup-log" 2>&1 || { cat "$games_test_root/setup-log"; exit 1; }
 rg -q 'GAMES PASS' "$games_test_root/setup-log"
@@ -63,7 +85,10 @@ game["artwork"] = [{"url": art.as_uri()}]
 key = "browse:v4:" + hashlib.sha256(json.dumps(["igdb", "", {"ordering": "-added"}, 0], sort_keys=True).encode()).hexdigest()
 backend._cache_put(key, {"items": [game], "next": None, "setupRequired": False, "warning": "",
                          "provider": "igdb", "providerName": "IGDB"})
+backend._save_game(123, game)
 backend._cache_put("detail:v3:igdb:123", game)
+alan = backend._save_game(321, normalize_igdb_game({"id": 321, "name": "Alan Wake II"}))
+backend._cache_put("detail:v3:igdb:321", alan)
 backend._cache_put("protondb:v1:123", {
     "available": True, "tier": "gold", "label": "Gold", "total": 12,
     "url": protondb_url("123"), "appId": "123",

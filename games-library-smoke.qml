@@ -5,7 +5,7 @@ import "shell"
 
 ShellRoot {
     FloatingWindow {
-        implicitWidth: 1440
+        implicitWidth: 1920
         implicitHeight: 960
         color: "#101115"
         ModuleLoader {
@@ -20,7 +20,7 @@ ShellRoot {
             property int step: 0
             property int attempts: 0
             property bool screenshotReady: false
-            property bool localDefaultChecked: false
+            property bool libraryDefaultChecked: false
             property var games
             function find(item, predicate) {
                 if (!item) return null;
@@ -51,10 +51,11 @@ ShellRoot {
                     require(games.objectName === "gamesBrowser", "Games entry point did not load");
                     step++;
                 } else if (step === 2) {
-                    if (!localDefaultChecked) {
+                    if (!libraryDefaultChecked) {
                         if (games.initializing || games.loading) return;
-                        require(games.localMode && games.titles.length === 1, "Games with a local file did not open Local");
-                        localDefaultChecked = true;
+                        require(games.libraryMode && !games.localMode && games.titles.length === 2,
+                                "Games with store games did not default to Library");
+                        libraryDefaultChecked = true;
                         games.discover();
                         return;
                     }
@@ -66,6 +67,46 @@ ShellRoot {
                     require(games.compatibility.url === "https://www.protondb.com/app/123", "ProtonDB identity link is wrong");
                     require(games.compatibility.tier === "gold", "Cached ProtonDB rating did not load");
                     require(String(games.backgroundImage).endsWith("games-cover.svg"), "Selected game art is not used as the background");
+                    games.filtersOpen = true;
+                    step++;
+                } else if (step === 3) {
+                    const filters = find(games, item => item.objectName === "gamesInlineFilters");
+                    const favorites = find(games, item => item.objectName === "favoritesTab");
+                    require(filters.visible && filters.mapToItem(games, 0, 0).x > favorites.mapToItem(games, favorites.width, 0).x + 100,
+                            "Filters are not aligned to the right of the toolbar");
+                    games.showLibrary();
+                    step++;
+                } else if (step === 4) {
+                    if (games.loading || games.detailLoading || games.librariesLoading || !games.availability.stores.length) return;
+                    require(games.libraryMode && games.titles.length === 2, "Store Library did not merge the shared game");
+                    const shared = games.titles.find(game => game.title === "Smoke Game");
+                    require(shared.libraryStores.length === 2 && shared.installedBy[0] === "steam", "Cross-store Library state is wrong");
+                    require(games.selected.title === "Alan Wake II", "Library did not reuse the catalogue title");
+                    const epic = games.availability.stores.find(store => store.store === "epic");
+                    require(epic.primaryAction.id === "epic:install:AlanWake2", "Alan Wake II does not offer the owned Epic install");
+                    require(!find(games, item => item.objectName === "gamesFiltersButton").enabled, "Catalogue filters are active in Library");
+                    const choice = find(games, item => item.objectName === "gamesLibraryFilter");
+                    choice.activated(1);
+                    step++;
+                } else if (step === 5) {
+                    if (games.loading || games.detailLoading || games.compatibilityLoading) return;
+                    require(games.libraryFilter === "installed" && games.titles.length === 1 && games.selected.title === "Smoke Game", "Installed Library filter is wrong");
+                    find(games, item => item.objectName === "gamesLibraryFilter").activated(2);
+                    step++;
+                } else if (step === 6) {
+                    if (games.loading) return;
+                    require(games.libraryFilter === "owned" && games.titles.length === 2, "Purchased Library filter is wrong");
+                    const search = find(games, item => item.objectName === "gamesSearchField");
+                    search.text = "Alan Wake 2";
+                    games.browse(false);
+                    step++;
+                } else if (step === 7) {
+                    if (games.loading) return;
+                    require(games.titles.length === 1 && games.titles[0].title === "Alan Wake II", "Library search did not match sequel numbering");
+                    games.discover();
+                    step++;
+                } else if (step === 8) {
+                    if (games.loading || games.detailLoading || games.compatibilityLoading || !games.availability.stores.length) return;
                     overlay.grabToImage(result => {
                         result.saveToFile("tests/artifacts/games.png");
                         screenshotReady = true;
@@ -76,11 +117,11 @@ ShellRoot {
                     require(store && store.installed && store.launchable, "Steam manifest was not recognized as installed and launchable");
                     play.click();
                     step++;
-                } else if (step === 3) {
+                } else if (step === 9) {
                     if (overlay.item || !screenshotReady) return;
                     require(ShellState.panel === "" && !ShellState.runningPluginIds.includes("games"),
                             "Steam launch did not close its module");
-                    console.log("GAMES PASS: catalogue, details, ProtonDB identity, installed Steam Play action, overlay teardown");
+                    console.log("GAMES PASS: catalogue, details, ProtonDB identity, right-aligned filters, merged store Library, Installed/Purchased views, Alan Wake II Epic install, installed Steam Play action, overlay teardown");
                     Qt.quit();
                 }
             }

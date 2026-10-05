@@ -191,6 +191,7 @@ bash scripts/check-spaces.sh
 bash scripts/check-desktop.sh
 bash scripts/check-language.sh
 python3 scripts/check-performance.py
+python3 scripts/benchmark-shell.py --output tests/artifacts/performance-baseline.json
 # Briefly opens the actual panels on your current Wayland desktop:
 bash scripts/check-wayland.sh
 # Exercises native controls against its own temporary window:
@@ -202,6 +203,9 @@ Apps, catalogue, and module checks load real entry points. The retained check
 also tests `ShellState` transitions and host ownership inside Quickshell.
 The offscreen backend emits expected window-mask warnings. Actual layer-shell
 placement, focus, and multi-monitor behavior also need testing in Hyprland.
+
+See [performance and autoresearch](docs/performance.md) for reproducible UI,
+process-resource benchmarks and the profile/verify/improve experiment loop.
 
 References: [Quickshell documentation](https://quickshell.org/docs/v0.3.1/),
 [Hyprland configuration](https://wiki.hypr.land/),

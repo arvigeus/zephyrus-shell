@@ -17,6 +17,13 @@ ShellRoot {
             property bool ready: false
             property int launches: 0
             property string seed: ""
+            QtObject {
+                id: mutableApplication
+                property string name: "Old Name"
+                property string genericName: "Editor"
+                property var keywords: ["Original"]
+                property string icon: ""
+            }
             Timer { interval: 250; running: true; onTriggered: test.ready = true }
             Drawers.LibraryDrawer {
                 id: library
@@ -101,6 +108,47 @@ ShellRoot {
                 compare(searchLoader.item.matches.length, 0);
                 keyClick(Qt.Key_Escape);
                 compare(ShellState.panel, "");
+            }
+            function test_ranking_and_catalogue_replacement() {
+                beginSearch();
+                const panel = searchLoader.item;
+                const field = findChild(panel, "spacesSearchField");
+                panel.applications = [
+                    {name: "Music Player", keywords: [], icon: ""},
+                    {name: "A Player", genericName: "Music", keywords: [], icon: ""},
+                    {name: "Music", keywords: [], icon: ""}
+                ];
+                panel.spaces = [{id: "music", name: "Music", icon: "music"}];
+                field.text = "MUSIC";
+                compare(panel.matches.length, 4);
+                compare(panel.matches[0].kind, "app");
+                compare(panel.matches[0].entry.name, "Music");
+                compare(panel.matches[1].kind, "space");
+                compare(panel.matches[2].entry.name, "Music Player");
+                compare(panel.matches[3].entry.name, "A Player");
+                panel.applications = [{name: "New App", keywords: ["Music"], icon: ""}];
+                panel.spaces = [];
+                compare(panel.matches.length, 1);
+                compare(panel.matches[0].entry.name, "New App");
+                field.text = "  new music  ";
+                compare(panel.matches.length, 1);
+            }
+            function test_metadata_changes_invalidate_search_index() {
+                beginSearch();
+                const panel = searchLoader.item;
+                const field = findChild(panel, "spacesSearchField");
+                mutableApplication.name = "Old Name";
+                mutableApplication.keywords = ["Original"];
+                panel.applications = [mutableApplication]; panel.spaces = [];
+                field.text = "original";
+                compare(panel.matches.length, 1);
+                mutableApplication.keywords = ["Updated"];
+                compare(panel.matches.length, 0);
+                field.text = "updated";
+                compare(panel.matches.length, 1);
+                mutableApplication.name = "New Name";
+                field.text = "new";
+                compare(panel.matches[0].entry.name, "New Name");
             }
             function test_today_indicators() {
                 pill.cloud = {tasks: [{due: "2026-10-02"}, {due: "2026-10-03"}, {due: "2026-10-02", completed: true}],

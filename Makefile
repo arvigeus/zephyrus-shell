@@ -1,6 +1,11 @@
-.PHONY: check lint test smoke
+.PHONY: check lint test smoke benchmark
+.DEFAULT_GOAL := check
 
 QMLTESTRUNNER ?= /usr/lib/qt6/bin/qmltestrunner
+PERF_OUTPUT ?= tests/artifacts/performance-baseline.json
+
+benchmark:
+	python3 scripts/benchmark-shell.py --output "$(PERF_OUTPUT)"
 
 check: lint test smoke
 

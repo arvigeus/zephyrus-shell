@@ -63,4 +63,26 @@ TestCase {
         wait(0);
         verifyOrder([third, first, second]);
     }
+    function test_removed_clients_stop_affecting_the_model() {
+        order.clients = [a, b];
+        wait(0);
+        updates.clear();
+        c.lastIpcObject = geometry(-500);
+        wait(0);
+        verifyOrder([first, second, third]);
+        compare(updates.count, 0);
+    }
+    function test_wayland_handle_changes_and_replacement_client() {
+        const replacement = Qt.createQmlObject('import QtQuick; QtObject { property var wayland; property var lastIpcObject }', root);
+        replacement.wayland = third;
+        replacement.lastIpcObject = geometry(-500);
+        order.clients = [a, b, replacement];
+        wait(0);
+        verifyOrder([third, first, second]);
+        replacement.wayland = null;
+        wait(0);
+        verifyOrder([first, second, third]);
+        order.clients = [a, b, c];
+        replacement.destroy();
+    }
 }

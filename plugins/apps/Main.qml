@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtCore
 import QtQuick.Layouts
+import QtQml.Models
 import Quickshell
 import "../../core"
 import "../../widgets"
@@ -41,20 +42,62 @@ ColumnLayout {
             const saved = JSON.parse(preferences.value("favorites", "[]"));
             favoriteIds = Array.isArray(saved) ? saved.filter(id => typeof id === "string") : [];
         } catch (error) { favoriteIds = []; }
-        // The initial desktop scan delivers its results through a queued event.
-        Qt.callLater(() => {
-            root.category = root.applications.some(app => root.isFavorite(app.id)) ? "favorites" : "";
-            root.catalogReady = true;
-        });
+        // DesktopEntry metadata arrives in a batch. Publish after it completes.
+        Qt.callLater(root.refreshCatalogue);
     }
     Connections {
         target: DesktopEntries
-        function onApplicationsChanged() { root.catalogReady = true; }
+        function onApplicationsChanged() { Qt.callLater(root.refreshCatalogue); }
     }
     readonly property var categoryNames: ({AudioVideo: "Media", Development: "Development", Education: "Education", Game: "Games", Graphics: "Graphics", Network: "Internet", Office: "Office", Science: "Science", Settings: "Settings", System: "System", Utility: "Utilities"})
-    readonly property var applications: DesktopEntries.applications.values.filter(app => !app.noDisplay).sort((a, b) => a.name.localeCompare(b.name))
+    property var catalogueEntries: DesktopEntries.applications.values
+    readonly property var applications: publishedApplications
+    property var publishedApplications: []
+    onCatalogueEntriesChanged: Qt.callLater(root.refreshCatalogue)
+    Instantiator {
+        // Preserve observers as the scan inserts entries instead of resetting
+        // the whole delegate model for each new membership snapshot.
+        model: ScriptModel { values: root.catalogueEntries }
+        delegate: Connections {
+            required property var modelData
+            target: modelData
+            function onNameChanged() { Qt.callLater(root.refreshCatalogue); }
+            function onNoDisplayChanged() { Qt.callLater(root.refreshCatalogue); }
+        }
+    }
+    function refreshCatalogue() {
+        const next = catalogueEntries.filter(app => !app.noDisplay).sort((a, b) => a.name.localeCompare(b.name));
+        if (next.length !== publishedApplications.length
+                || !next.every((app, index) => app === publishedApplications[index])) publishedApplications = next;
+        if (!catalogReady) {
+            category = next.some(app => isFavorite(app.id)) ? "favorites" : "";
+            catalogReady = true;
+        }
+    }
     readonly property var categories: Object.keys(categoryNames).filter(key => applications.some(app => (app.categories || []).includes(key)))
-    readonly property var matches: applications.filter(app => (!category || (category === "favorites" ? (search.text.trim() ? true : isFavorite(app.id)) : (app.categories || []).includes(category))) && (app.name + " " + app.genericName + " " + (app.keywords || []).join(" ")).toLowerCase().includes(search.text.trim().toLowerCase()))
+    readonly property var searchIndex: applications.map(app => ({entry: app,
+        terms: (app.name + " " + (app.genericName || "") + " " + (app.keywords || []).join(" ")).toLowerCase()}))
+    readonly property var matches: publishedMatches
+    property var publishedMatches: []
+    readonly property var pendingMatches: {
+        const query = search.text.trim().toLowerCase();
+        const selectedCategory = category;
+        const favorites = favoriteIds;
+        return searchIndex.filter(item => {
+            const app = item.entry;
+            return (!selectedCategory || (selectedCategory === "favorites"
+                ? (!!query || favorites.includes(app.id)) : (app.categories || []).includes(selectedCategory)))
+                && item.terms.includes(query);
+        }).map(item => item.entry);
+    }
+    onPendingMatchesChanged: {
+        const next = pendingMatches;
+        // A new query can have the same results. Keep the grid's model in that
+        // case so it doesn't destroy and recreate all visible controls/artwork.
+        if (next.length === publishedMatches.length
+                && next.every((app, index) => app === publishedMatches[index])) return;
+        publishedMatches = next;
+    }
     function activate() { search.forceActiveFocus(); }
     function launch(app) { app.execute(); if (host) host.close(); }
     function launchOnGpu(app, gpu) {
@@ -69,8 +112,10 @@ ColumnLayout {
     spacing: 16
     SearchField {
         id: search
+        objectName: "appsSearchField"
         Layout.fillWidth: true
         placeholderText: "Search applications…"
+        onTextChanged: apps.currentIndex = -1
         onAccepted: { if (root.matches.length) root.launch(root.matches[0]); }
         Keys.onDownPressed: { if (root.matches.length) { apps.forceActiveFocus(); apps.currentIndex = 0; } }
     }
@@ -105,6 +150,12 @@ ColumnLayout {
             id: appButton
             required property var modelData
             required property int index
+            property var launchMenu: null
+            function toggleLaunchMenu() {
+                if (!launchMenu) launchMenu = menuFactory.createObject(appButton);
+                if (launchMenu.visible) launchMenu.close();
+                else launchMenu.open();
+            }
             width: GridView.view.cellWidth - 8; height: GridView.view.cellHeight - 8
             text: modelData.name
             highlighted: apps.activeFocus && apps.currentIndex === index
@@ -134,32 +185,37 @@ ColumnLayout {
             IconButton {
                 anchors.top: parent.top; anchors.left: parent.left
                 objectName: "app-gpu-picker-" + appButton.index
-                readonly property bool menuOpen: gpuMenu.visible
+                readonly property bool menuOpen: !!appButton.launchMenu && appButton.launchMenu.visible
                 width: 32; height: 32; implicitWidth: 32; implicitHeight: 32
                 visible: root.gpuChoices.length > 1
-                opacity: appButton.hovered || hovered || activeFocus || appButton.activeFocus || gpuMenu.visible ? 1 : 0
+                opacity: appButton.hovered || hovered || activeFocus || appButton.activeFocus || menuOpen ? 1 : 0
                 iconName: "gpu"; iconSize: 18
                 text: "Choose GPU for " + appButton.modelData.name
-                onClicked: gpuMenu.visible ? gpuMenu.close() : gpuMenu.open()
+                onClicked: appButton.toggleLaunchMenu()
             }
             onClicked: root.launch(modelData)
             TapHandler {
                 acceptedButtons: Qt.RightButton
-                onTapped: gpuMenu.visible ? gpuMenu.close() : gpuMenu.open()
+                onTapped: appButton.toggleLaunchMenu()
             }
-            Keys.onMenuPressed: gpuMenu.visible ? gpuMenu.close() : gpuMenu.open()
-            Menu {
-                id: gpuMenu
-                popupType: Popup.Item
-                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-                MenuItem { text: "Launch normally"; enabled: !root.launching; onTriggered: root.launch(appButton.modelData) }
-                Repeater {
-                    model: root.gpuChoices.length > 1 ? root.gpuChoices : []
-                    MenuItem {
-                        required property var modelData
-                        text: "Launch on " + modelData.name
-                        enabled: !root.launching
-                        onTriggered: root.launchOnGpu(appButton.modelData, modelData)
+            Keys.onMenuPressed: appButton.toggleLaunchMenu()
+            // Most tiles never open this popup. Keep it owned by the tile, but
+            // instantiate the controls only on the first actual interaction.
+            Component {
+                id: menuFactory
+                Menu {
+                    parent: appButton
+                    popupType: Popup.Item
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+                    MenuItem { text: "Launch normally"; enabled: !root.launching; onTriggered: root.launch(appButton.modelData) }
+                    Repeater {
+                        model: root.gpuChoices.length > 1 ? root.gpuChoices : []
+                        MenuItem {
+                            required property var modelData
+                            text: "Launch on " + modelData.name
+                            enabled: !root.launching
+                            onTriggered: root.launchOnGpu(appButton.modelData, modelData)
+                        }
                     }
                 }
             }

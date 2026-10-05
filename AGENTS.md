@@ -30,3 +30,7 @@
 - Use the documented snake_case media key names and named provider objects. TMDB provides discovery; configured OMDb can supply title search, details, and episodes. OMDb is not a discovery or backdrop provider. Preserve provider pagination tokens.
 
 - Media uses filled split buttons for Watch online and trailers, a concise overview and a separate full Cast tab. Do not restore the Notes & URL editor. Preserve artwork ownership against late details and use `widgets/CrossfadeImage.qml` for overlapping image transitions.
+
+## Performance work
+
+- Follow `docs/performance.md` for performance/autoresearch tasks: fixed production workloads, baseline and QML profile, one hypothesis per change, correctness checks, repeated measurements, and a keep/discard experiment record. Keep the verifier fixed during comparisons and report native desktop measurement limits.

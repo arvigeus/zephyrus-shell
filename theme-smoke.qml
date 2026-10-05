@@ -41,17 +41,12 @@ ShellRoot {
         const loader = holder ? holder.children.find(child => child.item) : null;
         if (!loader || !loader.item) { waitReason = "No Projects loader"; return false; }
         if (projectInstance && loader.item !== projectInstance) { root.fail("Retained module was recreated"); return false; }
-        const heading = textItem(loader.item, "Projects");
-        const path = textItem(loader.item, loader.item.projectsPath || "Your XDG Projects folder");
-        if (!heading || !path) { waitReason = "Missing Projects labels: " + loader.item.projectsPath; return false; }
-        if (heading.color.toString() !== Theme.text.toString()) { root.fail("Module widget text: " + heading.color + " expected " + Theme.text); return false; }
-        if (path.color.toString() !== Theme.muted.toString()) { root.fail("Module core text: " + path.color + " expected " + Theme.muted); return false; }
+        const field = root.find(loader.item, "projectsSearchField");
+        const count = root.find(loader.item, "projectsResultCount");
+        if (!field || !count) { waitReason = "Missing Projects search/count controls"; return false; }
+        if (field.color.toString() !== Theme.text.toString()) { root.fail("Module widget text: " + field.color + " expected " + Theme.text); return false; }
+        if (count.color.toString() !== Theme.muted.toString()) { root.fail("Module core text: " + count.color + " expected " + Theme.muted); return false; }
         return true;
-    }
-    function textItem(item, value) {
-        if (item.text === value) return item;
-        for (const child of item.children || []) { const found = textItem(child, value); if (found) return found; }
-        return null;
     }
     function edit(value) { input.setText(JSON.stringify(value)); }
     function fail(message) { console.error("THEME FAIL:", message); Qt.quit(); }

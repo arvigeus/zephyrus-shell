@@ -276,11 +276,13 @@ Item {
             spacing: 12
             W.SearchField {
                 id: search
+                objectName: "projectsSearchField"
                 Layout.fillWidth: true
                 placeholderText: "Search projects and technologies…"
                 onAccepted: { if (root.matches.length) root.openProject(root.matches[0]); }
             }
             W.Label {
+                objectName: "projectsResultCount"
                 text: root.loading ? "Loading…" : root.matches.length + (root.matches.length === 1 ? " project" : " projects")
                 color: Theme.muted
             }

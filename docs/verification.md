@@ -1,5 +1,19 @@
 # Verification on this machine
 
+Performance/autoresearch, 2026-10-05: five fixed offscreen/software runs before
+and after confirmed batched window sorting (64-window responses 13.150 →
+0.375 ms), indexed search, and batched application catalogue publication
+(first opening 17,706 → 184 ms; process-group RSS after rapid grid searches
+1,904.4 → 218.1 MiB), plus lazy owned GPU menus (queries 14.592 → 10.658 ms).
+Worker cleanup, ranking, Favorites, live metadata and window
+identity/order regressions passed. Ruff/format/ty, 464 Python tests, 53 portable
+QML tests, 13 JavaScript tests and all 18 smoke scripts passed. A stale theme
+verifier was repaired to target the current Projects search/count controls;
+the full palette/retention/cold-session assertions passed. See
+[performance protocol and experiment log](performance.md) for raw evidence,
+the intermediate tradeoffs and measurement limits. These fixture results
+do not establish native frame times, battery use or full-desktop idle resources.
+
 WARP ownership and event updates, 2026-10-05: the runtime controller, service,
 setup and observer now belong to zephyrus-shell. The isolated smoke test runs the
 production backend and UI against a private fake systemd/WARP bus. It exercises a

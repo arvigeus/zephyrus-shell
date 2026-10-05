@@ -13,22 +13,33 @@ Item {
     property var spaces: Modules.entries
     readonly property alias query: search.text
     readonly property alias currentIndex: results.currentIndex
-    readonly property var matches: {
+    // Catalogue text is stable between edits; normalize it once per catalogue
+    // update, rather than once per word and sort comparison on every keystroke.
+    readonly property var candidates: applications.map(app => ({kind: "app", entry: app,
+        name: app.name.toLowerCase(),
+        terms: (app.name + " " + (app.genericName || "") + " " + (app.keywords || []).join(" ")).toLowerCase()}))
+        .concat(spaces.map(space => ({kind: "space", entry: space, name: space.name.toLowerCase(), terms: space.name.toLowerCase()})));
+    readonly property var matches: publishedMatches
+    property var publishedMatches: []
+    readonly property var pendingMatches: {
         const query = search.text.trim().toLowerCase();
         if (!query) return [];
         const words = query.split(/\s+/);
-        const candidates = applications.map(app => ({kind: "app", entry: app,
-            terms: app.name + " " + (app.genericName || "") + " " + (app.keywords || []).join(" ")}))
-            .concat(spaces.map(space => ({kind: "space", entry: space, terms: space.name})));
-        return candidates.filter(item => words.every(word => item.terms.toLowerCase().includes(word)))
+        return candidates.filter(item => words.every(word => item.terms.includes(word)))
             .sort((a, b) => {
                 function rank(item) {
-                    const name = item.entry.name.toLowerCase();
+                    const name = item.name;
                     return name === query ? 0 : name.startsWith(query) ? 1 : 2;
                 }
                 return rank(a) - rank(b) || (a.kind === b.kind ? 0 : a.kind === "app" ? -1 : 1)
                     || a.entry.name.localeCompare(b.entry.name);
             });
+    }
+    onPendingMatchesChanged: {
+        const next = pendingMatches;
+        if (next.length === publishedMatches.length
+                && next.every((item, index) => item === publishedMatches[index])) return;
+        publishedMatches = next;
     }
     function activateResult(index) {
         if (index < 0 || index >= matches.length) return;

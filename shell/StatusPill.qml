@@ -15,6 +15,7 @@ BarAction {
     ToolTip.visible: false
     Accessible.description: [
         Networking.wifiEnabled ? wifiDescription : "",
+        Warp.state === "connected" ? "Cloudflare WARP connected" : "",
         adapter && adapter.enabled ? "Bluetooth on, " + bluetoothConnections + " connected" : "",
         !sink ? "Speakers unavailable" : sink.audio.muted ? "Speakers muted" : "Volume " + Math.round(sink.audio.volume * 100) + "%",
         microphoneEnabled ? "Microphone enabled" : "",
@@ -64,6 +65,17 @@ BarAction {
 
     contentItem: RowLayout {
         spacing: 8
+        Item {
+            objectName: "warp-status-icon"
+            visible: Warp.state === "connected"
+            Layout.preferredWidth: 23
+            Layout.preferredHeight: 19
+            AppIcon { anchors.centerIn: parent; width: 23; height: 19; artwork: Warp.artwork }
+            HoverHandler { id: warpHover }
+            ToolTip.visible: warpHover.hovered
+            ToolTip.text: "Cloudflare WARP connected"
+            ToolTip.delay: 500
+        }
         PillStatusIcon { visible: Networking.wifiEnabled; name: root.wifiIcon; description: root.wifiDescription }
         PillStatusIcon { visible: !!root.adapter && root.adapter.enabled; name: "bluetooth"; description: "Bluetooth: " + root.bluetoothConnections + " connected" }
         PillStatusIcon { name: StatusIcons.volumeIcon(root.sink ? root.sink.audio.volume : 0, !root.sink || root.sink.audio.muted); description: !root.sink ? "Speakers unavailable" : root.sink.audio.muted ? "Speakers muted" : "Volume: " + Math.round(root.sink.audio.volume * 100) + "%" }

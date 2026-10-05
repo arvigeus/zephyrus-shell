@@ -1,0 +1,13 @@
+[Unit]
+Description=Zephyrus on-demand Cloudflare WARP connection
+Requires=warp-svc.service
+After=warp-svc.service ufw.service system-ufw-rules.service
+BindsTo=warp-svc.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/zephyrus-shell-warp --prepare
+ExecStop=-/usr/bin/warp-cli --accept-tos --no-ansi disconnect
+TimeoutStartSec=75s
+TimeoutStopSec=15s

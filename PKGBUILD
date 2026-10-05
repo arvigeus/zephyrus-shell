@@ -51,6 +51,8 @@ _package_payload() {
 		"$pkgdir/usr/share/polkit-1/actions/org.zephyrus-shell.cpu-boost.policy"
 	install -Dm644 "$srcdir/zephyrus-shell/systemd/user/zephyrus-clipboard@.service" \
 		"$pkgdir/usr/lib/systemd/user/zephyrus-clipboard@.service"
+    install -Dm755 "$srcdir/zephyrus-shell/packaging/zephyrus-shell-warp" "$pkgdir/usr/bin/zephyrus-shell-warp"
+    install -Dm644 "$srcdir/zephyrus-shell/systemd/system/zephyrus-warp.service" "$pkgdir/usr/lib/systemd/system/zephyrus-warp.service"
 	install -Dm644 "$srcdir/zephyrus-shell/desktop/Zephyrus.colors" \
 		"$pkgdir/usr/share/color-schemes/Zephyrus.colors"
 	install -Dm644 "$srcdir/zephyrus-shell/desktop/zephyrus.desktop" \
@@ -73,8 +75,8 @@ package_zephyrus-shell-git() {
 	optdepends=(
 		'zephyrus-shell-session-git: full Hyprland session dependency set'
 		'qmltermwidget>=2.0: Terminal module (Qt 6)'
-		'python-gobject: application GPU selection over D-Bus'
-		'python-dbus: Bluetooth pairing agent'
+		'python-gobject: application GPU selection and WARP status events'
+		'python-dbus: Bluetooth pairing and WARP status events'
 		'hyprshot: screenshots'
 		'hyprpicker: frozen screen selection for delayed screenshots'
 		'satty: screenshot annotation'
@@ -94,6 +96,7 @@ package_zephyrus-shell-git() {
 		'steam: launching installed Steam games'
 		'qbittorrent: torrent handoff (Flatpak installation also supported)'
 		'hyprqt6engine: Qt platform theme integration'
+		'cloudflare-warp-nox-bin: on-demand Cloudflare WARP (explicit setup required)'
 		'networkmanager: network controls (enable NetworkManager.service explicitly)'
 		'bluez: Bluetooth controls (enable bluetooth.service explicitly)'
 		'switcheroo-control: per-application GPU selection (enable switcheroo-control.service explicitly)'

@@ -1,5 +1,13 @@
 # Verification on this machine
 
+WARP ownership and event updates, 2026-10-05: the runtime controller, service,
+setup and observer now belong to zephyrus-shell. The isolated smoke test runs the
+production backend and UI against a private fake systemd/WARP bus. It exercises a
+tunnel that connects after its command exits, shared state across two status
+pills, Settings closing/reopening, retained inline errors, and listener cleanup.
+These fixture checks do not establish live network, firewall, battery, thermal,
+suspend, or Fedora runtime behavior.
+
 Packaging ownership, 2026-10-04: a local makepkg VCS snapshot produced both
 native split archives; metadata, payload exclusions, installed setup/provisioning,
 plugin discovery and public entry points passed the three packaging tests.

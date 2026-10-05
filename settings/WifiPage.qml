@@ -78,6 +78,7 @@ ColumnLayout {
         clip: true
         spacing: 4
         model: Networking.wifiEnabled ? root.networks : []
+        header: WarpNetworkRow { width: ListView.view.width }
         delegate: Item {
             required property var modelData
             width: ListView.view.width

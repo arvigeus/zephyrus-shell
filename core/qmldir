@@ -16,3 +16,4 @@ singleton WindowList 1.0 WindowList.qml
 singleton SessionLock 1.0 SessionLock.qml
 
 singleton InputLanguage 1.0 InputLanguage.qml
+singleton Warp 1.0 Warp.qml

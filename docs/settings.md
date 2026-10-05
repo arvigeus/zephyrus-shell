@@ -58,6 +58,25 @@ changes state. Disconnecting a Wi-Fi device suppresses automatic reconnection
 until a connection is explicitly requested. Bluetooth shows a paired check icon;
 forgetting a device requires a second click on its trash button within five seconds.
 
+Cloudflare WARP appears at the top of the wireless network list with a monochrome
+logo. Its name and logo are muted while disconnected; click either to connect or
+disconnect. WARP also works over Ethernet. Errors remain inline. A Cloudflare logo
+appears in the right status pill only while the tunnel is connected.
+
+The shell owns consumer registration, LAN exclusions, scoped authorization and
+the on-demand daemon lifetime. Install the optional client and run
+`sudo zephyrus-shell-warp setup --user USERNAME` once; see [WARP setup](warp.md).
+First activation accepts Cloudflare's terms and registers if needed. Existing
+registration is retained. Organization enrollment and WARP+ licensing are
+advanced CLI operations.
+
+One shell-wide observer subscribes to systemd state changes. It starts
+`warp-cli --listen status` only while the daemon is active and releases it when
+the daemon stops. Settings and every output share the same state, including
+connection events arriving after a connect command completes. There is no
+periodic status polling. When WARP is off, only the passive D-Bus subscriber
+remains; no WARP daemon or CLI listener runs.
+
 The Wi-Fi header uses the connected network's signal and lock icon. The right
 pill shows Wi-Fi when enabled, Bluetooth when enabled, speaker volume, an active
 microphone, battery, CPU power profile, and GPU mode as icons with individual

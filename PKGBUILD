@@ -75,7 +75,7 @@ package_zephyrus-shell-git() {
 	optdepends=(
 		'zephyrus-shell-session-git: full Hyprland session dependency set'
 		'qmltermwidget>=2.0: Terminal module (Qt 6)'
-		'python-gobject: application GPU selection and WARP status events'
+		'python-gobject: application GPU selection, WireGuard imports and WARP status events'
 		'python-dbus: Bluetooth pairing and WARP status events'
 		'hyprshot: screenshots'
 		'hyprpicker: frozen screen selection for delayed screenshots'

@@ -15,6 +15,7 @@ Item {
     property string imageSwapId: ""
     property var wallpapers: []
     property var selected: ({})
+    readonly property bool engineSelected: selected.provider === "wallpaper_engine"
     property bool favoritesView: false
     property bool gridMode: false
     property bool searchOpen: false
@@ -22,6 +23,10 @@ Item {
     property bool loading: true
     property bool randomLoading: false
     property bool settingWallpaper: false
+    property bool openingWorkshop: false
+    property string engineSetupMessage: ""
+    property bool engineReady: false
+    property int installationGeneration: 0
     property bool favoriteSaving: false
     property string providerId: "wallhaven"
     property bool providerCatalogReady: false
@@ -35,7 +40,7 @@ Item {
     property string query: ""
     property int browseGeneration: 0
     property int favoriteGeneration: 0
-    property int page: 0
+    property var page: 0
     property var filters: ({categories:"111",sorting:"hot",topRange:"1M",ratio:"",resolution:"",tagQuery:"",tagLabel:""})
     property var pendingFilters: ({categories:"111",sorting:"hot",topRange:"1M",ratio:"",resolution:"",tagQuery:"",tagLabel:""})
     property var providerFilters: ({
@@ -127,12 +132,21 @@ Item {
         searchDelay.stop();
         browse(false);
     }
-    function loadProviders() {
+    function loadProviders(initial) {
         service.request("providers", {}, (result, failure) => {
-            if (failure || !result || !Array.isArray(result.providers)) return;
+            if (failure || !result || !Array.isArray(result.providers)) {
+                if (initial) { loading = false; error = failure || "Could not load wallpaper providers."; }
+                return;
+            }
             providerOptions = result.providers;
             providerCatalogReady = true;
+            if (initial) {
+                providerId = providerDescriptor(result.currentProvider) ? result.currentProvider : "wallhaven";
+                filters = Object.assign({}, providerDescriptor(providerId).defaultFilters || providerFilters[providerId] || {});
+                syncFilterControls();
+            }
             providerChoice.currentIndex = Math.max(0, providerIndex(providerId));
+            if (initial) browse(false);
         });
     }
 
@@ -157,8 +171,9 @@ Item {
     function selectWallpaper(item) {
         if (!item || !item.id) return;
         const changed = wallpaperKey(selected) !== wallpaperKey(item);
+        const sourceChanged = selected.preview !== item.preview || selected.path !== item.path;
         selected = item;
-        if (changed || !selectedImageSource.toString()) {
+        if (changed || sourceChanged || !selectedImageSource.toString()) {
             if (changed) wallpaperPreview.clear();
             imageSwapId = wallpaperKey(item);
             // Wallhaven's large tile thumbnail may be cropped. Its original
@@ -169,6 +184,9 @@ Item {
         }
         actionMessage = "";
         actionFailed = false;
+        engineSetupMessage = "";
+        engineReady = false;
+        installationGeneration++;
         const index = wallpapers.findIndex(value => wallpaperKey(value) === wallpaperKey(item));
         if (index >= 0) {
             if (gridMode) {
@@ -179,6 +197,8 @@ Item {
                 if (rail.visible) rail.positionViewAtIndex(index, ListView.Contain);
             }
         }
+        Qt.callLater(root.upgradeSelectedImage);
+        Qt.callLater(root.refreshEngineInstallation);
     }
 
     function fittedImageWidth() {
@@ -191,7 +211,7 @@ Item {
                 || wallpaperPreview.displayedSource.toString() !== selectedPreviewSource.toString()) return;
         const targetWidth = Math.ceil(fittedImageWidth() * 1.5);
         const previewWidth = selected.preview === selected.thumbLarge ? 400 : 960;
-        const preferred = targetWidth <= previewWidth
+        const preferred = !engineSelected && targetWidth <= previewWidth
             ? (selected.preview || selected.path) : (selected.path || selected.preview);
         if (preferred && preferred !== selectedImageSource.toString()) selectedImageSource = preferred;
     }
@@ -213,10 +233,10 @@ Item {
             loading = false;
             if (failure) { error = failure; return; }
             updateCatalogue(result.items || [], append);
-            page = favoritesView ? 0 : Number(result.next || 0);
+            page = favoritesView ? 0 : (result.next || 0);
             if (!append) {
                 if (wallpapers.length) {
-                    if (!wallpapers.some(item => wallpaperKey(item) === wallpaperKey(selected))) selectWallpaper(wallpapers[0]);
+                    selectWallpaper(wallpapers.find(item => wallpaperKey(item) === wallpaperKey(selected)) || wallpapers[0]);
                 } else {
                             selected = ({});
                     selectedPreviewSource = "";
@@ -272,12 +292,45 @@ Item {
         if (!selected || !selected.id || settingWallpaper) return;
         const wallpaper = selected;
         settingWallpaper = true;
-        actionMessage = "Downloading wallpaper…";
+        engineSetupMessage = "";
+        actionMessage = engineSelected ? "Starting Wallpaper Engine…" : "Downloading wallpaper…";
         actionFailed = false;
         service.request("set", {wallpaper:wallpaper}, (result, failure) => {
             settingWallpaper = false;
             actionMessage = failure || (result ? result.message : "Wallpaper could not be set.");
             actionFailed = !!failure;
+        });
+    }
+
+    function openSteamWorkshop() {
+        if (!engineSelected || !selected.id || openingWorkshop) return;
+        const key = wallpaperKey(selected);
+        openingWorkshop = true;
+        actionMessage = "Opening Steam…";
+        actionFailed = false;
+        service.request("openWorkshop", {workshopId:selected.id}, (result, failure) => {
+            openingWorkshop = false;
+            if (key !== wallpaperKey(selected)) return;
+            actionMessage = failure || (result ? result.message : "Steam could not open the Workshop page.");
+            actionFailed = !!failure;
+        });
+    }
+
+    function refreshEngineInstallation() {
+        if (!engineSelected || !selected.id) return;
+        const key = wallpaperKey(selected);
+        const generation = ++installationGeneration;
+        service.request("installationStatus", {wallpaper:selected}, (result, failure) => {
+            if (generation !== installationGeneration || key !== wallpaperKey(selected)) return;
+            engineSetupMessage = failure || (result ? result.message : "");
+            engineReady = !failure && !!result && !!result.ready;
+            if (!failure && result && result.wallpaper && result.wallpaper.installed !== selected.installed) {
+                const updated = result.wallpaper;
+                updateCatalogue(wallpapers.map(item => wallpaperKey(item) === key ? updated : item), false);
+                selectWallpaper(updated);
+                engineSetupMessage = result.message || "";
+                engineReady = !!result.ready;
+            }
         });
     }
 
@@ -308,11 +361,16 @@ Item {
 
     Component.onCompleted: {
         loadFavoriteIds();
-        loadProviders();
-        browse(false);
+        loadProviders(true);
     }
 
     Timer { id: searchDelay; interval: 350; onTriggered: root.browse(false) }
+    Timer {
+        interval: 3000
+        repeat: true
+        running: root.visible && root.engineSelected && !root.settingWallpaper
+        onTriggered: root.refreshEngineInstallation()
+    }
     Timer { id: pagination; interval: 100; onTriggered: {
         if (root.favoritesView || root.loading || !root.page || !root.wallpapers.length) return;
         const nearEnd = root.gridMode
@@ -464,12 +522,33 @@ Item {
             W.Choice {
                 id: providerChoice
                 objectName: "picturesProviderChoice"
-                width: 145
+                width: 180
                 model: root.providerOptions.map(value => value.name)
                 currentIndex: 0
                 enabled: !root.favoritesView && root.providerCatalogReady
                 Accessible.name: "Wallpaper provider"
                 onActivated: index => root.selectProvider(root.providerOptions[index].id)
+            }
+            W.IconButton {
+                objectName: "picturesRefreshButton"
+                iconName: "refresh-cw"
+                text: "Refresh wallpapers"
+                visible: !root.favoritesView && root.providerId === "wallpaper_engine"
+                enabled: !root.loading
+                onClicked: { root.loadProviders(); root.browse(false); root.loadFavoriteIds(); }
+            }
+            W.Choice {
+                objectName: "picturesEngineSourceChoice"
+                width: 140
+                visible: !root.favoritesView && root.providerId === "wallpaper_engine"
+                model: ["Workshop", "Installed"]
+                currentIndex: root.filters.source === "workshop" ? 0 : 1
+                Accessible.name: "Wallpaper Engine catalogue"
+                onActivated: index => {
+                    root.filters = Object.assign({}, root.filters, {source:index === 0 ? "workshop" : "installed"});
+                    root.syncFilterControls();
+                    root.browse(false);
+                }
             }
             W.IconButton {
                 objectName: "wallpaperViewButton"
@@ -591,6 +670,7 @@ Item {
                         font.family: Theme.font; font.pixelSize: Theme.sp(Math.min(36, root.width / 34))
                         font.bold: true
                         wrapMode: Text.Wrap
+                        maximumLineCount: root.engineSelected ? 3 : 2147483647
                     }
                     W.Label {
                         Layout.fillWidth: true
@@ -618,6 +698,14 @@ Item {
                         color: Theme.muted
                         wrapMode: Text.Wrap
                     }
+                    W.Label {
+                        visible: root.engineSelected && !!root.selected.description
+                        Layout.fillWidth: true
+                        text: root.selected.description || ""
+                        color: Theme.muted
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 4
+                    }
                     Row {
                         spacing: 6
                         Repeater {
@@ -638,14 +726,14 @@ Item {
                         spacing: 8
                         W.Action {
                             iconName: "image"
-                            text: "View full image"
+                            text: root.engineSelected ? "View preview" : "View full image"
                             enabled: !!root.selected.path
                             onClicked: gallery.show([{url: root.selected.path}], 0, root.selected.title || "Wallpaper")
                         }
                         W.Action {
                             objectName: "setWallpaperButton"
                             iconName: "monitor"
-                            text: root.settingWallpaper ? "Setting wallpaper…" : "Set wallpaper & lock screen"
+                            text: root.settingWallpaper ? "Setting wallpaper…" : root.engineSelected ? "Apply wallpaper" : "Set wallpaper & lock screen"
                             enabled: !!root.selected.id && !root.settingWallpaper
                             onClicked: root.setDesktopWallpaper()
                         }
@@ -657,13 +745,25 @@ Item {
                             onClicked: root.toggleFavorite()
                         }
                         W.Action {
+                            objectName: "openWorkshopButton"
                             iconName: "globe"
-                            text: "Open on " + (root.selected.siteName || root.providerName(root.selected.provider || root.providerId))
-                            enabled: !!root.selected.url
-                            onClicked: Browser.open(root.selected.url, "pictures", "", root.host)
+                            text: root.engineSelected ? root.openingWorkshop ? "Opening Steam…" : root.selected.installed ? "Open in Steam" : "Download through Steam" : "Open on " + (root.selected.siteName || root.providerName(root.selected.provider || root.providerId))
+                            enabled: !!root.selected.url && !root.openingWorkshop
+                            onClicked: {
+                                if (root.engineSelected) root.openSteamWorkshop();
+                                else Browser.open(root.selected.url, "pictures", "", root.host);
+                            }
                         }
                     }
                     W.BusySpinner { visible: root.settingWallpaper; running: visible; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
+                    W.Label {
+                        objectName: "wallpaperEngineSetupMessage"
+                        visible: root.engineSelected && !!root.engineSetupMessage && !root.actionFailed && !root.settingWallpaper
+                        Layout.fillWidth: true
+                        text: root.engineSetupMessage
+                        color: Theme.warning
+                        wrapMode: Text.Wrap
+                    }
                     W.Label {
                         visible: !!root.actionMessage
                         Layout.fillWidth: true
@@ -678,7 +778,8 @@ Item {
             W.Label {
                 anchors.centerIn: parent
                 visible: !root.selected.id && !root.loading && !root.error
-                text: root.favoritesView ? "No saved wallpapers yet." : "No matching wallpapers."
+                text: root.favoritesView ? "No saved wallpapers yet." : root.providerId === "wallpaper_engine" && root.filters.source !== "workshop"
+                    ? "No installed wallpapers found. Subscribe in Steam Workshop, then refresh this provider." : "No matching wallpapers."
                 color: Theme.muted
             }
         }

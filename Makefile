@@ -23,4 +23,4 @@ test:
 # Offscreen checks use real entry points with isolated state and private buses.
 # Tests that operate the current desktop are explicit commands in README.md.
 smoke:
-	@set -e; for check in workers apps media books games modules retained settings warp theme spaces desktop language tray notifications session-lock terminal power; do bash scripts/check-$$check.sh; done
+	@set -e; for check in workers apps media books games pictures wallpaper-engine modules retained settings warp vpn theme spaces desktop language tray notifications session-lock terminal power; do bash scripts/check-$$check.sh; done

@@ -5,9 +5,11 @@ import Quickshell.Io
 import Quickshell.Hyprland
 import "core"
 import "shell"
+import "pictures"
 
 ShellRoot {
     id: root
+    WallpaperRuntime { id: wallpapers }
     // Module resources outlive individual output surfaces, including unplugging
     // the display where a retained player or worker was started.
     property ModuleLoader modules: ModuleLoader { screenName: "*"; readyToLoad: false; anchors.fill: parent }
@@ -40,6 +42,11 @@ ShellRoot {
     }
     Variants {
         model: Quickshell.screens
-        ShellScreen { required property var modelData; screen: modelData; sharedModules: root.modules }
+        ShellScreen {
+            required property var modelData
+            screen: modelData
+            sharedModules: root.modules
+            externalWallpaper: wallpapers.externalScreens.includes(screenName)
+        }
     }
 }

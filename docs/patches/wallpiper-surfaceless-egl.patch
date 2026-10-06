@@ -1,0 +1,12 @@
+diff --git a/programs/wallpiper-portal-wl-common/egl_capture.c b/programs/wallpiper-portal-wl-common/egl_capture.c
+--- a/programs/wallpiper-portal-wl-common/egl_capture.c
++++ b/programs/wallpiper-portal-wl-common/egl_capture.c
+@@ -232,7 +232,7 @@ static bool ensure_egl_ctx(wp_wl_egl_capture_ctx_t *ctx, char *err,
+ 
+   const EGLint config_attribs[] = {
+       EGL_SURFACE_TYPE,
+-      EGL_PBUFFER_BIT,
++      0, /* This context uses EGL_NO_SURFACE, not a pbuffer. */
+       EGL_RENDERABLE_TYPE,
+       EGL_OPENGL_ES2_BIT,
+       EGL_RED_SIZE,

@@ -17,6 +17,9 @@ ColumnLayout {
     readonly property var devices: Networking.devices.values.filter(device => device.type === DeviceType.Wifi)
     readonly property var networks: devices.reduce((all, device) => all.concat(device.networks.values), []).filter(network => network.name).sort((a, b) => Number(b.known) - Number(a.known) || a.name.localeCompare(b.name))
     readonly property bool supportsPassword: selected && [WifiSecurityType.WpaPsk, WifiSecurityType.Wpa2Psk, WifiSecurityType.Sae].includes(selected.security)
+    readonly property alias vpnService: vpn
+
+    VpnService { id: vpn; observing: root.visible }
 
     function isProtected(network) {
         return network && ![WifiSecurityType.Open, WifiSecurityType.Owe, WifiSecurityType.Unknown].includes(network.security);
@@ -78,7 +81,21 @@ ColumnLayout {
         clip: true
         spacing: 4
         model: Networking.wifiEnabled ? root.networks : []
-        header: WarpNetworkRow { width: ListView.view.width }
+        header: Column {
+            width: ListView.view.width
+            spacing: 4
+            WarpNetworkRow { width: parent.width }
+            Repeater {
+                model: vpn.profiles
+                delegate: VpnNetworkRow {
+                    required property var modelData
+                    width: parent.width
+                    profile: modelData
+                    service: vpn
+                }
+            }
+            Label { width: parent.width; visible: vpn.statusError !== ""; text: vpn.statusError; color: Theme.danger; wrapMode: Text.Wrap }
+        }
         delegate: Item {
             required property var modelData
             width: ListView.view.width

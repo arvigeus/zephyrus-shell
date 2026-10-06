@@ -11,6 +11,7 @@ import "../clipboard"
 Scope {
     id: root
     required property var screen
+    property bool externalWallpaper: false
     readonly property string screenName: screen ? screen.name : ""
     readonly property real screenWidth: screen ? screen.width : 0
     readonly property real screenHeight: screen ? screen.height : 0
@@ -36,6 +37,7 @@ Scope {
     readonly property bool popupOpen: languageButton.menuVisible || (root.selected && ["center", "clipboard"].includes(ShellState.panel))
     PanelWindow {
         screen: root.screen
+        visible: !root.externalWallpaper
         anchors { top: true; bottom: true; left: true; right: true }
         color: Theme.background
         exclusionMode: ExclusionMode.Ignore

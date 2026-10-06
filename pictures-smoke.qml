@@ -14,6 +14,7 @@ ShellRoot {
             property int phase: 0
             property int ticks: 0
             readonly property bool restoring: Quickshell.env("PICTURES_TEST_PHASE") === "read"
+            readonly property string expectedProvider: Quickshell.env("PICTURES_TEST_PROVIDER") || "wallhaven"
             readonly property string expected: "file://" + Quickshell.env("XDG_DATA_HOME") + "/zephyrus-shell/wallpapers/wallhaven-"
                 + (restoring || phase >= 4 ? "fixture2" : "fixture") + ".png"
             function find(item, name) {
@@ -38,14 +39,25 @@ ShellRoot {
             }
             onTriggered: {
                 if (++ticks > 100) { fail("Timed out in phase " + phase); return; }
-                if (restoring) { if (desktopsReady()) pass(); return; }
+                if (restoring) {
+                    if (!desktopsReady()) return;
+                    if (phase === 0) { ShellState.openPlugin("pictures"); phase = 1; return; }
+                    const loader = content();
+                    if (!loader || !loader.item || !loader.item.providerCatalogReady) return;
+                    const pictures = loader.item;
+                    if (pictures.providerId !== expectedProvider
+                            || find(pictures, "picturesProviderChoice").currentIndex !== pictures.providerIndex(expectedProvider)) {
+                        fail("Restored Pictures category: " + pictures.providerId); return;
+                    }
+                    pass(); return;
+                }
                 if (phase === 0) {
                     if (!Modules.find("pictures")) return;
                     if (desktop.wallpaperSource.toString()) { fail("Unexpected initial wallpaper"); return; }
                     ShellState.openPlugin("pictures"); phase = 1;
                 } else if (phase === 1) {
                     const loader = content();
-                    if (!loader || !loader.item) return;
+                    if (!loader || !loader.item || !loader.item.providerCatalogReady) return;
                     const pictures = loader.item;
                     pictures.browseGeneration++;
                     pictures.loading = false;

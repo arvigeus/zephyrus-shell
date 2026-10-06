@@ -21,7 +21,21 @@ image.write_bytes(b'\x89PNG\r\n\x1a\n'
     + chunk(b'IDAT', zlib.compress(b'\x00\x45\x67\x89')) + chunk(b'IEND', b''))
 image.with_name('wallhaven-fixture2.png').write_bytes(image.read_bytes())
 PY
-for pictures_test_phase in write read; do
+for pictures_test_case in write wallhaven bing; do
+    export PICTURES_TEST_PROVIDER="$pictures_test_case"
+    pictures_test_phase=read
+    if [[ "$pictures_test_case" == write ]]; then
+        pictures_test_phase=write
+    elif [[ "$pictures_test_case" == bing ]]; then
+        python3 - <<'PY'
+import json,os
+from pathlib import Path
+setting=Path(os.environ['XDG_CONFIG_HOME'])/'zephyrus-shell/wallpaper.json'
+value=json.loads(setting.read_text())
+value['provider']='bing'
+setting.write_text(json.dumps(value))
+PY
+    fi
     export PICTURES_TEST_PHASE="$pictures_test_phase"
     timeout 15s dbus-run-session quickshell -p "$PWD/pictures-smoke.qml" --no-color > "$pictures_test_root/log" 2>&1 || { cat "$pictures_test_root/log"; exit 1; }
     cat "$pictures_test_root/log"

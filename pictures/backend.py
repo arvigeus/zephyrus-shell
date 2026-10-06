@@ -14,10 +14,11 @@ import time
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlparse
+from urllib.parse import unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from pictures import wallpaper_engine
 from services.storage import atomic_write
 
 API_ROOT = "https://wallhaven.cc/api/v1"
@@ -200,6 +201,9 @@ PROVIDERS = {
         ],
     },
 }
+
+
+PROVIDERS["wallpaper_engine"] = wallpaper_engine.PROVIDER
 
 
 def config_root():
@@ -392,6 +396,8 @@ def clean_item(raw):
     if not isinstance(raw, dict):
         return None
     provider = str(raw.get("provider") or "wallhaven")
+    if provider == "wallpaper_engine":
+        return wallpaper_engine.clean_item(raw)
     if provider == "bing":
         return clean_bing_item(raw)
     if provider == "wallhaven":
@@ -574,6 +580,7 @@ def item_search_text(item):
                 "purity",
                 "resolution",
                 "attribution",
+                "description",
             )
         )
         + " "
@@ -675,7 +682,11 @@ def browse_bing(args):
     return {"items": unique, "next": 0, "total": len(unique)}
 
 
-BROWSE_HANDLERS = {"wallhaven": browse_wallhaven, "bing": browse_bing}
+BROWSE_HANDLERS = {
+    "wallhaven": browse_wallhaven,
+    "bing": browse_bing,
+    "wallpaper_engine": wallpaper_engine.browse,
+}
 
 
 def browse(args):
@@ -718,7 +729,27 @@ def random_wallpaper(args):
 
 
 def provider_catalog():
-    return {"providers": list(PROVIDERS.values())}
+    return {
+        "providers": [
+            wallpaper_engine.descriptor() if value["id"] == "wallpaper_engine" else value
+            for value in PROVIDERS.values()
+        ],
+        "currentProvider": current_wallpaper_provider(),
+    }
+
+
+def current_wallpaper_provider():
+    setting = wallpaper_engine.read_setting()
+    if setting.get("mode") == "wallpaper_engine":
+        return "wallpaper_engine"
+    if setting.get("provider") in PROVIDERS:
+        return setting["provider"]
+    # Older still-image settings contain only the cached image URL.
+    filename = Path(unquote(urlparse(str(setting.get("image") or "")).path)).name
+    return next(
+        (provider for provider in ("wallhaven", "bing") if filename.startswith(provider + "-")),
+        "wallhaven",
+    )
 
 
 def load_favorites():
@@ -813,7 +844,7 @@ def download_wallpaper(item):
             temporary.unlink(missing_ok=True)
 
 
-def apply_shell_wallpaper(path):
+def apply_shell_wallpaper(path, provider=None):
     # The shell owns an opaque background surface; another desktop's wallpaper
     # service cannot change it. Backdrop watches this setting on every screen.
     setting = config_root() / "zephyrus-shell" / "wallpaper.json"
@@ -824,7 +855,10 @@ def apply_shell_wallpaper(path):
             mode="w", encoding="utf-8", dir=setting.parent, prefix=".wallpaper-", delete=False
         ) as output:
             temporary = Path(output.name)
-            json.dump({"image": path.resolve().as_uri()}, output)
+            value = {"image": path.resolve().as_uri()}
+            if provider in PROVIDERS:
+                value["provider"] = provider
+            json.dump(value, output)
             output.write("\n")
         os.replace(temporary, setting)
     finally:
@@ -974,8 +1008,19 @@ def set_wallpaper(args):
     target = args.get("target", "shell")
     if target not in {"shell", "desktop"}:
         raise ValueError("Unknown wallpaper target.")
+    if item["provider"] == "wallpaper_engine":
+        if target != "shell":
+            raise ValueError("Use Wallpaper Engine from the Zephyrus Shell desktop.")
+        return wallpaper_engine.apply(item)
     path = download_wallpaper(item)
-    service = apply_shell_wallpaper(path) if target == "shell" else apply_wallpaper(path)
+    if target == "shell":
+        with wallpaper_engine.control_lock():
+            animated = wallpaper_engine.read_setting().get("mode") == "wallpaper_engine"
+            service = apply_shell_wallpaper(path, item["provider"])
+        if animated:
+            wallpaper_engine.wait_idle()
+    else:
+        service = apply_wallpaper(path)
     apply_lock_wallpaper(path)
     return {
         "path": str(path),
@@ -998,6 +1043,13 @@ def run(request):
         return save_favorites(request)
     if op == "set":
         return set_wallpaper(request)
+    if op == "openWorkshop":
+        return wallpaper_engine.open_workshop(request)
+    if op == "installationStatus":
+        item = clean_item(request.get("wallpaper"))
+        if not item or item["provider"] != "wallpaper_engine":
+            raise ValueError("Invalid Wallpaper Engine wallpaper.")
+        return wallpaper_engine.installation_status(item)
     raise ValueError("Unsupported Pictures service request.")
 
 
@@ -1060,8 +1112,8 @@ def worker():
 
     serve(
         run,
-        latest=("browse", "tagSearch"),
-        controls=("favorite", "set"),
+        latest=("browse", "tagSearch", "installationStatus"),
+        controls=("favorite", "set", "openWorkshop"),
         scope=lambda r: (r["op"], bool(r.get("favorites"))),
     )
 

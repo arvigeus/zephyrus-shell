@@ -52,7 +52,9 @@ class WallpaperTests(unittest.TestCase):
         network.assert_not_called()
         self.assertEqual(result["service"], "Zephyrus Shell")
         setting = self.root / "config/zephyrus-shell/wallpaper.json"
-        self.assertEqual(json.loads(setting.read_text()), {"image": path.as_uri()})
+        self.assertEqual(
+            json.loads(setting.read_text()), {"image": path.as_uri(), "provider": "wallhaven"}
+        )
         self.assertEqual(list(setting.parent.glob(".wallpaper-*")), [])
 
     def test_external_target_preserves_desktop_service_support(self):
@@ -73,6 +75,27 @@ class WallpaperTests(unittest.TestCase):
                 pictures.apply_shell_wallpaper(self.root / "other image.png")
         self.assertEqual(setting.read_bytes(), before)
         self.assertEqual(list(setting.parent.glob(".wallpaper-*")), [])
+
+    def test_current_provider_handles_saved_identity_and_legacy_image_settings(self):
+        setting = self.root / "config/zephyrus-shell/wallpaper.json"
+        setting.parent.mkdir(parents=True)
+        cases = [
+            ({}, "wallhaven"),
+            ({"image": "file:///wallpapers/wallhaven-abc123.png"}, "wallhaven"),
+            ({"image": "file:///wallpapers/bing-daily%20image.jpg"}, "bing"),
+            ({"provider": "bing", "image": "file:///custom.jpg"}, "bing"),
+            (
+                {"mode": "wallpaper_engine", "image": "file:///wallhaven-old.png"},
+                "wallpaper_engine",
+            ),
+            ({"provider": "unknown"}, "wallhaven"),
+        ]
+        for value, expected in cases:
+            with self.subTest(value=value):
+                setting.write_text(json.dumps(value))
+                self.assertEqual(pictures.run({"op": "providers"})["currentProvider"], expected)
+        setting.write_text("invalid json")
+        self.assertEqual(pictures.current_wallpaper_provider(), "wallhaven")
 
     def test_download_saves_original_and_cleans_temporary_file(self):
         item = pictures.clean_item(self.item)

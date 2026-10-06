@@ -77,6 +77,41 @@ connection events arriving after a connect command completes. There is no
 periodic status polling. When WARP is off, only the passive D-Bus subscriber
 remains; no WARP daemon or CLI listener runs.
 
+WireGuard profiles also appear above nearby Wi-Fi networks, with the Lucide
+`shield-lock` icon. Place regular `.conf` files in
+`$XDG_CONFIG_HOME/zephyrus-shell/vpn/` (default `~/.config/zephyrus-shell/vpn/`).
+The filename without `.conf` is the display name; spaces are supported. Each file
+must belong to your user and have permissions `600`, because it contains private
+keys. For example:
+
+```sh
+install -d -m 700 ~/.config/zephyrus-shell/vpn
+install -m 600 ~/Downloads/iPhone.conf ~/.config/zephyrus-shell/vpn/iPhone.conf
+```
+
+Click the icon or name to connect/disconnect. NetworkManager (`nmcli`, `libnm`
+and Python GObject bindings; Arch packages `networkmanager` and `python-gobject`)
+manages addresses, routes, DNS and the tunnel over either Wi-Fi or Ethernet; toggling
+Wi-Fi does not toggle the VPN. Profiles are discovered on expansion and every
+five seconds while the network list is visible, with no VPN polling while hidden.
+Connection and authorization errors stay inline. A working desktop polkit agent
+may be required by your NetworkManager policy.
+
+Configs are imported only when clicked, as temporary NetworkManager connections
+restricted to your user, with autoconnect disabled. They survive closing Settings
+or restarting the shell, but do not reconnect on login or NetworkManager restart.
+Disconnect removes the imported connection. Reconnecting reads the source file
+again, so edits apply on the next connection. An active profile whose file was
+removed remains listed until disconnected. Existing NetworkManager profiles and
+Cloudflare WARP are managed independently; avoid enabling conflicting default
+routes in multiple tunnels.
+
+Use standard Interface/Peer configs. NetworkManager cannot run `wg-quick` hooks;
+configs with PreUp/PostUp/PreDown/PostDown, SaveConfig or Table are rejected
+instead of silently losing their behavior. The shell never runs commands from
+a config or returns private keys to QML. “Connected” means NetworkManager
+activated the interface, not that a peer handshake or Internet access was verified.
+
 The Wi-Fi header uses the connected network's signal and lock icon. The right
 pill shows Wi-Fi when enabled, Bluetooth when enabled, speaker volume, an active
 microphone, battery, CPU power profile, and GPU mode as icons with individual

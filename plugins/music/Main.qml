@@ -10,7 +10,7 @@ ColumnLayout {
     id: root
     property var host
     property bool playbackWantsRetention: false
-    function updateRetention() { if (host) host.requestKeepRunning("music", playbackWantsRetention || downloadLoading); }
+    function updateRetention() { if (host) host.requestKeepRunning("music", playbackWantsRetention || downloadLoading || torrentService.keepRunning); }
     function requestRetention(enabled) { playbackWantsRetention = enabled; updateRetention(); }
     property string section: "discover"
     property var localSongs: []
@@ -51,8 +51,20 @@ ColumnLayout {
     property string entityWarning: ""
     property string favoriteError: ""
     property string downloadError: ""
-    property string downloadMessage: ""
-    property bool downloadLoading: false
+    readonly property bool downloadLoading: backendService.activeJobCount > 0
+    onHostChanged: updateRetention()
+    onVisibleChanged: { if (!visible) { activity.close(); lyricsDialog.close(); artistInfoDialog.close(); genrePopup.close(); } }
+    onDownloadLoadingChanged: updateRetention()
+    onSearchErrorChanged: { if (searchError) activity.notify(searchError, true); }
+    onFavoriteErrorChanged: { if (favoriteError) activity.notify(favoriteError, true); }
+    onEntityErrorChanged: { if (entityError) activity.notify(entityError, true); }
+    onEntityWarningChanged: { if (entityWarning) activity.notify(entityWarning, false); }
+    onDownloadErrorChanged: { if (downloadError) activity.notify(downloadError, true); }
+    readonly property var torrentActivity: torrentService.jobs.map(job => ({
+        job_id: "torrent:" + job.id, title: job.title, state: job.active ? "running" : job.status === "review" ? "review" : "finished",
+        detail: job.message || job.status, total: job.total || 0, done: job.downloaded || 0, unit: "bytes",
+        speed: job.speed || 0, eta: job.eta, cancellable: false, actionLabel: "Manage download", record: job.record, original: job
+    }))
     property var downloadCapabilities: ({track: false, album: false})
     property alias playMessage: playback.playMessage
     property string lyricsTitle: ""
@@ -97,9 +109,20 @@ ColumnLayout {
     MusicService {
         id: backendService
         onFailed: message => root.searchError = message
+        onJobStartFailed: message => activity.notify(message, true)
+        onJobFinished: job => {
+            const result = job.result;
+            if (job.error) activity.notify(job.error, job.state === "failed");
+            else if (result && result.path) {
+                activity.notify("Saved " + (result.saved || 1) + " tracks to " + result.path
+                    + (result.failed ? "; " + result.failed + " could not be saved" : ""), !!result.failed);
+                root.loadLocalSongs();
+            } else activity.notify("Opened the download URL", false);
+        }
     }
 
     function activate() {
+        if (downloadLoading || torrentService.keepRunning) activity.open();
         if (section === "discover") searchField.focusField();
         else if (section === "local") songTable.focusList();
         else favoriteNavButton.forceActiveFocus();
@@ -159,22 +182,8 @@ ColumnLayout {
     }
 
     function download(kind, item) {
-        if (!item || downloadLoading) return;
-        downloadError = "";
-        downloadMessage = "";
-        downloadLoading = true;
-        updateRetention();
-        backendService.request("download", {kind: kind, item: item}, (result, failure) => {
-            root.downloadLoading = false;
-            root.updateRetention();
-            if (failure) root.downloadError = failure;
-            else if (result && result.path) {
-                const count = Number(result.saved || 0);
-                root.downloadMessage = result.failed
-                    ? "Saved " + count + " tracks; " + result.failed + " could not be saved. " + result.path
-                    : "Saved " + (kind === "album" ? count + " tracks to " : "track to ") + result.path;
-            } else root.downloadMessage = "Opened the download URL.";
-        }, 0);
+        if (!item) return;
+        backendService.startJob("download_start", {kind: kind, item: item, title: "Save " + (item.title || item.name || "music")});
     }
 
     function showArtistInfo(artist) {
@@ -982,6 +991,7 @@ ColumnLayout {
             Accessible.name: "Genre filter: " + text
             onClicked: root.showGenrePopup()
         }
+        W.Action { iconName: "download"; text: backendService.activeJobCount + root.torrentActivity.filter(j => j.state === "running").length > 0 ? "Transfers (" + (backendService.activeJobCount + root.torrentActivity.filter(j => j.state === "running").length) + ")" : "Activity"; onClicked: activity.open() }
         W.BusySpinner {
             visible: root.section === "discover" && root.loading
             running: visible
@@ -990,49 +1000,27 @@ ColumnLayout {
         }
     }
 
-    RowLayout {
-        visible: (root.section === "discover" && !!root.searchError)
-            || (root.section === "favorites" && !!root.favoriteError)
-        Layout.fillWidth: true
-        spacing: 8
-        W.Label {
-            Layout.fillWidth: true
-            text: root.section === "discover" ? root.searchError : root.favoriteError
-            color: Theme.danger
-            wrapMode: Text.Wrap
+    M.TorrentService {
+        id: torrentService
+        monitorKind: "music"
+        monitorJobs: true
+        onKeepRunningChanged: root.updateRetention()
+        onLibraryChanged: root.loadLocalSongs()
+        onJobsErrorChanged: { if (jobsError && jobs.some(j => j.active)) activity.notify(jobsError, true); }
+    }
+    W.OperationCenter {
+        id: activity
+        parent: root
+        jobs: backendService.jobs.concat(root.torrentActivity)
+        retryAvailable: !!root.searchError || !!root.favoriteError
+        onRetryRequested: { if (root.section === "favorites") root.persistFavorites(); else root.requestSearch(); }
+        onCancelRequested: jobId => backendService.cancelJob(jobId)
+        onActionRequested: job => {
+            if (!String(job.job_id).startsWith("torrent:")) { backendService.retryJob(job.job_id); return; }
+            root.torrentTarget = job.record || {id: job.original.titleId, kind: "music", title: job.title};
+            root.torrentOpen = true;
+            musicFinder.showJobPanel();
         }
-        W.Action {
-            text: "Retry"
-            onClicked: root.section === "discover" ? root.requestSearch() : root.persistFavorites()
-        }
-    }
-    W.Label {
-        visible: !root.allSearchActive && !!root.entityError
-        Layout.fillWidth: true
-        text: root.entityError
-        color: Theme.danger
-        wrapMode: Text.Wrap
-    }
-    W.Label {
-        visible: !root.allSearchActive && !!root.entityWarning
-        Layout.fillWidth: true
-        text: root.entityWarning
-        color: Theme.muted
-        wrapMode: Text.Wrap
-    }
-    W.Label {
-        visible: !!root.downloadError
-        Layout.fillWidth: true
-        text: root.downloadError
-        color: Theme.danger
-        wrapMode: Text.Wrap
-    }
-    W.Label {
-        visible: root.downloadLoading || !!root.downloadMessage
-        Layout.fillWidth: true
-        text: root.downloadLoading ? "Saving to Music…" : root.downloadMessage
-        color: Theme.muted
-        wrapMode: Text.Wrap
     }
 
     MusicSongTable {
@@ -1064,6 +1052,8 @@ ColumnLayout {
     }
     M.TorrentSearch {
         host: root.host
+        service: torrentService
+        popupActivity: true
         id: musicFinder
         objectName: "musicTorrentSearch"
         visible: root.torrentOpen && !!root.torrentTarget.id

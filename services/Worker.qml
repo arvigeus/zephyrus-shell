@@ -19,12 +19,18 @@ Item {
     signal failed(string message)
     signal ready()
 
-    function settle(id, result, error) {
+    function restart() {
+        if (!stopped) return;
+        stopped = false;
+        worker.running = true;
+    }
+
+    function settle(id, result, error, errorCode) {
         const pending = callbacks[id];
         delete callbacks[id];
         if (!pending) return;
         pendingCount--;
-        try { pending.callback(result, error || ""); }
+        try { pending.callback(result, error || "", errorCode || ""); }
         catch (exception) {
             console.error(serviceName + " response handler failed:", exception);
             failed(serviceName + " could not display that response. Retry the request.");
@@ -85,7 +91,7 @@ Item {
                     root.failed(message);
                     return;
                 }
-                root.settle(response.id, response.result, response.error);
+                root.settle(response.id, response.result, response.error, response.error_code);
             }
         }
         onExited: {

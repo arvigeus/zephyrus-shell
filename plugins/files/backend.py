@@ -11,6 +11,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+if __name__ == "__main__":
+    sys.modules["plugins.files.backend"] = sys.modules[__name__]
+from plugins.files.cloud import name_checked, provider
+from plugins.files.drive_sign_in import DriveSignIn
+from plugins.files.transfers import transfer
+from plugins.files.working_copies import WorkingCopies
+from services.jobs import Jobs
+
+JOBS = Jobs()
+DRIVE_SIGN_IN = DriveSignIn(JOBS)
 HOME = Path(os.environ.get("HOME", "/")).expanduser().resolve()
 ACTION_PLACEHOLDER = re.compile(r"\{(path|name|directory|stem|extension)\}")
 ACTION_PROCESSES = {}
@@ -52,6 +63,7 @@ def list_directory(value):
                             "hidden": entry.name.startswith("."),
                             "extension": child.suffix.lower(),
                             "size_label": "" if is_directory else human_size(size),
+                            "size": size,
                         }
                     )
                 except (OSError, RuntimeError):
@@ -79,6 +91,9 @@ def spawn(command):
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+
+
+EDITS = WorkingCopies(JOBS, spawn)
 
 
 def custom_action_configuration():
@@ -211,6 +226,8 @@ def custom_action_status(value):
 
 
 def stop_custom_actions(signum=None, _frame=None):
+    EDITS.stop()
+    JOBS.stop()
     processes = list(ACTION_PROCESSES.values())
     for process in processes:
         if process.poll() is None:
@@ -264,8 +281,42 @@ def delete_entry(value):
 
 def run(request):
     op = request.get("op")
+    if op == "jobs":
+        return JOBS.snapshots()
+    if op == "edit_sessions":
+        return EDITS.poll()
+    if op == "edit_session_action":
+        return EDITS.action(request.get("session_id"), request.get("pause", False))
+    if op == "cancel_job":
+        return JOBS.cancel(request.get("job_id"))
+    if op == "connect_drive":
+        return DRIVE_SIGN_IN.start_or_reopen()
+    if op == "complete_drive_sign_in":
+        return DRIVE_SIGN_IN.complete(request.get("callback_url"))
+    if op == "transfer":
+        return JOBS.start(str(request.get("title") or "File transfer"), lambda: transfer(request))
+    location = request.get("provider", "local")
+    if op == "open" and location != "local":
+        return JOBS.start(
+            str(request.get("title") or "Open cloud file"),
+            lambda: EDITS.open(location, request.get("path")),
+        )
     if op == "list":
-        return list_directory(request.get("path"))
+        return (
+            list_directory(request.get("path"))
+            if location == "local"
+            else provider(location).list(request.get("path"), request.get("cursor", ""))
+        )
+    if op == "mkdir":
+        name = name_checked(request.get("name"))
+        if location == "local":
+            path = safe_path(request.get("path")) / name
+            path.mkdir()
+        else:
+            path = provider(location).mkdir(request.get("path"), name)
+        return {"message": "Created " + name, "path": str(path)}
+    if location != "local":
+        raise ValueError("Use Download or Open in browser for cloud files.")
     if op == "custom_actions":
         return matching_custom_actions(request.get("path"))
     if op == "custom_action":
@@ -343,7 +394,21 @@ def main():
     serve(
         run,
         latest=("list",),
-        controls=("delete", "open", "reveal", "copy", "terminal", "custom_action"),
+        controls=(
+            "delete",
+            "open",
+            "reveal",
+            "copy",
+            "terminal",
+            "custom_action",
+            "mkdir",
+            "transfer",
+            "connect_drive",
+            "complete_drive_sign_in",
+            "cancel_job",
+            "edit_session_action",
+        ),
+        scope=lambda r: (r["op"], r.get("provider", "local"), r.get("context", "browse")),
     )
 
 

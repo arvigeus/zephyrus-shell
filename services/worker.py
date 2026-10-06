@@ -53,7 +53,10 @@ def serve(
                 # must settle its callback too, rather than vanish in a Future.
                 encoded = json.dumps(response, ensure_ascii=False)
             except errors as error:
-                encoded = json.dumps({"id": request["id"], "error": str(error)})
+                response = {"id": request["id"], "error": str(error)}
+                if code := getattr(error, "code", None):
+                    response["error_code"] = code
+                encoded = json.dumps(response)
             except Exception:
                 _LOG.exception("Worker operation %s failed", request["op"])
                 encoded = json.dumps(

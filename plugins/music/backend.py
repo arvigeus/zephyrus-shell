@@ -72,6 +72,7 @@ from plugins.music.records import (
 )
 from scripts.open_browser import browser_argv
 from services.cache import JsonCache
+from services.jobs import Jobs, check_cancelled, current_job, progress
 from services.mpv import MpvIpc
 from services.storage import atomic_write
 
@@ -92,6 +93,7 @@ _artist_biography_cache = {}
 _artist_biography_lock = Lock()
 _lyrics_cooldowns = {}
 _lyrics_cooldown_lock = Lock()
+JOBS = Jobs(errors=(MusicError, ValueError))
 _download_processes = set()
 _download_processes_lock = Lock()
 
@@ -1065,6 +1067,8 @@ def save_stream_track(track, provider, directory):
             "A song needs a title, artist, album, and full release date to save to Music."
         )
     stem = f"{safe_name(title)} - {safe_name(artist)} - {safe_name(album)} ({release_date})"
+    check_cancelled()
+    progress(detail="Saving " + title)
     resolved = resolve_track(track, providers=[provider], local_first=False)
     headers = provider_headers(provider)
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
@@ -1079,6 +1083,10 @@ def save_stream_track(track, provider, directory):
     ) as output:
         temporary = Path(output.name)
     process = None
+    progress_path = temporary.with_suffix(".progress")
+    job = current_job()
+    if job:
+        command += ["-progress", str(progress_path), "-stats_period", "0.5"]
     try:
         try:
             process = subprocess.Popen(
@@ -1092,7 +1100,27 @@ def save_stream_track(track, provider, directory):
         with _download_processes_lock:
             _download_processes.add(process)
         try:
-            process.communicate(timeout=1800)
+            if not job:
+                process.communicate(timeout=1800)
+            else:
+                deadline = time.monotonic() + 1800
+                base = job.snapshot()["done"]
+                duration = float(track.get("duration") or 0)
+                while True:
+                    check_cancelled()
+                    try:
+                        process.communicate(timeout=0.5)
+                        break
+                    except subprocess.TimeoutExpired:
+                        if time.monotonic() > deadline:
+                            raise
+                        if progress_path.exists() and duration > 0:
+                            text = progress_path.read_text()[-8192:]
+                            values = re.findall(r"out_time_us=(\d+)", text)
+                            if values:
+                                fraction = min(0.99, int(values[-1]) / 1000000 / duration)
+                                progress(done=base + fraction)
+                progress(done=base + 1)
         except subprocess.TimeoutExpired as error:
             process.kill()
             process.communicate()
@@ -1120,9 +1148,11 @@ def save_stream_track(track, provider, directory):
             with _download_processes_lock:
                 _download_processes.discard(process)
         temporary.unlink(missing_ok=True)
+        progress_path.unlink(missing_ok=True)
 
 
 def stop_downloads(signum, frame):
+    JOBS.stop()
     with _download_processes_lock:
         processes = list(_download_processes)
     for process in processes:
@@ -1138,6 +1168,7 @@ def save_stream_download(kind, item, provider):
         raise MusicError("Install ffmpeg to save music streams.")
     directory = xdg_dir("XDG_MUSIC_DIR", "Music")
     if kind == "track":
+        progress(total=1, unit="tracks")
         try:
             path = save_stream_track(item, provider, directory)
         except OSError as error:
@@ -1153,9 +1184,12 @@ def save_stream_download(kind, item, provider):
         directory.mkdir(parents=True, exist_ok=True)
     except OSError as error:
         raise MusicError("Could not write the music download.") from error
+    progress(total=len(tracks), unit="tracks")
     saved = 0
     first_failure = None
-    for track in tracks:
+    for index, track in enumerate(tracks):
+        check_cancelled()
+        progress(done=index)
         try:
             save_stream_track(track, provider, directory)
             saved += 1
@@ -1544,6 +1578,12 @@ def favorites_save(args):
 
 def dispatch(args):
     operation = args.get("op")
+    if operation == "jobs":
+        return JOBS.snapshots()
+    if operation == "cancel_job":
+        return JOBS.cancel(args.get("job_id"))
+    if operation == "download_start":
+        return JOBS.start(str(args.get("title") or "Save music"), lambda: open_download(args))
     if operation == "local-songs":
         local_data = (
             Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
@@ -1602,6 +1642,8 @@ def main():
         errors=(MusicError,),
         latest=("search", "search-page", "artist", "artist-info", "album", "lyrics", "play"),
         controls=(
+            "download_start",
+            "cancel_job",
             "player-command",
             "player-state",
             "player-cleanup",

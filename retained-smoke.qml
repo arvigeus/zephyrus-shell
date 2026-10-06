@@ -46,7 +46,7 @@ ShellRoot {
                 } else if (step === 1) {
                     musicItem = content("music");
                     if (!musicItem) return;
-                    ShellState.requestKeepRunning("music", true);
+                    musicItem.requestRetention(true);
                     ShellState.toggle("left");
                     if (ShellState.pluginId !== "music" || ShellState.panel !== "left") { fail("Drawer displaced Music"); return; }
                     ShellState.showDesktop(); step++; ticks = 0;
@@ -110,7 +110,7 @@ ShellRoot {
                 } else if (step === 13) {
                     musicItem = content("music");
                     if (!musicItem) return;
-                    musicItem.host.requestKeepRunning("music", true);
+                    musicItem.requestRetention(true);
                     ShellState.reconcileScreens(["primary"]);
                     secondarySurface.active = false;
                     step++; ticks = 0;

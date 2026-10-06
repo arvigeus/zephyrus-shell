@@ -22,6 +22,7 @@ asynchronous loader. Escape cancels loading or closes the active module.
 Every root exposes `property var host`. Its host belongs to that instance:
 
 - `host.close()` stops that instance, including when hidden.
+- `host.hide()` selects Desktop when that instance is visible; retained work continues.
 - `host.back()` stops it and opens Spaces when it is the foreground module.
 - `host.requestKeepRunning(id, enabled)` retains only its own ID while background
   work continues. Release it when that work ends.

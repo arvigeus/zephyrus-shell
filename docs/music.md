@@ -1,5 +1,19 @@
 # Music
 
+Downloads and status messages use floating **Activity** popups, so progress does
+not resize the music tables. Stream saves share Files' job queue UI, with
+cancellation, track progress, and time estimates when duration is available.
+Completed saves refresh Local automatically. Multiple saves can be queued; the
+worker runs at most two concurrently and preserves existing track filenames.
+
+Music owns its torrent service and continues polling while hidden, so downloads
+and imports keep running after selecting Desktop or another space. Retention
+combines playback, stream saves, and torrent work; hidden Music is released when
+all three become idle. **Activity → Manage download** opens the existing review
+and hold-to-delete controls in a popup. Torrent progress uses qBittorrent's size,
+speed, and ETA; qBittorrent itself keeps running after an explicit Music close.
+Escape or explicit Close stops Music's owned stream saves, player, and workers.
+
 The **Local** song view and song, album, and artist qBittorrent searches for
 public domain music or audio authorized for AI training are described in
 [Local library and qBittorrent](torrents.md). The Find icon sits with each

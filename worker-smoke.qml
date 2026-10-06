@@ -11,6 +11,7 @@ ShellRoot {
     }
     TorrentService { id: torrents }
     SubtitleService { id: subtitles }
+    Worker { id: recovery; backend: "tests/fixtures/stopped-worker.py"; startOnDemand: true }
     Timer {
         interval: 100; repeat: true; running: true
         property int ticks: 0
@@ -38,7 +39,23 @@ ShellRoot {
             } else if (phase === 1 && replies === 3) {
                 if (files.pendingCount || torrents.pendingCount || !files.processReady || !torrents.processReady || subtitles.processReady)
                     { fail("Unexpected worker lifetime or pending callbacks"); return; }
-                console.log("WORKER PASS: unused services stay stopped, startup requests settle, callbacks release");
+                phase = 2;
+                recovery.request("list", {}, (result, failure) => {
+                    if (!failure) { fail("Stopped worker did not fail its pending request"); return; }
+                    replies++;
+                });
+            } else if (phase === 2 && recovery.stopped && replies === 4) {
+                if (recovery.pendingCount) { fail("Stopped worker left pending callbacks"); return; }
+                recovery.backend = "plugins/files/backend.py";
+                recovery.restart();
+                phase = 3;
+                recovery.request("list", {}, (result, failure) => {
+                    if (failure || !result || !Array.isArray(result.entries)) { fail("Restarted worker did not recover: " + failure); return; }
+                    replies++;
+                });
+            } else if (phase === 3 && replies === 5) {
+                if (recovery.stopped || recovery.pendingCount || !recovery.processReady) { fail("Unexpected restarted worker state"); return; }
+                console.log("WORKER PASS: unused services stay stopped, startup requests settle, callbacks release, stopped worker restarts and accepts requests");
                 Qt.quit();
             }
         }

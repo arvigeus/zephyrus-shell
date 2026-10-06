@@ -6,6 +6,7 @@ import "../core/theme"
 Button {
     id: root
     property string iconName: ""
+    property url iconArtwork: ""
     property string toolTip: text
     property bool destructive: false
     property real cornerRadius: Theme.controlRadius
@@ -22,7 +23,8 @@ Button {
     ToolTip.delay: 800
     contentItem: RowLayout {
         spacing: 8
-        Icon { visible: !!root.iconName; name: root.iconName; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
+        Icon { visible: !!root.iconName && !root.iconArtwork.toString(); name: root.iconName; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
+        AppIcon { visible: !!root.iconArtwork.toString(); artwork: root.iconArtwork; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
         Label {
             text: root.text
             Layout.fillWidth: true

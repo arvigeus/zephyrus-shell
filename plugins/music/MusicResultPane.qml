@@ -235,7 +235,7 @@ Item {
                                     W.IconButton {
                                         objectName: "musicPaneTrackDownload"
                                         visible: !!root.controller.downloadCapabilities.track
-                                        enabled: !root.controller.downloadLoading
+                                        enabled: true
                                         Layout.preferredWidth: 28
                                         Layout.preferredHeight: 28
                                         iconName: "download"
@@ -386,7 +386,7 @@ Item {
                             W.IconButton {
                                 objectName: "musicPaneAlbumDownload"
                                 visible: !!root.controller.downloadCapabilities.album
-                                enabled: !root.controller.downloadLoading
+                                enabled: true
                                 Layout.preferredWidth: 28
                                 Layout.preferredHeight: 28
                                 iconName: "download"

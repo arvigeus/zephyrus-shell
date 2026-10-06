@@ -148,6 +148,9 @@ Item {
                 QtObject {
                     readonly property int apiVersion: 1
                     function close() { ShellState.stopPlugin(retained.pluginId); }
+                    function hide() {
+                        if (ShellState.pluginId === retained.pluginId) ShellState.showDesktop();
+                    }
                     function back() {
                         if (ShellState.pluginId === retained.pluginId) ShellState.backToSpaces();
                         else ShellState.stopPlugin(retained.pluginId);

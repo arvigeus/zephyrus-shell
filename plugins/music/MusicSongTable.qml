@@ -128,7 +128,7 @@ ColumnLayout {
                             W.IconButton {
                                 objectName: "musicTableTrackDownload"
                                 visible: !!root.controller.downloadCapabilities.track
-                                enabled: !root.controller.downloadLoading
+                                enabled: true
                                 Layout.preferredWidth: 28
                                 Layout.preferredHeight: 28
                                 iconName: "download"
@@ -254,7 +254,7 @@ ColumnLayout {
                             W.IconButton {
                                 objectName: "musicTableAlbumDownload"
                                 visible: !!root.controller.downloadCapabilities.album
-                                enabled: !root.controller.downloadLoading
+                                enabled: true
                                 Layout.preferredWidth: 28
                                 Layout.preferredHeight: 28
                                 iconName: "download"

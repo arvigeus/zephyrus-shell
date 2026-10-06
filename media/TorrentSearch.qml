@@ -7,6 +7,11 @@ import "../widgets" as W
 ColumnLayout {
     id: root
     property var host
+    property bool popupActivity: false
+    onErrorChanged: { if (popupActivity && error) activity.notify(error, true); }
+    onLookupErrorChanged: { if (popupActivity && lookupError) activity.notify(lookupError, true); }
+    onInfoChanged: { if (popupActivity && info) activity.notify(info, false); }
+    function showJobPanel() { jobPanel.open(); }
     required property var title
     property bool tracksLoading: false
     property string lookupError: ""
@@ -271,7 +276,7 @@ ColumnLayout {
     }
     onTitleChanged: if (currentContextId() !== contextId) prepare()
     onCatalogueTracksChanged: trackPicker.currentIndex = 0
-    onVisibleChanged: if (visible) { if (!query) query = suggestedQuery(); connect(); }
+    onVisibleChanged: { if (visible) { if (!query) query = suggestedQuery(); connect(); } else { activity.close(); jobPanel.close(); } }
     Component.onCompleted: prepare()
     Component.onDestruction: if (searchId >= 0) service.request("stop", {job_id:searchId}, () => {})
     Timer { interval: 1800; repeat: true; running: root.visible && root.searching; onTriggered: root.pollSearch() }
@@ -295,13 +300,13 @@ ColumnLayout {
         W.Action { iconName: "search"; text: "Search"; enabled: !!root.query.trim(); onClicked: root.find() }
         W.BusySpinner { running: root.searching; visible: running; Layout.preferredWidth: 26; Layout.preferredHeight: 26 }
     }
-    W.Label { visible: !!root.error; Layout.fillWidth: true; text: root.error; color: Theme.danger; wrapMode: Text.Wrap }
+    W.Label { visible: !root.popupActivity && !!root.error; Layout.fillWidth: true; text: root.error; color: Theme.danger; wrapMode: Text.Wrap }
     RowLayout {
         visible: root.canStartQbittorrent || root.startLoading || root.launchPending
         W.Action { iconName: "power"; text: root.startLoading || root.launchPending ? "Starting qBittorrent…" : "Start qBittorrent"; enabled: root.canStartQbittorrent && !root.startLoading && !root.launchPending; onClicked: root.startQbittorrent() }
         W.BusySpinner { running: root.startLoading || root.launchPending; visible: running; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
     }
-    W.Label { visible: !!root.info; Layout.fillWidth: true; text: root.info; color: Theme.muted; wrapMode: Text.Wrap }
+    W.Label { visible: !root.popupActivity && !!root.info; Layout.fillWidth: true; text: root.info; color: Theme.muted; wrapMode: Text.Wrap }
     ListView {
         id: resultList
         visible: !root.reviewJobId && !root.inspectRow.url
@@ -358,13 +363,43 @@ ColumnLayout {
     }
     W.Action { visible: !!root.inspectRow.url && root.inspectFiles.length > 0; iconName: "download"; text: "Download selected files"; enabled: root.selectedFiles.length > 0; onClicked: root.commitQueue(root.inspectRow, root.selectedFiles) }
     Repeater {
-        model: root.jobs
+        model: root.popupActivity ? [] : root.jobs
         RowLayout {
             required property var modelData
             Layout.fillWidth: true
             W.Label { Layout.fillWidth: true; text: modelData.title + " · " + modelData.status + " · " + Math.round(modelData.progress * 100) + "%" + (modelData.message ? " · " + modelData.message : ""); color: modelData.status === "review" ? Theme.danger : Theme.muted; wrapMode: Text.Wrap }
             W.Action { visible: modelData.status === "review"; text: "Review files"; onClicked: root.review(modelData) }
             W.HoldDelete { torrent: true; onActivated: root.deleteJob(modelData) }
+        }
+    }
+    W.OperationCenter { id: activity; parent: root }
+    Popup {
+        id: jobPanel
+        parent: root
+        width: Math.min(600, root.width - 24)
+        height: Math.min(implicitHeight, root.height - 24)
+        x: (root.width - width) / 2; y: (root.height - height) / 2
+        modal: false; focus: true; popupType: Popup.Item
+        padding: 14
+        background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.controlRadius }
+        contentItem: ColumnLayout {
+            spacing: 10
+            RowLayout {
+                Layout.fillWidth: true
+                W.Label { text: "Downloads for " + (root.title.title || "this item"); Layout.fillWidth: true; elide: Text.ElideRight }
+                W.IconButton { iconName: "x"; text: "Close download panel"; onClicked: jobPanel.close() }
+            }
+            Repeater {
+                model: root.jobs
+                RowLayout {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    W.Label { Layout.fillWidth: true; text: modelData.title + " · " + modelData.status + " · " + Math.round((modelData.progress || 0) * 100) + "%"; elide: Text.ElideRight }
+                    W.Action { visible: modelData.status === "review"; text: "Review files"; onClicked: { root.review(modelData); jobPanel.close(); } }
+                    W.HoldDelete { torrent: true; onActivated: root.deleteJob(modelData) }
+                }
+            }
+            W.Label { visible: !root.jobs.length; text: "No tracked downloads for this item"; color: Theme.muted }
         }
     }
     W.Action {
@@ -413,7 +448,7 @@ ColumnLayout {
         W.SearchField { id: songLookup; Layout.fillWidth: true; placeholderText: "Find catalogue song by title or artist…"; onAccepted: root.trackLookupRequested(text.trim()) }
         W.IconButton { iconName: "search"; text: "Search catalogue songs"; enabled: !!songLookup.text.trim() && !root.tracksLoading; onClicked: root.trackLookupRequested(songLookup.text.trim()) }
     }
-    W.Label { visible: !!root.lookupError; Layout.fillWidth: true; text: root.lookupError; color: Theme.danger; wrapMode: Text.Wrap }
+    W.Label { visible: !root.popupActivity && !!root.lookupError; Layout.fillWidth: true; text: root.lookupError; color: Theme.danger; wrapMode: Text.Wrap }
     ListView {
         id: reviewList
         objectName: "torrentReviewList"

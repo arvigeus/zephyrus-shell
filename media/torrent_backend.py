@@ -942,6 +942,13 @@ class TorrentBackend:
                     if status in ("imported", "review")
                     else (torrent.get("state") if torrent else status),
                     "progress": progress,
+                    "total": int(torrent.get("size") or 0) if torrent else 0,
+                    "downloaded": int(torrent.get("downloaded") or 0) if torrent else 0,
+                    "speed": int(torrent.get("dlspeed") or 0) if torrent else 0,
+                    "eta": int(torrent.get("eta") or 0)
+                    if torrent and torrent.get("eta") not in (None, 8640000)
+                    else None,
+                    "record": title,
                     "message": message,
                 }
             )

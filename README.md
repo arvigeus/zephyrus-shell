@@ -186,6 +186,9 @@ bash scripts/check-games.sh
 bash scripts/check-workers.sh
 bash scripts/check-modules.sh
 bash scripts/check-retained.sh
+bash scripts/check-transfers.sh
+bash scripts/check-file-open.sh
+bash scripts/check-drive-sign-in.sh
 bash scripts/check-tray.sh
 bash scripts/check-spaces.sh
 bash scripts/check-desktop.sh

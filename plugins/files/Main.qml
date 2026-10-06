@@ -6,10 +6,86 @@ import "../../widgets"
 
 ColumnLayout {
     id: root
+    property alias fileWorker: service
+    property alias transferPicker: destinationPicker
+    property alias signInDialog: driveCallback
+    property alias activityCenter: activity
     property var host
+    property string providerName: "local"
+    property var locations: ({})
+    property var cloudCrumbs: []
+    property string nextCursor: ""
+    readonly property string rootPath: providerName === "local" ? service.homePath : providerName === "nextcloud" ? "/" : "root"
+    readonly property int activeWorkCount: service.activeJobCount + service.activeEditCount + activeActionJobs.length + pendingActionStarts
+    readonly property bool driveSignInActive: service.jobs.some(job => job.title === "Connect Google Drive" && ["queued", "running"].includes(job.state) && !job.cancel_requested)
+    onHostChanged: updateActionRetention()
+    onVisibleChanged: {
+        if (!visible) {
+            destinationPicker.close(); newFolder.close(); driveCallback.close(); activity.close();
+            if (activeActionsMenu) activeActionsMenu.close();
+        }
+    }
+    onActiveWorkCountChanged: updateActionRetention()
+    property bool statusIsError: false
+    onStatusTextChanged: { if (statusText) activity.notify(statusText, statusIsError); }
+    function notifyStatus(message, error) { statusText = ""; statusIsError = !!error; statusText = message || ""; }
+
+    function switchProvider(name) {
+        if (activeActionsMenu) activeActionsMenu.close();
+        locations = Object.assign({}, locations, {[providerName]: {path: currentPath, crumbs: breadcrumbs(currentPath)}});
+        providerName = name;
+        pendingDeletePath = "";
+        search.text = "";
+        entries = [];
+        const saved = locations[name];
+        cloudCrumbs = saved && saved.crumbs ? saved.crumbs : [{label: name === "nextcloud" ? "Nextcloud" : "My Drive", path: rootPath}];
+        currentPath = saved && saved.path ? saved.path : rootPath;
+        load(currentPath);
+    }
+    function chooseTransfer(entry, destination, move) {
+        const saved = Object.assign({}, locations, {[providerName]: {path: currentPath, crumbs: breadcrumbs(currentPath)}});
+        destinationPicker.begin(providerName, entry, destination || (providerName === "local" ? "nextcloud" : "local"), saved, move);
+    }
+    function jump(path) {
+        if (providerName === "gdrive") {
+            const index = cloudCrumbs.findIndex(c => c.path === path);
+            if (index >= 0) cloudCrumbs = cloudCrumbs.slice(0, index + 1);
+        }
+        load(path);
+    }
+    function createFolder() { folderName.text = ""; newFolder.open(); }
+    function connectDrive() {
+        activity.open();
+        service.connectDrive();
+    }
+    function retryFolder() {
+        if (providerName === "gdrive" && driveNeedsSignIn) connectDrive();
+        else load(currentPath);
+    }
+    function finishDriveSignIn() { activity.close(); driveCallback.open(); }
+    function submitDriveCallback() {
+        const url = callbackAddress.text.trim();
+        if (!url || driveCallback.submitting) return;
+        callbackAddress.clear();
+        driveCallback.submitting = true;
+        service.request("complete_drive_sign_in", {callback_url: url}, (result, error) => {
+            driveCallback.submitting = false;
+            activity.notify(error || result.message, !!error);
+            if (!error) driveCallback.close();
+        });
+    }
+    function handleOpen(payload) {
+        if (!payload || !payload.path) return;
+        if (providerName !== "local") switchProvider("local");
+        load(payload.path);
+    }
     property string currentPath: ""
     property var entries: []
     property string errorText: ""
+    property bool driveNeedsSignIn: false
+    readonly property string folderRetryText: driveNeedsSignIn
+        ? (driveSignInActive ? "Continue Google sign-in" : "Connect Google Drive")
+        : "Retry loading folder"
     property string statusText: ""
     property string pendingDeletePath: ""
     property bool loading: true
@@ -24,7 +100,15 @@ ColumnLayout {
     spacing: 12
 
     function breadcrumbs(path) {
-        const parts = path === service.homePath ? [] : path.substring(service.homePath.length + 1).split("/");
+        if (providerName === "gdrive") return cloudCrumbs;
+        if (providerName === "nextcloud") {
+            let accumulated = "";
+            return [{label: "Nextcloud", path: "/"}].concat((path || "").split("/").filter(Boolean).map(part => {
+                accumulated += "/" + part;
+                return {label: part, path: accumulated};
+            }));
+        }
+        const parts = !path || path === service.homePath ? [] : path.substring(service.homePath.length + 1).split("/");
         const result = [{label: "Home", path: service.homePath}];
         let accumulated = service.homePath;
         for (const part of parts) {
@@ -45,38 +129,50 @@ ColumnLayout {
     }
     function copyPath(path) {
         service.request("copy", {path: path}, function(result, error) {
-            statusText = error || (result ? result.message : "");
+            notifyStatus(error || (result ? result.message : ""), !!error);
         });
     }
-    function activate() { fileList.forceActiveFocus(); }
+    function activate() { fileList.forceActiveFocus(); if (activeWorkCount) activity.open(); }
 
-    function load(path) {
+    function load(path, more) {
         const generation = ++browseGeneration;
+        if (!more && path && path !== currentPath) entries = [];
+        currentPath = path || rootPath;
         loading = true;
         errorText = "";
-        service.request("list", {path: path || ""}, function(result, error) {
+        driveNeedsSignIn = false;
+        service.request("list", {provider: providerName, path: path || rootPath, cursor: more ? nextCursor : "", context: "browse"}, function(result, error, errorCode) {
             if (generation !== browseGeneration) return;
             loading = false;
-            if (error) { errorText = error; entries = []; return; }
+            if (error) {
+                driveNeedsSignIn = errorCode === "google_drive_sign_in_required";
+                errorText = error;
+                activity.notify(error, true);
+                return;
+            }
             currentPath = result.path;
-            entries = result.entries;
+            entries = (more ? entries : []).concat(result.entries);
+            nextCursor = result.cursor || "";
             fileList.currentIndex = root.visibleEntries.length ? 0 : -1;
             Qt.callLater(() => fileList.forceActiveFocus());
         });
     }
     function openEntry(entry) {
         statusText = "";
-        if (entry.is_dir) load(entry.path);
+        if (entry.is_dir) {
+            if (providerName === "gdrive") cloudCrumbs = cloudCrumbs.concat([{label: entry.name, path: entry.target_path || entry.path}]);
+            load(entry.target_path || entry.path);
+        } else if (providerName !== "local") service.openCloudFile(providerName, entry);
         else service.request("open", {path: entry.path}, function(result, error) {
-            statusText = error || "";
-            if (!error && result && host) host.close();
+            notifyStatus(error || "", !!error);
+            if (!error && result && host && !activeWorkCount) host.close();
         });
     }
     function runAction(op, entry) {
         statusText = "";
         service.request(op, {path: entry.path}, function(result, error) {
-            statusText = error || (result ? result.message : "");
-            if (!error && result && ["terminal", "reveal"].includes(op) && host) host.close();
+            notifyStatus(error || (result ? result.message : ""), !!error);
+            if (!error && result && ["terminal", "reveal"].includes(op) && host && !activeWorkCount) host.close();
         });
     }
     function showActions(button, menu, selectedIndex) {
@@ -106,10 +202,11 @@ ColumnLayout {
             deleteConfirmation.stop();
         }
         const generation = ++actionMenuGeneration;
+        if (providerName !== "local") { showActions(button, menu, 0); return; }
         service.request("custom_actions", {path: entry.path}, function(result, error) {
             if (generation !== actionMenuGeneration || !menu.anchorEntry || menu.anchorEntry.path !== entry.path) return;
             menu.customActions = error || !result ? [] : result.actions;
-            if (error) statusText = error;
+            if (error) notifyStatus(error, true);
             showActions(button, menu, pendingDeletePath === entry.path ? 4 : 0);
         });
     }
@@ -142,11 +239,11 @@ ColumnLayout {
         service.request("custom_action", {path: entry.path, index: action.index}, function(result, error) {
             pendingActionStarts = Math.max(0, pendingActionStarts - 1);
             if (error) {
-                statusText = error;
+                notifyStatus(error, true);
                 updateActionRetention();
                 return;
             }
-            statusText = result ? result.message : "";
+            notifyStatus(result ? result.message : "", false);
             if (result && result.job_id !== undefined) {
                 activeActionJobs = activeActionJobs.concat([{jobId: result.job_id, name: action.name}]);
             }
@@ -154,7 +251,7 @@ ColumnLayout {
         });
     }
     function updateActionRetention() {
-        if (host) host.requestKeepRunning("files", pendingActionStarts > 0 || activeActionJobs.length > 0);
+        if (host) host.requestKeepRunning("files", activeWorkCount > 0);
     }
     function pollActionJobs() {
         for (const job of activeActionJobs.slice()) {
@@ -168,18 +265,18 @@ ColumnLayout {
                 delete nextPolling[key];
                 pollingActionJobs = nextPolling;
                 if (error) {
-                    statusText = error;
+                    notifyStatus(error, true);
                     activeActionJobs = activeActionJobs.filter(item => item.jobId !== job.jobId);
                     updateActionRetention();
                     return;
                 }
                 if (!result || !result.finished) return;
                 activeActionJobs = activeActionJobs.filter(item => item.jobId !== job.jobId);
-                statusText = result.returncode === 0
+                notifyStatus(result.returncode === 0
                     ? "Finished " + job.name
                     : result.returncode === null
                         ? "Stopped tracking " + job.name
-                        : job.name + " exited with code " + result.returncode;
+                        : job.name + " exited with code " + result.returncode, result.returncode !== 0 && result.returncode !== null);
                 updateActionRetention();
             });
         }
@@ -194,11 +291,15 @@ ColumnLayout {
         deleteConfirmation.stop();
         pendingDeletePath = "";
         service.request("delete", {path: entry.path}, function(result, error) {
-            statusText = error || (result ? "Moved " + entry.name + " to Trash" : "");
+            notifyStatus(error || (result ? "Moved " + entry.name + " to Trash" : ""), !!error);
             if (!error && result) root.load(currentPath);
         });
     }
-    function goUp() { if (currentPath !== service.homePath) load(currentPath.substring(0, currentPath.lastIndexOf("/")) || service.homePath); }
+    function goUp() {
+        if (providerName === "gdrive") {
+            if (cloudCrumbs.length > 1) jump(cloudCrumbs[cloudCrumbs.length - 2].path);
+        } else if (currentPath !== rootPath) load(currentPath.substring(0, currentPath.lastIndexOf("/")) || rootPath);
+    }
     function moveSelection(delta) {
         if (!visibleEntries.length) return;
         fileList.currentIndex = fileList.currentIndex < 0 ? 0 : Math.max(0, Math.min(visibleEntries.length - 1, fileList.currentIndex + delta));
@@ -219,13 +320,141 @@ ColumnLayout {
         onTriggered: root.pollActionJobs()
     }
 
-    FilesService { id: service }
+    FilesService {
+        id: service
+        onJobStartFailed: message => activity.notify(message, true)
+        onExternalFileOpened: { if (root.host) root.host.hide(); }
+        onJobFinished: job => {
+            if (job.title === "Connect Google Drive") driveCallback.close();
+            activity.notify(job.error || (job.result ? job.result.message : "Transfer complete"), job.state === "failed");
+            if (job.state === "finished") {
+                if (job.result && job.result.opened && root.host) {
+                    service.awaitingEditSnapshot = true;
+                    service.pollEdits();
+                    root.host.hide();
+                } else root.load(root.currentPath);
+            }
+        }
+        onFailed: message => activity.notify(message, true)
+    }
+    OperationCenter {
+        id: activity
+        objectName: "filesActivity"
+        parent: root
+        jobs: service.jobs.map(job => job.kind === "authorization" && job.state === "running" && !job.cancel_requested ? Object.assign({}, job, {actionLabel: "Finish sign-in"}) : job).concat(service.editSessions).concat(root.activeActionJobs.map(job => ({job_id:"action:" + job.jobId, title:job.name, state:"running", detail:"Running file action", cancellable:false, done:0, total:0})))
+        retryAvailable: !!root.errorText
+        retryText: root.folderRetryText
+        onRetryRequested: root.retryFolder()
+        onCancelRequested: jobId => service.cancelJob(jobId)
+        onSecondaryActionRequested: job => service.editSessionAction(job.job_id, true)
+        onActionRequested: job => {
+            if (job.kind === "editing") service.editSessionAction(job.job_id);
+            else if (job.kind === "authorization" && job.state === "running") root.finishDriveSignIn();
+            else if (job.title === "Connect Google Drive") root.connectDrive();
+            else service.retryJob(job.job_id);
+        }
+    }
+    Dialog {
+        id: driveCallback
+        objectName: "driveCallbackDialog"
+        property bool submitting: false
+        parent: root
+        title: "Finish Google sign-in"
+        modal: true; focus: true; popupType: Popup.Item
+        x: (root.width - width) / 2; y: (root.height - height) / 2
+        width: Math.min(500, root.width - 24)
+        onOpened: callbackAddress.forceActiveFocus()
+        onClosed: callbackAddress.clear()
+        background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.controlRadius }
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label {
+                Layout.fillWidth: true
+                text: "If your browser could not reach the local page after Google consent, copy the full address from that failed page and paste it here. Use the current sign-in attempt."
+                wrapMode: Text.WordWrap
+                color: Theme.text
+            }
+            TextField {
+                id: callbackAddress
+                objectName: "driveCallbackAddress"
+                Layout.fillWidth: true
+                placeholderText: "http://127.0.0.1:…"
+                echoMode: TextInput.PasswordEchoOnEdit
+                color: Theme.text; placeholderTextColor: Theme.muted
+                font.family: Theme.font; font.pixelSize: Theme.sp(14)
+                enabled: !driveCallback.submitting
+                background: Rectangle { color: Theme.raised; border.color: callbackAddress.activeFocus ? Theme.accent : Theme.border; radius: Theme.controlRadius }
+                onAccepted: root.submitDriveCallback()
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                Action { text: "Cancel"; onClicked: driveCallback.close() }
+                Action { text: driveCallback.submitting ? "Connecting…" : "Finish sign-in"; highlighted: true; enabled: !!callbackAddress.text.trim() && !driveCallback.submitting; onClicked: root.submitDriveCallback() }
+            }
+        }
+    }
+    DestinationPicker {
+        id: destinationPicker
+        parent: root
+        service: root.fileWorker
+        onChosen: (provider, path, move) => service.startJob("transfer", {
+            source: sourceProvider, path: sourceEntry.path, destination: provider, target: path, move: move,
+            title: (move ? "Move " : "Copy ") + sourceEntry.name
+        })
+    }
+    Dialog {
+        id: newFolder
+        parent: root
+        title: "New folder"
+        modal: true; focus: true; popupType: Popup.Item
+        x: (root.width - width) / 2; y: (root.height - height) / 2
+        width: Math.min(420, root.width - 24)
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onOpened: folderName.forceActiveFocus()
+        background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.controlRadius }
+        contentItem: TextField {
+            id: folderName
+            placeholderText: "Folder name"
+            color: Theme.text; placeholderTextColor: Theme.muted
+            font.family: Theme.font; font.pixelSize: Theme.sp(14)
+            background: Rectangle { color: Theme.raised; border.color: folderName.activeFocus ? Theme.accent : Theme.border; radius: Theme.controlRadius }
+            onAccepted: newFolder.accept()
+        }
+        onAccepted: service.request("mkdir", {provider: root.providerName, path: root.currentPath, name: folderName.text.trim()}, (result, error) => {
+            activity.notify(error || result.message, !!error);
+            if (!error) root.load(root.currentPath);
+        })
+    }
+    Shortcut { sequence: "Ctrl+R"; onActivated: root.load(root.currentPath) }
+    Shortcut { sequence: "Alt+Up"; onActivated: root.goUp() }
+    Shortcut { sequence: "Ctrl+Shift+N"; onActivated: root.createFolder() }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 6
+        Repeater {
+            model: [{id:"local", name:"Local", icon:"hard-drive"}, {id:"nextcloud", name:"Nextcloud", icon:"", artwork:Qt.resolvedUrl("../../assets/brands/nextcloud.svg")}, {id:"gdrive", name:"Google Drive", icon:"cloud"}]
+            delegate: Action {
+                required property var modelData
+                text: modelData.name
+                iconName: modelData.icon
+                iconArtwork: modelData.artwork || ""
+                highlighted: root.providerName === modelData.id
+                onClicked: { if (root.providerName !== modelData.id) root.switchProvider(modelData.id); }
+            }
+        }
+        Item { Layout.fillWidth: true }
+        Action { objectName: "connectGoogleDrive"; visible: root.providerName === "gdrive"; iconName: "link"; text: root.driveSignInActive ? "Continue Google sign-in" : "Connect Google Drive"; enabled: !service.startingJobs; onClicked: root.connectDrive() }
+        Action { visible: root.providerName === "gdrive" && root.driveSignInActive; iconName: "link"; text: "Finish sign-in"; onClicked: root.finishDriveSignIn() }
+        Action { iconName: "folder-plus"; text: "New folder"; enabled: !!root.currentPath && !root.errorText && !root.loading; onClicked: root.createFolder() }
+        Action { iconName: "download"; text: root.activeWorkCount ? "Activity (" + root.activeWorkCount + ")" : "Activity"; onClicked: activity.open() }
+    }
 
     RowLayout {
         Layout.fillWidth: true
         spacing: 8
-        IconButton { iconName: "house"; text: "Go to home"; onClicked: root.load(service.homePath) }
-        IconButton { iconName: "arrow-up"; text: "Go to parent folder"; enabled: root.currentPath !== service.homePath; onClicked: root.goUp() }
+        IconButton { iconName: "house"; text: "Go to home"; onClicked: root.jump(root.rootPath) }
+        IconButton { iconName: "arrow-up"; text: "Go to parent folder"; enabled: root.providerName === "gdrive" ? root.cloudCrumbs.length > 1 : root.currentPath !== root.rootPath; onClicked: root.goUp() }
         Flickable {
             id: breadcrumbScroll
             Layout.fillWidth: true
@@ -251,7 +480,7 @@ ColumnLayout {
                             height: parent.height
                             implicitHeight: parent.height
                             flat: true
-                            onClicked: root.load(modelData.path)
+                            onClicked: root.jump(modelData.path)
                             background: Rectangle {
                                 radius: Theme.controlRadius
                                 color: parent.down ? Theme.raised : parent.hovered ? Theme.surface : "transparent"
@@ -262,9 +491,9 @@ ColumnLayout {
                 }
             }
         }
-        IconButton { iconName: root.showHidden ? "eye-off" : "eye"; text: root.showHidden ? "Hide hidden files" : "Show hidden files"; onClicked: root.showHidden = !root.showHidden }
-        IconButton { iconName: "folder-open"; text: "Open this folder in the file manager"; enabled: !!root.currentPath; onClicked: root.runAction("reveal", {path: root.currentPath}) }
-        IconButton { iconName: "copy"; text: "Copy current folder path"; enabled: !!root.currentPath; onClicked: root.copyPath(root.currentPath) }
+        IconButton { visible: root.providerName === "local"; iconName: root.showHidden ? "eye-off" : "eye"; text: root.showHidden ? "Hide hidden files" : "Show hidden files"; onClicked: root.showHidden = !root.showHidden }
+        IconButton { visible: root.providerName === "local"; iconName: "folder-open"; text: "Open this folder in the file manager"; enabled: !!root.currentPath; onClicked: root.runAction("reveal", {path: root.currentPath}) }
+        IconButton { visible: root.providerName === "local"; iconName: "copy"; text: "Copy current folder path"; enabled: !!root.currentPath; onClicked: root.copyPath(root.currentPath) }
         IconButton { iconName: "refresh-cw"; text: "Refresh"; onClicked: root.load(root.currentPath) }
     }
     RowLayout {
@@ -272,13 +501,14 @@ ColumnLayout {
         SearchField { id: search; Layout.fillWidth: true; placeholderText: "Search this folder…" }
         Label { text: root.visibleEntries.length + (root.visibleEntries.length === 1 ? " item" : " items"); color: Theme.muted }
     }
-    Label { visible: !!root.statusText; text: root.statusText; color: Theme.muted; Layout.fillWidth: true; elide: Text.ElideRight }
 
     ListView {
         id: fileList
+        objectName: "filesList"
         Layout.fillWidth: true
         Layout.fillHeight: true
         clip: true
+        enabled: !root.loading && !root.errorText
         model: root.visibleEntries
         onModelChanged: currentIndex = root.visibleEntries.length ? 0 : -1
         spacing: 2
@@ -346,6 +576,9 @@ ColumnLayout {
                     }
                     MenuItem {
                         id: terminalAction
+                        visible: root.providerName === "local"
+                        enabled: visible
+                        height: visible ? 42 : 0
                         text: "Open in terminal"
                         implicitHeight: 42
                         leftPadding: 12; rightPadding: 12
@@ -360,6 +593,9 @@ ColumnLayout {
                     }
                     MenuItem {
                         id: revealAction
+                        visible: root.providerName === "local"
+                        enabled: visible
+                        height: visible ? 42 : 0
                         text: "Show in file manager"
                         implicitHeight: 42
                         leftPadding: 12; rightPadding: 12
@@ -374,6 +610,9 @@ ColumnLayout {
                     }
                     MenuItem {
                         id: copyAction
+                        visible: root.providerName === "local"
+                        enabled: visible
+                        height: visible ? 42 : 0
                         text: "Copy path"
                         implicitHeight: 42
                         leftPadding: 12; rightPadding: 12
@@ -388,6 +627,9 @@ ColumnLayout {
                     }
                     MenuItem {
                         id: deleteAction
+                        visible: root.providerName === "local"
+                        enabled: visible
+                        height: visible ? 42 : 0
                         text: root.pendingDeletePath === row.modelData.path ? "You sure?" : "Move to Trash"
                         implicitHeight: 42
                         leftPadding: 12; rightPadding: 12
@@ -403,6 +645,14 @@ ColumnLayout {
                         Keys.onRightPressed: (event) => { root.activateMenuAction(4, row.modelData, actions); event.accepted = true; }
                         Keys.onLeftPressed: (event) => { actions.close(); event.accepted = true; }
                         Keys.onSpacePressed: (event) => { actions.close(); event.accepted = true; }
+                    }
+                    MenuItem { text: "Copy to…"; onTriggered: root.chooseTransfer(row.modelData, root.providerName === "local" ? "local" : "nextcloud", false) }
+                    MenuItem { text: "Move to…"; onTriggered: root.chooseTransfer(row.modelData, "local", true) }
+                    MenuItem {
+                        text: "Open in browser"
+                        visible: root.providerName === "gdrive" && !!row.modelData.web_url
+                        height: visible ? implicitHeight : 0
+                        onTriggered: Browser.open(row.modelData.web_url, "files", "", root.host)
                     }
                     MenuSeparator {
                         visible: actions.customActions.length > 0
@@ -454,9 +704,16 @@ ColumnLayout {
             anchors.centerIn: parent
             width: Math.min(500, parent.width - 32)
             horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
-            visible: root.loading || !!root.errorText || !root.visibleEntries.length
-            text: root.loading ? "Loading files…" : root.errorText ? root.errorText : search.text.trim() ? "No matching files." : root.showHidden ? "This folder is empty." : "This folder is empty. Hidden files are not shown."
+            visible: root.loading || (!root.errorText && !root.visibleEntries.length)
+            text: root.loading ? "Loading files…" : search.text.trim() ? "No matching files." : root.showHidden ? "This folder is empty." : "This folder is empty. Hidden files are not shown."
             color: root.errorText ? Theme.danger : Theme.muted
         }
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 38
+        Item { Layout.fillWidth: true }
+        Action { objectName: "folderRetry"; visible: !!root.errorText; text: root.folderRetryText; iconName: "refresh-cw"; onClicked: root.retryFolder() }
+        Action { visible: !!root.nextCursor && !root.errorText; enabled: !root.loading; text: "Load more"; onClicked: root.load(root.currentPath, true) }
     }
 }

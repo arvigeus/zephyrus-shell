@@ -11,4 +11,5 @@ timeout 15s dbus-run-session quickshell -p "$PWD/notifications-smoke.qml" --no-c
 cat "$notification_test_root/log"
 rg -q 'NOTIFICATIONS PASS' "$notification_test_root/log"
 test -s tests/artifacts/notification-popup.png
+test -s tests/artifacts/activity-popup.png
 if rg -q 'ReferenceError|TypeError|Cannot assign|Binding loop|ERROR qml:|NOTIFICATIONS FAIL' "$notification_test_root/log"; then exit 1; fi

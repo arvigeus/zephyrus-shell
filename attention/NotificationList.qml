@@ -214,7 +214,7 @@ Item {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Label { text: card.modelData.summary; Layout.fillWidth: true; font.weight: Font.DemiBold; wrapMode: Text.Wrap; elide: Text.ElideNone }
-                                Action { iconName: "x"; Accessible.name: "Dismiss notification"; onClicked: card.modelData.dismiss() }
+                                Action { objectName: "dismissNotification:" + card.modelData.id; iconName: "x"; Accessible.name: "Dismiss notification"; onClicked: card.modelData.dismiss() }
                             }
                             Label { text: card.modelData.body; visible: text !== ""; Layout.fillWidth: true; wrapMode: Text.Wrap; elide: Text.ElideNone; color: Theme.muted }
                             Flow {

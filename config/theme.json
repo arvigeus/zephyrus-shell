@@ -21,10 +21,10 @@
       "link_visited": "#be91e0"
     },
     "light": {
-      "background": "#f3eeef",
-      "surface": "#e9e2e4",
-      "raised": "#ddd4d8",
-      "border": "#bdb0b6",
+      "background": "#e4dde0",
+      "surface": "#d8cfd3",
+      "raised": "#cbc0c6",
+      "border": "#ab9ca4",
       "text": "#30272d",
       "muted": "#71636c",
       "accent": "#c92240",

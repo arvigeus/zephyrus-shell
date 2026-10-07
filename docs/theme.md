@@ -82,7 +82,7 @@ hyprqt6engine config points at the same generated color scheme for users who
 explicitly select that engine.
 
 Dark mode uses softer charcoal backgrounds and rose-tinted text with the red
-brand accent. Light mode uses warm off-white backgrounds and plum-tinted text.
+brand accent. Light mode uses soft warm-gray backgrounds and plum-tinted text.
 Dolphin's Places sidebar shares its file-view background. Menus use the separate
 surface color. Native document tabs have a subtle selected background and accent
 underline. Kvantum geometry is adapted from Tsu Jan's KvFlat theme; its source

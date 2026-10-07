@@ -31,6 +31,14 @@ ColumnLayout {
     property string contextId: ""
     property int generation: 0
     property var results: []
+    property var extraResults: []
+    property bool extraSearching: false
+    property string extraError: ""
+    property string extraInfo: ""
+    property bool extraSearchEnabled: false
+    signal extraSearchRequested(string query)
+    signal extraResultRequested(var result)
+    signal contextReset()
     property int resultTotal: 0
     property bool moreLoading: false
     property var jobs: []
@@ -84,6 +92,7 @@ ColumnLayout {
         if (searchId >= 0) service.request("stop", {job_id:searchId}, () => {});
         searchId = -1; results = []; resultTotal = 0; searching = false; pollLoading = false; moreLoading = false; error = ""; lookupError = ""; info = ""; reviewJobId = ""; reviewFiles = []; reviewLoading = false; inspectRow = ({}); inspectFiles = []; selectedFiles = []; inspectLoading = false;
         query = suggestedQuery();
+        contextReset();
         if (service.monitorJobs) applyJobs(service.jobs);
         else jobs = [];
         if (visible) connect();
@@ -122,6 +131,7 @@ ColumnLayout {
     function find() {
         if (!query.trim()) return;
         const pattern = query.trim();
+        if (extraSearchEnabled) extraSearchRequested(pattern);
         const current = ++generation;
         const previous = searchId;
         searchId = -1; results = []; resultTotal = 0; searching = true; pollLoading = false; moreLoading = false; error = ""; info = "";
@@ -296,10 +306,12 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true; spacing: 8
-        W.SearchField { id: searchField; Layout.fillWidth: true; text: root.query; placeholderText: "Search qBittorrent…"; onTextChanged: root.query = text; onAccepted: root.find() }
+        W.SearchField { id: searchField; Layout.fillWidth: true; text: root.query; placeholderText: root.extraSearchEnabled ? "Search providers and qBittorrent…" : "Search qBittorrent…"; onTextChanged: root.query = text; onAccepted: root.find() }
         W.Action { iconName: "search"; text: "Search"; enabled: !!root.query.trim(); onClicked: root.find() }
-        W.BusySpinner { running: root.searching; visible: running; Layout.preferredWidth: 26; Layout.preferredHeight: 26 }
+        W.BusySpinner { running: root.searching || root.extraSearching; visible: running; Layout.preferredWidth: 26; Layout.preferredHeight: 26 }
     }
+    W.Label { visible: !!root.extraError; Layout.fillWidth: true; text: root.extraError; color: Theme.danger; wrapMode: Text.Wrap }
+    W.Label { visible: !!root.extraInfo && !root.extraSearching; Layout.fillWidth: true; text: root.extraInfo; color: Theme.muted; wrapMode: Text.Wrap }
     W.Label { visible: !root.popupActivity && !!root.error; Layout.fillWidth: true; text: root.error; color: Theme.danger; wrapMode: Text.Wrap }
     RowLayout {
         visible: root.canStartQbittorrent || root.startLoading || root.launchPending
@@ -311,7 +323,7 @@ ColumnLayout {
         id: resultList
         visible: !root.reviewJobId && !root.inspectRow.url
         Layout.fillWidth: true; Layout.fillHeight: visible; clip: true
-        model: root.results
+        model: root.extraResults.concat(root.results)
         spacing: 6
         onContentYChanged: root.maybeLoadMore()
         onContentHeightChanged: root.maybeLoadMore()
@@ -325,18 +337,29 @@ ColumnLayout {
         delegate: Rectangle {
             id: resultRow
             required property var modelData
+            readonly property bool providerOffer: modelData.source === "provider"
+            readonly property string titleText: providerOffer ? String(modelData.title || "") : modelData.name
             width: resultList.width; height: resultColumn.implicitHeight + 12
             radius: Theme.controlRadius; color: Theme.surface; border.color: Theme.border
             ColumnLayout {
                 id: resultColumn
                 anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                 anchors.margins: 6; spacing: 3
-                W.Label { Layout.fillWidth: true; text: resultRow.modelData.name; wrapMode: Text.Wrap; font.bold: true }
+                W.Label { Layout.fillWidth: true; text: resultRow.titleText; wrapMode: Text.Wrap; font.bold: true }
+                W.Label {
+                    visible: resultRow.providerOffer; Layout.fillWidth: true; color: Theme.muted; wrapMode: Text.Wrap
+                    text: (resultRow.modelData.authors || []).join(", ")
+                }
                 RowLayout {
                     Layout.fillWidth: true; spacing: 8
-                    W.Label { Layout.fillWidth: true; text: root.sizeLabel(resultRow.modelData.size) + " · " + resultRow.modelData.seeders + " seeds" + (resultRow.modelData.site ? " · " + resultRow.modelData.site : "") + (resultRow.modelData.yearMismatch ? " · Different year" : "") + (resultRow.modelData.episodeMismatch ? " · Different episode" : "") + (resultRow.modelData.seasonMismatch ? " · Different season" : ""); color: resultRow.modelData.yearMismatch || resultRow.modelData.episodeMismatch || resultRow.modelData.seasonMismatch ? Theme.danger : Theme.muted; elide: Text.ElideRight }
-                    W.IconButton { iconName: "info"; text: "Release details for " + resultRow.modelData.name; visible: !!resultRow.modelData.descriptionUrl; onClicked: Browser.open(resultRow.modelData.descriptionUrl, root.title.kind === "tv" ? "series" : "movies", "", root.host) }
-                    W.IconButton { iconName: "download"; text: "Download " + resultRow.modelData.name; enabled: !resultRow.modelData.yearMismatch && !resultRow.modelData.episodeMismatch && !resultRow.modelData.seasonMismatch && !!resultRow.modelData.url; onClicked: root.queue(resultRow.modelData) }
+                    W.Label { Layout.fillWidth: true; text: resultRow.providerOffer
+                        ? ["Provider: " + resultRow.modelData.provider, resultRow.modelData.format || "Unknown format",
+                           resultRow.modelData.size_bytes !== undefined && resultRow.modelData.size_bytes !== null ? root.sizeLabel(resultRow.modelData.size_bytes) : resultRow.modelData.size || "Unknown size",
+                           resultRow.modelData.language, resultRow.modelData.year].filter(Boolean).join(" · ")
+                        : "qBittorrent · " + root.sizeLabel(resultRow.modelData.size) + " · " + resultRow.modelData.seeders + " seeds" + (resultRow.modelData.site ? " · " + resultRow.modelData.site : "") + (resultRow.modelData.yearMismatch ? " · Different year" : "") + (resultRow.modelData.episodeMismatch ? " · Different episode" : "") + (resultRow.modelData.seasonMismatch ? " · Different season" : ""); color: resultRow.modelData.yearMismatch || resultRow.modelData.episodeMismatch || resultRow.modelData.seasonMismatch ? Theme.danger : Theme.muted; wrapMode: Text.Wrap }
+                    W.IconButton { objectName: resultRow.providerOffer ? "providerDownloadButton" : ""; visible: resultRow.providerOffer; iconName: "download"; text: "Download " + resultRow.titleText; onClicked: root.extraResultRequested(resultRow.modelData) }
+                    W.IconButton { iconName: "info"; text: "Release details for " + resultRow.titleText; visible: !resultRow.providerOffer && !!resultRow.modelData.descriptionUrl; onClicked: Browser.open(resultRow.modelData.descriptionUrl, root.title.kind === "tv" ? "series" : "movies", "", root.host) }
+                    W.IconButton { visible: !resultRow.providerOffer; iconName: "download"; text: "Download " + resultRow.titleText; enabled: !resultRow.providerOffer && !resultRow.modelData.yearMismatch && !resultRow.modelData.episodeMismatch && !resultRow.modelData.seasonMismatch && !!resultRow.modelData.url; onClicked: root.queue(resultRow.modelData) }
                 }
             }
         }
@@ -372,7 +395,7 @@ ColumnLayout {
             W.HoldDelete { torrent: true; onActivated: root.deleteJob(modelData) }
         }
     }
-    W.OperationCenter { id: activity; parent: root }
+    W.OperationCenter { id: activity; parent: root; notificationTitle: "Find" }
     Popup {
         id: jobPanel
         parent: root

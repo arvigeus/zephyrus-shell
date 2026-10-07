@@ -1010,6 +1010,7 @@ ColumnLayout {
     }
     W.OperationCenter {
         id: activity
+        notificationTitle: "Music"
         parent: root
         jobs: backendService.jobs.concat(root.torrentActivity)
         retryAvailable: !!root.searchError || !!root.favoriteError

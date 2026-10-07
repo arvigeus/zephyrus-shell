@@ -190,6 +190,11 @@ shows an empty list rather than an unavailable-history error.
 Desktop notifications appear on the focused output, above applications and
 below the pill bar. Clicking the popup opens Attention; hiding it or its timeout
 leaves the notification in Attention. Quiet mode suppresses desktop popups.
+Plain status and error messages from modules use this same notification system,
+including when work finishes while the module is hidden. Attention supports
+individual dismissal and Clear all. Activity popups show transfer jobs; finished,
+failed and cancelled rows can be dismissed individually or together without
+deleting files or cancelling active work. Polling does not restore dismissed rows.
 
 Hyprland transfers workspaces and windows when an output disappears or is
 disabled. The shell checks topology changes and re-enables a connected internal

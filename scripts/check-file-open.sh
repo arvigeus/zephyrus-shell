@@ -7,6 +7,7 @@ export XDG_CONFIG_HOME="$open_test_root/config" XDG_DATA_HOME="$open_test_root/d
 export ZEPHYRUS_OPEN_FIXTURE="$open_test_root/fixture"
 export PYTHONPATH="$PWD/tests/fixtures/file-open${PYTHONPATH:+:$PYTHONPATH}"
 export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
+unset HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY
 mkdir -p "$ZEPHYRUS_OPEN_FIXTURE"
 export https_proxy=http://127.0.0.1:9 http_proxy=http://127.0.0.1:9
 unset ALL_PROXY all_proxy

@@ -7,6 +7,7 @@ export XDG_CONFIG_HOME="$drive_test_root/config" XDG_DATA_HOME="$drive_test_root
 export PYTHONPATH="$PWD/tests/fixtures/drive-sign-in${PYTHONPATH:+:$PYTHONPATH}"
 export ZEPHYRUS_DRIVE_FIXTURE="$drive_test_root/callback"
 export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
+unset HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY
 export https_proxy=http://127.0.0.1:9 http_proxy=http://127.0.0.1:9
 unset ALL_PROXY all_proxy
 export NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost

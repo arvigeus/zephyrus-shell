@@ -45,7 +45,24 @@ Item {
     property string editionsNext: ""
     property string editionsError: ""
     property bool editionsLoading: false
+    property var providerNames: []
+    property var onlineOffers: []
+    property bool offersChecked: false
+    property bool offersLoading: false
+    property bool providerResolving: false
+    property int offersGeneration: 0
+    property int offerIndex: 0
+    property string offersError: ""
+    property var findOffers: []
+    property bool findOffersLoading: false
+    property string findOffersError: ""
+    property string findOffersInfo: ""
+    property int findGeneration: 0
     property bool updatingCatalogue: false
+    readonly property bool workSelected: !!selected.id && selected.source !== "provider" && /^OL\d+W$/.test(String(selected.id))
+    readonly property bool keepRunning: service.activeJobCount > 0 || localService.keepRunning
+    onKeepRunningChanged: updateRetention()
+    readonly property var downloadJobs: service.jobs
     readonly property bool titleLoading: detailLoading
     readonly property string readingAction: selected.ebookAccess === "public" ? "Read on Open Library" : selected.ebookAccess === "borrowable" ? "Borrow on Open Library" : selected.ebookAccess === "printdisabled" ? "Preview on Open Library" : ""
 
@@ -55,7 +72,32 @@ Item {
         id: preferences
         location: "file://" + (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/zephyrus-shell/books-ui.ini"
     }
-    BooksService { id: service; onFailed: message => { root.error = message; root.loading = false; } }
+    BooksService {
+        id: service
+        onFailed: message => { root.error = message; root.loading = false; }
+        onJobStartFailed: message => { root.findOffersError = message; activity.notify(message, true); }
+        onJobFinished: job => {
+            if (job.state === "finished") { root.refreshLocalLibrary(); activity.notify("Book downloaded to " + job.result.path, false); }
+            else if (job.error) activity.notify(job.error, job.state === "failed");
+        }
+    }
+    M.TorrentService {
+        id: localService; monitorJobs: true; monitorKind: "book"
+        onLibraryChanged: root.refreshLocalLibrary()
+    }
+    W.OperationCenter {
+        id: activity; parent: root; jobs: service.jobs; notificationTitle: "Books"
+        onCancelRequested: jobId => service.cancelJob(jobId)
+        onActionRequested: job => service.retryJob(job.job_id)
+    }
+    function updateRetention() { if (host) host.requestKeepRunning("books", keepRunning); }
+    function refreshLocalLibrary() {
+        const generation = selectionGeneration;
+        if (selected.id) service.request("local_files", {title:Object.assign({}, selected, {kind:"book"})}, (result, failure) => {
+            if (generation === selectionGeneration && !failure) localFiles = result;
+        });
+        if (localMode) browse(false, false);
+    }
 
     W.DetailScrim {
         gridMode: root.gridMode
@@ -84,6 +126,7 @@ Item {
     }
     function clearSelection() {
         ++selectionGeneration;
+        resetOffers(); resetFindOffers();
         detailDelay.stop();
         selected = ({}); personal = ({favorite: false}); detailLoading = false; detailError = "";
     }
@@ -133,26 +176,27 @@ Item {
         if (!book || !book.id) return;
         if (sameBook(book, selected)) { if (tab === "author") tab = "overview"; return; }
         const generation = ++selectionGeneration;
+        resetOffers(); resetFindOffers();
         ++authorGeneration; ++editionsGeneration;
         detailDelay.stop();
         selected = book; personal = ({favorite: !!book.favorite});
         localFiles = [];
-        detailLoading = true; detailError = ""; tab = "overview";
+        detailLoading = workSelected; detailError = ""; tab = "overview";
         author = ({}); authorDetails = ({}); authorWorks = []; authorCatalogue.clear(); authorNext = ""; authorError = ""; authorLoading = false;
         editions = []; editionsNext = ""; editionsError = ""; editionsLoading = false;
-        service.request("personal", {book: book}, (result, failure) => {
+        if (workSelected) service.request("personal", {book: book}, (result, failure) => {
             if (generation === selectionGeneration && !failure && result) personal = result;
         });
         service.request("local_files", {title:Object.assign({}, book, {kind:"book"})}, (result, failure) => {
             if (generation === selectionGeneration && !failure) localFiles = result;
         });
-        detailDelay.restart();
+        if (workSelected) detailDelay.restart();
     }
     Timer {
         id: detailDelay
         interval: 170
         onTriggered: {
-            if (!root.selected.id) return;
+            if (!root.workSelected) return;
             const generation = root.selectionGeneration;
             service.request("details", {book: root.selected}, (result, failure) => {
                 if (generation !== root.selectionGeneration) return;
@@ -167,8 +211,9 @@ Item {
         }
     }
     function refreshBook() {
-        if (!selected.id) return;
+        if (!workSelected) return;
         const generation = ++selectionGeneration;
+        resetOffers();
         detailLoading = true; detailError = "";
         service.request("details", {book: selected, refresh: true}, (result, failure) => {
             if (generation !== selectionGeneration) return;
@@ -178,7 +223,7 @@ Item {
         });
     }
     function saveFavorite(value) {
-        if (!selected.id) return;
+        if (!workSelected) return;
         const generation = selectionGeneration;
         const updated = Object.assign({}, selected, {favorite: !!value});
         selected = updated; personal = ({favorite: !!value}); updateBook(updated);
@@ -217,7 +262,7 @@ Item {
         });
     }
     function loadEditions(append) {
-        if (!selected.id || (append && (editionsLoading || !editionsNext))) return;
+        if (!workSelected || (append && (editionsLoading || !editionsNext))) return;
         const generation = ++editionsGeneration;
         const offset = append ? Number(editionsNext) : 0;
         editionsLoading = true; editionsError = "";
@@ -250,7 +295,66 @@ Item {
     }
     function readingUrl() { return selected.openLibraryUrl || (selected.id ? "https://openlibrary.org/works/" + selected.id : ""); }
 
+    function resetOffers() {
+        ++offersGeneration;
+        onlineOffers = []; offersChecked = false; offersLoading = false;
+        providerResolving = false; offerIndex = 0; offersError = "";
+        onlineButton.popup.close();
+    }
+    function offerLabel(offer) {
+        return [offer.provider, offer.format || "Unknown format", offer.language,
+                offer.size_bytes !== undefined && offer.size_bytes !== null ? torrentFind.sizeLabel(offer.size_bytes) : offer.size || ""].filter(Boolean).join(" · ");
+    }
+    function readOnline(index) {
+        if (!workSelected || offersLoading || providerResolving) return;
+        if (offersChecked) { if (onlineOffers[index]) resolveOffer(onlineOffers[index]); return; }
+        const generation = ++offersGeneration;
+        offersLoading = true; offersError = "";
+        service.request("providerOffers", {book: selected}, (result, failure) => {
+            if (generation !== offersGeneration) return;
+            offersLoading = false;
+            if (failure) { offersError = failure; return; }
+            onlineOffers = result.items || []; offersChecked = true; offerIndex = 0;
+            offersError = result.warning || (onlineOffers.length ? "" : "No matching online offers found.");
+            if (onlineOffers.length === 1) resolveOffer(onlineOffers[0]);
+            else if (onlineOffers.length > 1) Qt.callLater(() => { if (generation === offersGeneration) onlineButton.popup.open(); });
+        }, 0);
+    }
+    function resolveOffer(offer) {
+        if (!offer || offer.source !== "provider" || providerResolving) return;
+        const generation = offersGeneration;
+        providerResolving = true;
+        offersError = "";
+        service.request("providerResolve", {provider: offer.provider, ref: offer.ref, purpose:"read"}, (result, failure) => {
+            if (generation !== offersGeneration) return;
+            providerResolving = false;
+            if (failure) { offersError = failure; return; }
+            Browser.open(result.url, "books", "", root.host);
+        });
+    }
+    function downloadOffer(offer) {
+        findOffersError = "";
+        service.startJob("providerDownload", {title:offer.title, offer:offer, book:selected});
+        activity.open();
+    }
+    function resetFindOffers() {
+        ++findGeneration;
+        findOffers = []; findOffersLoading = false; findOffersError = ""; findOffersInfo = "";
+    }
+    function searchProviders(query) {
+        const generation = ++findGeneration;
+        findOffers = []; findOffersLoading = true; findOffersError = ""; findOffersInfo = "";
+        service.request("providerSearch", {query: query, page: 0, limit: 10}, (result, failure) => {
+            if (generation !== findGeneration) return;
+            findOffersLoading = false;
+            if (failure) { findOffersError = failure; return; }
+            findOffers = result.items || []; findOffersError = result.warning || "";
+            if (!findOffers.length && !findOffersError) findOffersInfo = "No results from configured Books providers.";
+        }, 0);
+    }
+
     Component.onCompleted: {
+        service.request("init", {}, (result, failure) => { if (failure) error = failure; else providerNames = result.providers || []; });
         gridMode = preferences.value("catalogue/grid", false);
         service.request("local_list", {kind:"book"}, (result, failure) => {
             localMode = !failure && !!result && result.length > 0;
@@ -269,6 +373,7 @@ Item {
             W.Action { iconName: "folder-open"; text: "Local"; highlighted: root.localMode; onClicked: { root.localMode = true; root.favorites = false; root.browse(false, false); } }
             W.Action { iconName: "globe"; text: "Discover"; highlighted: !root.localMode && !root.favorites; onClicked: { root.localMode = false; root.favorites = false; root.browse(false, false); } }
             W.Action { iconName: "star"; text: "Favorites"; highlighted: !root.localMode && root.favorites; onClicked: { root.localMode = false; root.favorites = true; root.browse(false, false); } }
+            W.Action { iconName: "download"; text: service.activeJobCount ? "Transfers (" + service.activeJobCount + ")" : "Activity"; onClicked: activity.open() }
             Item { Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 0 }
             Flickable {
                 id: inlineFilters; objectName: "inlineFilters"
@@ -406,21 +511,31 @@ Item {
                         Flow {
                             Layout.fillWidth: true; spacing: 6
                             W.IconButton { visible: root.localFiles.length > 0; iconName: "folder-open"; text: "Open local book"; onClicked: External.launch(["xdg-open", root.localFiles[0].path], root.host) }
+                            M.SplitButton {
+                                id: onlineButton; objectName: "readOnlineButton"
+                                visible: root.workSelected && root.providerNames.length > 0
+                                text: "Read online"; iconName: "book-open"
+                                busy: root.offersLoading || root.providerResolving
+                                enabled: !busy && (!root.offersChecked || root.onlineOffers.length > 0)
+                                options: root.onlineOffers.map(root.offerLabel); currentIndex: root.offerIndex
+                                onTriggered: index => { root.offerIndex = index; root.readOnline(index); }
+                            }
                             W.IconButton {
                                 objectName: "openLibraryButton"
+                                visible: root.workSelected
                                 iconName: "book-open"
                                 text: root.readingAction || "Open in Open Library"
                                 Accessible.name: text
                                 onClicked: Browser.open(root.readingUrl(), "books", "", root.host)
                             }
-                            W.IconButton { objectName: "favoriteButton"; iconName: root.personal.favorite ? "star-filled" : "star"; text: root.personal.favorite ? "Remove from Favorites" : "Add to Favorites"; onClicked: root.saveFavorite(!root.personal.favorite) }
-                            W.IconButton { iconName: "refresh-cw"; text: "Refresh book details"; onClicked: root.refreshBook() }
+                            W.IconButton { objectName: "favoriteButton"; visible: root.workSelected; iconName: root.personal.favorite ? "star-filled" : "star"; text: root.personal.favorite ? "Remove from Favorites" : "Add to Favorites"; onClicked: root.saveFavorite(!root.personal.favorite) }
+                            W.IconButton { visible: root.workSelected; iconName: "refresh-cw"; text: "Refresh book details"; onClicked: root.refreshBook() }
                             W.BusySpinner { objectName: "titleLoadingIndicator"; running: root.titleLoading; visible: running; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
                         }
                         Flow {
                             Layout.fillWidth: true; spacing: 2
                             W.Action { text: "Overview"; highlighted: root.tab === "overview"; onClicked: root.tab = "overview" }
-                            W.Action { objectName: "editionsTab"; text: "Editions"; highlighted: root.tab === "editions"; onClicked: { root.tab = "editions"; if (!root.editions.length) root.loadEditions(false); } }
+                            W.Action { objectName: "editionsTab"; visible: root.workSelected; text: "Editions"; highlighted: root.tab === "editions"; onClicked: { root.tab = "editions"; if (!root.editions.length) root.loadEditions(false); } }
                             W.Action { text: "Find"; highlighted: root.tab === "torrent"; onClicked: root.tab = "torrent" }
                         }
                     }
@@ -430,6 +545,7 @@ Item {
                     W.Label { text: root.detailError; color: Theme.danger; Layout.fillWidth: true; wrapMode: Text.Wrap; maximumLineCount: 2 }
                     W.Action { text: "Retry details"; onClicked: root.refreshBook() }
                 }
+                W.Label { visible: !!root.offersError; Layout.fillWidth: true; text: root.offersError; color: Theme.muted; wrapMode: Text.Wrap; maximumLineCount: 2 }
                 W.ScrollArea {
                     id: overview; visible: root.tab === "overview"
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true
@@ -467,9 +583,17 @@ Item {
                     }
                 }
                 M.TorrentSearch {
+                    id: torrentFind; objectName: "booksFind"
+                    service: localService; host: root.host
                     visible: root.tab === "torrent"
                     Layout.fillWidth: true; Layout.fillHeight: true
                     title: Object.assign({}, root.selected, {kind:"book",year:root.selected.firstPublishYear || "",author:(root.selected.authors || [])[0] ? root.selected.authors[0].name : ""})
+                    extraSearchEnabled: root.providerNames.length > 0
+                    extraResults: root.findOffers; extraSearching: root.findOffersLoading
+                    extraError: root.findOffersError; extraInfo: root.findOffersInfo
+                    onExtraSearchRequested: query => root.searchProviders(query)
+                    onExtraResultRequested: offer => root.downloadOffer(offer)
+                    onContextReset: root.resetFindOffers()
                     onImported: {
                         service.request("local_files", {title:Object.assign({}, root.selected, {kind:"book"})}, (result, failure) => { if (!failure) root.localFiles = result; });
                         if (root.localMode) root.browse(false, false);

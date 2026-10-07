@@ -68,7 +68,7 @@ package_zephyrus-shell-git() {
 	arch=('any')
 	depends=(
 		'quickshell>=0.3.1' 'qt6-declarative' 'qt6-svg'
-		'python' 'python-dateutil' 'bash' 'coreutils' 'libpulse' 'polkit' 'systemd' 'glib2' 'xdg-utils' 'xdg-user-dirs'
+		'python' 'python-dateutil' 'bash' 'coreutils' 'libpulse' 'polkit' 'systemd' 'glib2' 'xdg-utils' 'xdg-user-dirs' 'libnotify'
 	)
 	provides=('zephyrus-shell')
 	conflicts=('zephyrus-shell')
@@ -83,7 +83,6 @@ package_zephyrus-shell-git() {
 		'kooha: screen recording'
 		'wl-clipboard: copying files and clipboard history'
 		'cliphist: clipboard history'
-		'libnotify: capture failure notifications'
 		'brightnessctl: backlight control (logind fallback available)'
 		'ddcutil: external-monitor brightness'
 		'i2c-tools: DDC device permissions (explicit host setup required)'

@@ -1,23 +1,30 @@
 #!/usr/bin/env python3
-"""Low-volume Open Library worker and Books-specific persistence boundary."""
+"""Books metadata, generic command offers, and persistence boundary."""
 
+import hashlib
 import json
 import math
 import os
 import re
+import signal
 import sqlite3
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import cached_property
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from media.local import LocalLibrary
+from media.local import BOOK_EXTENSIONS, LocalLibrary, destination
+from books.providers import CommandProviders, ProviderError, configured_providers, normalize_result
+from services.jobs import Jobs, check_cancelled, progress
 
 ROOT = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "zephyrus-shell"
 CONFIG = ROOT / "books.json"
@@ -144,6 +151,8 @@ def cover_urls(cover_id=None, edition_id=""):
 def normalize_work(doc):
     """Return the small, stable Work record used by catalogue delegates."""
     doc = doc if isinstance(doc, dict) else {}
+    if doc.get("source") == "provider":
+        return None
     key = doc.get("key") or doc.get("id") or ""
     match = WORK_ID.fullmatch(str(key))
     if not match:
@@ -303,6 +312,8 @@ class BooksBackend:
         self._rate_lock = threading.Lock()
         self._last_request = 0.0
         self._request_override = request
+        self.commands = CommandProviders()
+        self.downloads = Jobs(errors=(BooksError, ValueError, OSError))
         with self.db(self.data_db) as db:
             db.execute(
                 "CREATE TABLE IF NOT EXISTS favorites (work_id TEXT PRIMARY KEY, value TEXT NOT NULL, updated REAL NOT NULL)"
@@ -321,15 +332,25 @@ class BooksBackend:
         finally:
             connection.close()
 
-    def contact(self):
+    def config(self):
         if not self.config_path.exists():
-            return ""
+            return {}
         try:
             config = json.loads(self.config_path.read_text())
         except (OSError, ValueError):
             raise BooksError("Cannot read books.json. Check the JSON syntax.") from None
         if not isinstance(config, dict):
             raise BooksError("books.json must contain a JSON object.")
+        return config
+
+    def providers(self):
+        try:
+            return configured_providers(self.config(), self.config_path.parent)
+        except ProviderError as error:
+            raise BooksError(str(error)) from None
+
+    def contact(self):
+        config = self.config()
         contact = config.get("contact", "")
         if not isinstance(contact, str) or "\n" in contact or "\r" in contact:
             raise BooksError("The optional contact in books.json must be a single line of text.")
@@ -561,7 +582,7 @@ class BooksBackend:
 
     def details(self, request):
         selected = request.get("book") or {}
-        identifier = work_id(selected.get("id"))
+        identifier = selected_work_id(request)
         key = "work:" + identifier
         cached = self.get_cache(key, DETAIL_TTL)
         if cached and not request.get("refresh"):
@@ -589,6 +610,8 @@ class BooksBackend:
 
     def author_details(self, request):
         person = request.get("author") or {}
+        if not isinstance(person, dict) or person.get("source") == "provider":
+            raise BooksError("Provider offers cannot be used as Open Library authors.")
         identifier = author_id(person.get("id"))
         key = "author:" + identifier
         cached = self.get_cache(key, DETAIL_TTL)
@@ -605,6 +628,8 @@ class BooksBackend:
 
     def author_works(self, request):
         person = request.get("author") or {}
+        if not isinstance(person, dict) or person.get("source") == "provider":
+            raise BooksError("Provider offers cannot be used as Open Library authors.")
         identifier = author_id(person.get("id"))
         offset = max(0, int(request.get("offset") or 0))
 
@@ -655,7 +680,7 @@ class BooksBackend:
             raise
 
     def editions(self, request):
-        identifier = work_id((request.get("book") or {}).get("id"))
+        identifier = selected_work_id(request)
         offset = max(0, int(request.get("offset") or 0))
         key = f"editions:{identifier}:{offset}"
         cached = self.get_cache(key, DETAIL_TTL)
@@ -691,8 +716,203 @@ class BooksBackend:
             raise
 
     def personal(self, request):
-        identifier = work_id((request.get("book") or {}).get("id"))
+        identifier = selected_work_id(request)
         return {"favorite": self._is_favorite(identifier)}
+
+    def provider_search(self, request):
+        query = _text(request.get("query"))
+        if not query:
+            raise BooksError("Enter a Books provider search query.")
+        page = max(0, int(request.get("page") or 0))
+        limit = min(100, max(1, int(request.get("limit") or 10)))
+        return self._search_providers(self.providers(), [query], page, limit)
+
+    def _search_providers(self, providers, queries, page=0, limit=10, matches=None):
+        def search(provider):
+            items, errors, seen = [], [], set()
+            for query in queries:
+                try:
+                    rows = self.commands.search(provider, query, page, limit)
+                    for row in rows:
+                        match = matches(row) if matches else ""
+                        if matches and not match:
+                            continue
+                        # Repeated queries may return the same offer; formats remain distinct.
+                        key = json.dumps([row.get("id"), row["ref"], row.get("format"),
+                                          row.get("language"), row.get("size_bytes")], sort_keys=True)
+                        if key not in seen:
+                            seen.add(key)
+                            items.append(row | ({"match": match} if match else {}))
+                except ProviderError as error:
+                    errors.append(f"{provider['name']}: {error}")
+                    break
+            return items, errors
+
+        if not providers:
+            return {"items": [], "warning": ""}
+        with ThreadPoolExecutor(max_workers=min(4, len(providers))) as executor:
+            results = list(executor.map(search, providers))
+        return {"items": [row for rows, _ in results for row in rows],
+                "warning": " ".join(error for _, errors in results for error in errors)}
+
+    def provider_offers(self, request):
+        """Match only the selected Work, never discovery pages or provider IDs."""
+        identifier = selected_work_id(request)
+        providers = self.providers()
+        if not providers:
+            return {"items": [], "warning": ""}
+        book = self.details({"book": request["book"]})
+        isbns, warnings = set(), []
+        offset = 0
+        # Bound interactive edition lookup for Works with thousands of editions.
+        for _ in range(3):
+            editions = self.editions({"book": {"id": identifier}, "offset": offset})
+            for edition in editions["items"]:
+                isbns.update(normalized_isbns(edition.get("isbn")))
+            if editions.get("warning"):
+                warnings.append(editions["warning"])
+            next_offset = editions.get("next")
+            if not next_offset or int(next_offset) <= offset:
+                break
+            offset = int(next_offset)
+        else:
+            warnings.append("Matching is limited to the first 72 editions.")
+
+        title = normalized_name(book.get("title"))
+        authors = {normalized_name(author.get("name")) for author in book.get("authors", [])
+                   if author.get("name")}
+
+        def match(row):
+            if isbns:
+                return "isbn" if isbns.intersection(normalized_isbns(row.get("identifiers"))) else ""
+            if title and authors and normalized_name(row.get("title")) == title:
+                names = {normalized_name(author) for author in row["authors"]}
+                return "title-author" if authors.intersection(names) else ""
+            return ""
+
+        query = " ".join([book["title"], *[author["name"] for author in book.get("authors", []) if author.get("name")]])
+        # ISBN queries have priority; the title query can find further formats with matching ISBNs.
+        queries = sorted(isbns)[:3] + [query] if isbns else [query]
+        result = self._search_providers(providers, queries, matches=match)
+        result["warning"] = " ".join(filter(None, [*warnings, result["warning"]]))
+        return result
+
+    def provider_resolve(self, request):
+        provider = next((row for row in self.providers() if row["name"] == request.get("provider")), None)
+        if provider is None:
+            raise BooksError("This Books provider is no longer configured.")
+        if "ref" not in request:
+            raise BooksError("This offer has no provider reference.")
+        purpose = request.get("purpose")
+        if purpose not in (None, "read", "download"):
+            raise BooksError("Choose read or download for the provider offer.")
+        try:
+            # Resolved URLs stay only in this response, never in persistent metadata.
+            return self.commands.resolve(provider, request["ref"], purpose)
+        except ProviderError as error:
+            raise BooksError(f"{provider['name']}: {error}") from None
+
+    def download_title(self, offer, selected):
+        """Only verified matches inherit a Work's identity and library path."""
+        if isinstance(selected, dict) and selected.get("source") != "provider":
+            work = normalize_work(selected)
+            if work:
+                with self.db(self.cache_db) as db:
+                    pages = db.execute("SELECT value FROM cache WHERE key LIKE ?", ("editions:" + work["id"] + ":%",)).fetchall()
+                known_isbns, complete = set(), False
+                for (value,) in pages:
+                    page = json.loads(value)
+                    known_isbns.update(isbn for edition in page.get("items", []) for isbn in normalized_isbns(edition.get("isbn")))
+                    complete = complete or not page.get("next")
+                isbn_match = bool(known_isbns.intersection(normalized_isbns(offer.get("identifiers"))))
+                name_match = (complete and not known_isbns and normalized_name(work["title"]) == normalized_name(offer["title"])
+                              and bool({normalized_name(a["name"]) for a in work["authors"] if a.get("name")}
+                                       .intersection(normalized_name(a) for a in offer["authors"])))
+                if isbn_match or name_match:
+                    return work | {"kind": "book", "year": work.get("firstPublishYear"),
+                                   "author": next((a["name"] for a in work["authors"] if a.get("name")), "")}
+
+        # Store a separate local identity, never an external ID in the Work namespace.
+        key = json.dumps([offer["provider"], offer.get("id") or offer["ref"]], sort_keys=True)
+        return {"kind": "book", "source": "provider", "provider": offer["provider"],
+                "id": "book-command:" + hashlib.sha256(key.encode()).hexdigest(),
+                "title": offer["title"], "authors": [{"id": "", "name": a} for a in offer["authors"]],
+                "author": next(iter(offer["authors"]), ""), "year": offer.get("year"),
+                "firstPublishYear": offer.get("year"), "description": offer.get("description", ""),
+                "coverSmall": offer.get("cover_url", ""), "coverLarge": offer.get("cover_url", ""),
+                "format": offer.get("format", ""), "languages": [offer["language"]] if offer.get("language") else []}
+
+    def queue_provider_download(self, request):
+        row = request.get("offer")
+        if not isinstance(row, dict) or row.get("source") != "provider":
+            raise BooksError("Select a Books provider offer to download.")
+        provider = next((p for p in self.providers() if p["name"] == row.get("provider")), None)
+        if provider is None:
+            raise BooksError("This Books provider is no longer configured.")
+        try:
+            offer = normalize_result(row, provider)
+        except ProviderError as error:
+            raise BooksError(str(error)) from None
+        title = self.download_title(offer, request.get("book"))
+        return self.downloads.start(title["title"], lambda: self.download_provider_book(provider, offer, title))
+
+    def download_provider_book(self, provider, offer, title):
+        check_cancelled()
+        progress(detail="Resolving book download…")
+        try:
+            url = self.commands.resolve(provider, offer["ref"], "download")["url"]
+        except ProviderError as error:
+            raise BooksError(f"{provider['name']}: {error}") from None
+        check_cancelled()
+        staging = self.data / "downloads"
+        staging.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            with tempfile.TemporaryDirectory(dir=staging) as temporary:
+                request = urllib.request.Request(url, headers={"User-Agent": "Zephyrus Shell Books/1.0"})
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    content_type = response.headers.get_content_type()
+                    if content_type in ("text/html", "application/xhtml+xml", "application/json"):
+                        raise BooksError("Provider returned a web page instead of a book file.")
+                    suffix = "." + _text(offer.get("format")).lower().lstrip(".")
+                    if suffix not in BOOK_EXTENSIONS:
+                        filename = response.headers.get_filename() or urllib.parse.urlsplit(response.geturl()).path
+                        suffix = Path(filename).suffix.lower()
+                    if suffix not in BOOK_EXTENSIONS:
+                        raise BooksError("Provider download has an unsupported book format.")
+                    source = Path(temporary) / ("book" + suffix)
+                    target = destination(title, source)
+                    if target.exists():
+                        raise BooksError("A different file already exists at the library destination.")
+                    try:
+                        total = max(0, int(response.headers.get("Content-Length", 0)))
+                    except ValueError:
+                        total = 0
+                    done = 0
+                    progress(total=total, detail="Downloading to " + str(target))
+                    with source.open("xb") as output:
+                        while True:
+                            check_cancelled()
+                            chunk = response.read(128 * 1024)
+                            if not chunk:
+                                break
+                            if done == 0 and chunk.lstrip().lower().startswith((b"<!doctype html", b"<html")):
+                                raise BooksError("Provider returned a web page instead of a book file.")
+                            output.write(chunk)
+                            done += len(chunk)
+                            progress(done=done)
+                    if not done or (total and done != total):
+                        raise BooksError("The book download was incomplete. Try again.")
+                check_cancelled()
+                progress(detail="Importing book…")
+                # The shared importer commits without overwriting another format or existing file.
+                path = self.local.add(title, source)
+                return {"path": path, "titleId": title["id"]}
+        except urllib.error.HTTPError as error:
+            code = error.code
+            error.close()
+            raise BooksError(f"Book download returned HTTP {code}. Resolve a fresh link and retry.") from None
+        except (OSError, urllib.error.URLError):
+            raise BooksError("Cannot download the book. Check your connection and retry.") from None
 
     @cached_property
     def local(self):
@@ -700,13 +920,26 @@ class BooksBackend:
 
     def handle(self, request):
         op = request.get("op", "")
+        if op == "jobs":
+            return self.downloads.snapshots()
+        if op == "cancel_job":
+            return self.downloads.cancel(request["job_id"])
+        if op == "providerDownload":
+            return self.queue_provider_download(request)
         if op == "local_list":
             return self.local.list("book")
         if op == "local_files":
             return self.local.files(request["title"])
         if op == "init":
             contact = self.contact()
-            return {"pageSize": PAGE_SIZE, "contactConfigured": bool(contact)}
+            return {"pageSize": PAGE_SIZE, "contactConfigured": bool(contact),
+                    "providers": [row["name"] for row in self.providers()]}
+        if op == "providerSearch":
+            return self.provider_search(request)
+        if op == "providerOffers":
+            return self.provider_offers(request)
+        if op == "providerResolve":
+            return self.provider_resolve(request)
         if op == "snapshot":
             return self.snapshot(request)
         if op == "browse":
@@ -724,6 +957,40 @@ class BooksBackend:
         if op == "save":
             return self._save_favorite(request.get("book") or {}, bool(request.get("favorite")))
         raise BooksError("Unknown Books request.")
+
+
+def selected_work_id(request):
+    selected = request.get("book") or {}
+    if not isinstance(selected, dict) or selected.get("source") == "provider":
+        raise BooksError("Provider offers cannot be used as Open Library Works.")
+    return work_id(selected.get("id"))
+
+
+def normalized_name(value):
+    value = unicodedata.normalize("NFKC", _text(value)).casefold()
+    return " ".join("".join(char if char.isalnum() else " " for char in value).split())
+
+
+def normalized_isbns(value):
+    if isinstance(value, dict):
+        value = [item for key, values in value.items() if re.sub(r"[^a-z0-9]", "", key.casefold())
+                 in ("isbn", "isbn10", "isbn13") for item in (values if isinstance(values, list) else [values])]
+    if isinstance(value, str):
+        value = [value]
+    result = set()
+    for item in _items(value):
+        text = re.sub(r"^isbn(?:[- ]?(?:10|13))?\s*:?\s*", "", str(item), flags=re.I)
+        isbn = re.sub(r"[-\s]", "", text).upper()
+        if not re.fullmatch(r"\d{13}|\d{9}[\dX]", isbn):
+            continue
+        if len(isbn) == 10:
+            digits = [10 if char == "X" else int(char) for char in isbn]
+            if sum((10 - index) * digit for index, digit in enumerate(digits)) % 11 == 0:
+                prefix = "978" + isbn[:9]
+                isbn = prefix + str((-sum(int(char) * (1 if index % 2 == 0 else 3)
+                                         for index, char in enumerate(prefix))) % 10)
+        result.add(isbn)
+    return result
 
 
 def merge_book(base, update):
@@ -763,12 +1030,24 @@ def main():
     from services.worker import serve
 
     backend = BooksBackend()
-    serve(
-        backend.handle,
-        errors=(BooksError, ValueError, OSError),
-        latest=("browse", "details", "authorDetails", "authorWorks", "editions", "personal"),
-        controls=("save",),
-    )
+    def stop(_signal, _frame):
+        backend.downloads.stop()
+        backend.commands.close()
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    try:
+        serve(
+            backend.handle,
+            errors=(BooksError, ValueError, OSError),
+            latest=("browse", "details", "authorDetails", "authorWorks", "editions", "personal",
+                    "providerSearch", "providerOffers"),
+            controls=("save", "providerDownload", "cancel_job"),
+        )
+    finally:
+        backend.downloads.stop()
+        backend.commands.close()
 
 
 if __name__ == "__main__":

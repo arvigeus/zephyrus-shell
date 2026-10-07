@@ -25,7 +25,8 @@ transfers are limited to 10,000 entries and 64 nesting levels.
 Transfers use a bounded queue with two concurrent jobs. **Activity** opens a
 floating popup with progress, throughput, time estimates, cancellation, and
 recent results, and retry for failed/cancelled jobs. Unknown sizes use indeterminate progress rather than invented
-time estimates. Status/error popups do not resize the file list. Files stays
+time estimates. Finished and failed rows can be dismissed without removing files.
+Plain status and error messages use desktop notifications and Attention. Files stays
 alive while editing sessions, jobs, or custom actions are active, including after
 selecting Desktop or another space, and releases its hidden instance when the
 last job and editing session settle. Escape or explicit Close destroys the module and cancels its

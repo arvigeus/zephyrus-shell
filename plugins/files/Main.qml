@@ -340,6 +340,7 @@ ColumnLayout {
     OperationCenter {
         id: activity
         objectName: "filesActivity"
+        notificationTitle: "Files"
         parent: root
         jobs: service.jobs.map(job => job.kind === "authorization" && job.state === "running" && !job.cancel_requested ? Object.assign({}, job, {actionLabel: "Finish sign-in"}) : job).concat(service.editSessions).concat(root.activeActionJobs.map(job => ({job_id:"action:" + job.jobId, title:job.name, state:"running", detail:"Running file action", cancellable:false, done:0, total:0})))
         retryAvailable: !!root.errorText

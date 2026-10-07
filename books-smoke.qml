@@ -38,7 +38,7 @@ ShellRoot {
                 });
             }
             onTriggered: {
-                if (++attempts > 80) { require(false, "Timed out at step " + step); return; }
+                if (++attempts > 100) { require(false, "Timed out at step " + step); return; }
                 if (step === 0) {
                     if (!Modules.find("books")) return;
                     ShellState.openPlugin("books"); step++;
@@ -47,7 +47,7 @@ ShellRoot {
                     if (!content || !content.item || content.status !== Loader.Ready || content.item.loading) return;
                     browser = content.item;
                     if (!localDefaultChecked) {
-                        require(browser.localMode && browser.books.length === 1, "Books with a local file did not open Local");
+                        require(browser.localMode && browser.books.length === 2, "Books with local files did not open Local");
                         localDefaultChecked = true;
                         browser.localMode = false;
                         browser.browse(false, false);
@@ -68,6 +68,7 @@ ShellRoot {
                     require(String(browser.backgroundImage) === browser.selected.coverSmall, "Backdrop did not reuse the selected catalogue thumbnail");
                     require(find(browser, "openLibraryButton") && find(browser, "openLibraryButton").text === "Read on Open Library", "Reading action is not a single named icon button");
                     require(browser.editions.length === 0, "Editions were loaded before the tab was opened");
+                    require(!browser.offersChecked && browser.onlineOffers.length === 0, "Providers were searched while browsing");
                     require(browser.nextPage === "", "Unexpected fixture pagination token");
                     screenshot("books-rail.png");
                     step++;
@@ -122,11 +123,78 @@ ShellRoot {
                 } else if (step === 10) {
                     if (browser.loading || browser.books.length !== 4) return;
                     require(browser.gridMode, "Grid layout state changed unexpectedly");
-                    ShellState.close(); step++;
+                    if (browser.providerNames.length !== 1) return;
+                    find(browser, "readOnlineButton").triggered(0);
+                    step++;
+                } else if (step === 11) {
+                    if (browser.offersLoading) return;
+                    require(browser.onlineOffers.length === 2, "Online offers did not preserve two formats: " + browser.offersError);
+                    require(browser.onlineOffers[0].source === "provider" && browser.onlineOffers[0].match === "isbn", "Online offer lost its provider identity or exact ISBN match");
+                    require(browser.selected.id === "OL100W" && browser.selected.authors[0].id === "OL1A", "Provider offer replaced Work or author identity");
+                    const online = find(browser, "readOnlineButton");
+                    require(online.options.length === 2 && online.popup.visible, "Multiple formats did not open the provider dropdown");
+                    online.popup.close();
+                    browser.tab = "torrent";
+                    find(browser, "booksFind").find();
+                    step++;
+                } else if (step === 12) {
+                    const lookup = find(browser, "booksFind");
+                    if (browser.findOffersLoading || lookup.searching || lookup.results.length !== 1) return;
+                    require(browser.findOffers.length === 2, "Find did not show provider formats: " + browser.findOffersError);
+                    require(lookup.extraResults[0].size_bytes > 0 && lookup.extraResults[0].format === "epub", "Provider format or size is missing from Find");
+                    require(lookup.results[0].source !== "provider" && !!lookup.results[0].url, "Torrent result lost its separate download identity");
+                    const downloadButton = find(browser, "providerDownloadButton");
+                    require(downloadButton && downloadButton.iconName === "download" && downloadButton.text.startsWith("Download "), "Provider Find action is not Download");
+                    lookup.extraResultRequested(lookup.extraResults[1]);
+                    require(ShellState.retentionRequests.books, "Provider download did not request module retention");
+                    step++;
+                } else if (step === 13) {
+                    if (!browser.downloadJobs.length) return;
+                    ShellState.showDesktop();
+                    require(ShellState.runningPluginIds.includes("books"), "Desktop destroyed the provider transfer");
+                    step++;
+                } else if (step === 14) {
+                    if (ShellState.runningPluginIds.includes("books")) return;
+                    ShellState.openPlugin("books");
+                    step++;
+                } else if (step === 15) {
+                    const content = find(overlay.item, "moduleContent");
+                    if (!content || !content.item || content.item.loading) return;
+                    browser = content.item;
+                    if (browser.selected.id !== "OL100W") { browser.selectBook(browser.books.find(book => book.id === "OL100W")); return; }
+                    if (!browser.localFiles.some(file => file.path.endsWith("The Example Book (1843).pdf"))) return;
+                    require(browser.localMode, "Downloaded provider book did not appear in Local");
+                    require(browser.selected.id === "OL100W", "Exact ISBN download lost Work identity");
+                    browser.selectBook(browser.books.find(book => book.source === "provider"));
+                    require(!browser.workSelected && !browser.detailLoading && !browser.detailError, "Provider-only local record requested Work details");
+                    require(!find(browser, "openLibraryButton").visible && !find(browser, "favoriteButton").visible && !find(browser, "editionsTab").visible, "Provider-only local record exposed Work operations");
+                    require(browser.selected.description === "Standalone provider metadata.", "Provider-only local metadata was lost");
+                    browser.localMode = false;
+                    browser.browse(false, false);
+                    step++;
+                } else if (step === 16) {
+                    if (browser.loading || browser.books.length !== 4) return;
+                    browser.selectBook(browser.books[1]);
+                    require(!browser.offersChecked && !browser.onlineOffers.length && !browser.findOffers.length, "Provider results survived a Work change");
+                    browser.selectBook(browser.books[0]);
+                    find(browser, "readOnlineButton").triggered(0);
+                    browser.selectBook(browser.books[1]);
+                    step++;
+                } else if (step === 17) {
+                    if (browser.detailLoading) return;
+                    require(!browser.offersChecked && !browser.onlineOffers.length && browser.selected.id === "OL101W", "A late offer response changed the current selection");
+                    browser.selectBook(browser.books[0]);
+                    find(browser, "readOnlineButton").triggered(0);
+                    step++;
+                } else if (step === 18) {
+                    if (browser.offersLoading) return;
+                    require(browser.onlineOffers.length === 2, "Offers did not reload for the selected Work");
+                    find(browser, "readOnlineButton").triggered(1);
+                    step++;
                 } else {
                     const content = find(overlay.item, "moduleContent");
                     if (content && content.item) return;
-                    console.log("BOOKS PASS: Open Library catalogue, Work identity, offline Favorites, author details, lazy editions, rail/grid layouts, module destruction");
+                    console.log("BOOKS PASS: Open Library catalogue, Work identity, offline Favorites, author details, lazy editions, rail/grid layouts, provider downloads, Desktop retention, provider-only Local records, deferred reading, stale selection, module destruction");
                     Qt.quit();
                 }
             }

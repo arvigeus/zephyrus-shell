@@ -2,7 +2,7 @@ import QtQuick
 import Quickshell
 import "../services"
 
-Worker {
+JobWorker {
     objectName: "booksService"
     backend: "books/backend.py"
     serviceName: "Books"

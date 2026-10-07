@@ -5,6 +5,7 @@ retained_test_root=$(mktemp -d)
 trap 'rm -rf -- "$retained_test_root"' EXIT
 export XDG_CONFIG_HOME="$retained_test_root/config" XDG_DATA_HOME="$retained_test_root/data" XDG_CACHE_HOME="$retained_test_root/cache"
 export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
+unset HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY
 export https_proxy=http://127.0.0.1:9 http_proxy=http://127.0.0.1:9
 unset ALL_PROXY all_proxy NO_PROXY no_proxy
 timeout 10s dbus-run-session quickshell -p "$PWD/shell-state-smoke.qml" --no-color > "$retained_test_root/state-log" 2>&1 || { cat "$retained_test_root/state-log"; exit 1; }

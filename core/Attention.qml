@@ -12,6 +12,11 @@ QtObject {
     property string toast: ""
     property var toastNotification: null
     property string toastMonitor: ""
+    function notify(title, body, error) {
+        if (!body) return;
+        Quickshell.execDetached(["notify-send", "--app-name=Zephyrus", "--urgency=" + (error ? "normal" : "low"),
+            "--", title || "Zephyrus Shell", String(body)]);
+    }
     function dismissToast() { toast = ""; toastNotification = null; toastTimer.stop(); }
     property Connections toastClosed: Connections {
         target: root.toastNotification

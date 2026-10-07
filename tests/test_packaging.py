@@ -56,6 +56,8 @@ class PackageTests(unittest.TestCase):
         ):
             self.assertIn(f"depends = {dependency}", self.srcinfo)
         self.assertIn("makedepends = git", self.srcinfo)
+        core_metadata = self.srcinfo.split("pkgname = zephyrus-shell-git", 1)[1].split("pkgname = zephyrus-shell-session-git", 1)[0]
+        self.assertIn("depends = libnotify", core_metadata)
         self.assertIn(
             "source = zephyrus-shell::git+https://github.com/arvigeus/zephyrus-shell.git",
             self.srcinfo,

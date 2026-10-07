@@ -1,7 +1,12 @@
 # Built-in spaces
 
-This is a personal shell with a fixed set of modules. There is no runtime plugin
-scan, manifest format, registration process, or reload button.
+This is a personal shell with a fixed set of modules. The Spaces registry has no
+runtime plugin scan, manifest format, registration process, or reload button.
+
+Books also supports explicitly configured [provider plugins](books.md#provider-plugins).
+These are external command packages owned by the Books worker, using the generic
+Books JSON protocol. They add provider offers to Books without registering another
+Space or adding provider logic to the shell host.
 
 To add a space:
 

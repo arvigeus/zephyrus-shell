@@ -10,6 +10,7 @@ cleanup_media() {
 trap cleanup_media EXIT
 export XDG_CONFIG_HOME="$media_test_root/config" XDG_DATA_HOME="$media_test_root/data" XDG_CACHE_HOME="$media_test_root/cache" XDG_VIDEOS_DIR="$media_test_root/videos"
 export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
+unset HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY
 mkdir -p "$XDG_CONFIG_HOME/zephyrus-shell" tests/artifacts
 python3 - <<'PY'
 import sys,json,os

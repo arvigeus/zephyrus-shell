@@ -1,7 +1,8 @@
 # Music
 
-Downloads and status messages use floating **Activity** popups, so progress does
-not resize the music tables. Stream saves share Files' job queue UI, with
+Downloads use floating **Activity** popups, so progress does not resize the music
+tables. Plain status and error messages use desktop notifications and Attention.
+Finished or failed activity rows can be dismissed. Stream saves share Files' job queue UI, with
 cancellation, track progress, and time estimates when duration is available.
 Completed saves refresh Local automatically. Multiple saves can be queued; the
 worker runs at most two concurrently and preserves existing track filenames.

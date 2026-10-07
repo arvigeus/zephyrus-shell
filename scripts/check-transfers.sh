@@ -11,6 +11,7 @@ trap cleanup_transfers EXIT
 export ZEPHYRUS_TRANSFER_FIXTURE="$transfer_test_root/fixture" XDG_CONFIG_HOME="$transfer_test_root/config" XDG_DATA_HOME="$transfer_test_root/data" XDG_CACHE_HOME="$transfer_test_root/cache"
 export XDG_MUSIC_DIR="$transfer_test_root/music"
 export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
+unset HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY
 mkdir -p "$ZEPHYRUS_TRANSFER_FIXTURE/target" "$XDG_CONFIG_HOME/zephyrus-shell" tests/artifacts
 python3 - <<'PY'
 import os

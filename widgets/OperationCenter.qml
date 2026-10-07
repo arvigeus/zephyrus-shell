@@ -8,8 +8,10 @@ import "." as W
 Popup {
     id: root
     property var jobs: []
-    property string message: ""
-    property bool messageError: false
+    property string notificationTitle: "Zephyrus Shell"
+    property var dismissedJobs: []
+    readonly property var shownJobs: jobs.filter(job => !dismissedJobs.includes(String(job.job_id)))
+    readonly property bool hasFinishedJobs: shownJobs.some(job => ["finished", "failed", "cancelled"].includes(job.state))
     readonly property int activeCount: jobs.filter(j => j.state === "running" || j.state === "queued").length
     property bool retryAvailable: false
     property string retryText: "Retry"
@@ -31,11 +33,18 @@ Popup {
 
     function notify(text, error) {
         if (!text) return;
-        message = text;
-        messageError = !!error;
-        if (parent && parent.visible) open();
-        dismiss.restart();
+        Attention.notify(notificationTitle, text, error);
     }
+    function dismissJob(jobId) {
+        const job = jobs.find(job => String(job.job_id) === String(jobId));
+        if (!job || ["queued", "running"].includes(job.state)) return;
+        dismissedJobs = dismissedJobs.filter(id => id !== String(jobId)).concat([String(jobId)]);
+    }
+    function dismissFinished() {
+        const ids = shownJobs.filter(job => ["finished", "failed", "cancelled"].includes(job.state)).map(job => String(job.job_id));
+        dismissedJobs = dismissedJobs.concat(ids);
+    }
+    onJobsChanged: dismissedJobs = dismissedJobs.filter(id => jobs.some(job => String(job.job_id) === id && !["queued", "running"].includes(job.state)))
     function sizeLabel(value) {
         if (value >= 1073741824) return (value / 1073741824).toFixed(1) + " GB";
         if (value >= 1048576) return (value / 1048576).toFixed(1) + " MB";
@@ -49,7 +58,7 @@ Popup {
     }
     onActiveCountChanged: { if (activeCount > 0) { dismiss.stop(); if (parent && parent.visible) open(); } else dismiss.restart(); }
     Connections { target: root.parent; function onVisibleChanged() { if (!root.parent.visible) root.close(); } }
-    Timer { id: dismiss; interval: root.messageError ? 12000 : 7000; onTriggered: { if (!root.activeCount) root.close(); } }
+    Timer { id: dismiss; interval: 7000; onTriggered: { if (!root.activeCount) root.close(); } }
     background: Rectangle { radius: Theme.controlRadius; color: Theme.surface; border.color: Theme.border }
     contentItem: ColumnLayout {
         spacing: 10
@@ -57,20 +66,14 @@ Popup {
             Layout.fillWidth: true
             W.Icon { name: root.activeCount ? "download" : "bell"; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
             W.Label { text: root.activeCount ? "Activity · " + root.activeCount + " active" : "Activity"; Layout.fillWidth: true; font.weight: Font.DemiBold }
+            W.IconButton { objectName: "dismissFinishedActivity"; visible: root.hasFinishedJobs; iconName: "trash-2"; text: "Dismiss finished activity"; implicitWidth: 30; implicitHeight: 30; onClicked: root.dismissFinished() }
             W.IconButton { iconName: "x"; text: "Hide activity"; implicitWidth: 30; implicitHeight: 30; onClicked: root.close() }
-        }
-        W.Label {
-            Layout.fillWidth: true
-            visible: !!root.message
-            text: root.message
-            wrapMode: Text.Wrap
-            color: root.messageError ? Theme.danger : Theme.text
         }
         W.Action { objectName: "activityRetry"; visible: root.retryAvailable; text: root.retryText; onClicked: root.retryRequested() }
         ScrollView {
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(360, jobColumn.implicitHeight)
-            visible: root.jobs.length > 0
+            visible: root.shownJobs.length > 0
             contentWidth: availableWidth
             clip: true
             ColumnLayout {
@@ -78,7 +81,7 @@ Popup {
                 width: parent.width
                 spacing: 12
                 Repeater {
-                    model: root.jobs.slice().reverse().slice(0, 16)
+                    model: root.shownJobs.slice().reverse().slice(0, 16)
                     delegate: ColumnLayout {
                         id: row
                         required property var modelData
@@ -89,14 +92,21 @@ Popup {
                             Layout.fillWidth: true
                             W.Label { Layout.fillWidth: true; text: row.modelData.title; elide: Text.ElideRight; font.weight: Font.Medium }
                             W.IconButton {
+                                objectName: "cancelActivity:" + row.modelData.job_id
                                 visible: row.active && row.modelData.cancellable !== false
                                 enabled: !row.modelData.cancel_requested
                                 iconName: "x"; text: "Cancel transfer"; implicitWidth: 28; implicitHeight: 28
                                 onClicked: root.cancelRequested(row.modelData.job_id)
                             }
+                            W.IconButton {
+                                objectName: "dismissActivity:" + row.modelData.job_id
+                                visible: !row.active
+                                iconName: "x"; text: "Dismiss activity"; implicitWidth: 28; implicitHeight: 28
+                                onClicked: root.dismissJob(row.modelData.job_id)
+                            }
                         }
                         W.Label { Layout.fillWidth: true; text: row.modelData.error || row.modelData.detail || row.modelData.state; elide: Text.ElideMiddle; color: row.modelData.state === "failed" ? Theme.danger : Theme.muted }
-                        W.Action { visible: !!row.modelData.actionLabel; text: row.modelData.actionLabel || ""; onClicked: root.actionRequested(row.modelData) }
+                        W.Action { objectName: "activityAction:" + row.modelData.job_id; visible: !!row.modelData.actionLabel; text: row.modelData.actionLabel || ""; onClicked: root.actionRequested(row.modelData) }
                         W.Action { visible: !!row.modelData.secondaryActionLabel; text: row.modelData.secondaryActionLabel || ""; onClicked: root.secondaryActionRequested(row.modelData) }
                         ProgressBar {
                             visible: row.active && row.modelData.progressVisible !== false
@@ -120,6 +130,6 @@ Popup {
                 }
             }
         }
-        W.Label { visible: !root.message && !root.jobs.length; text: "No recent activity"; color: Theme.muted }
+        W.Label { visible: !root.shownJobs.length; text: "No recent activity"; color: Theme.muted }
     }
 }

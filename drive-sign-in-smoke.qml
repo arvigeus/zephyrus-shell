@@ -39,7 +39,9 @@ ShellRoot {
                 } else if (step === 1) {
                     module = content();
                     if (!module || module.loading) return;
+                    module.fileWorker.jobStartFailed.connect(message => tester.fail(message));
                     module.fileWorker.jobFinished.connect(job => {
+                        if (job.state === "failed") { tester.fail(job.error); return; }
                         if (job.job_id !== tester.firstJob && job.job_id !== tester.cancelledJob && job.state === "finished") tester.restartedFinished = true;
                     });
                     module.switchProvider("gdrive"); advance();
@@ -47,6 +49,8 @@ ShellRoot {
                     if (module.loading) return;
                     if (!module.errorText || !module.driveNeedsSignIn) { fail("Isolated Drive should initially require sign-in"); return; }
                     const activity = module.activityCenter;
+                    // Status messages use notifications; Activity is opened explicitly.
+                    if (!activity.visible) { activity.open(); return; }
                     const retry = find(activity.contentItem, "activityRetry");
                     if (!retry || !retry.visible || retry.text !== "Connect Google Drive") { fail("Folder retry did not offer Google sign-in"); return; }
                     retry.clicked();
@@ -97,7 +101,6 @@ ShellRoot {
                     if (input.text) { fail("Submitted callback was not cleared"); return; }
                     ShellState.showDesktop(); advance();
                 } else if (step === 8) {
-                    if (module && module.activityCenter.messageError) { fail(module.activityCenter.message); return; }
                     if (ShellState.runningPluginIds.includes("files")) return;
                     if (!restartedFinished) { fail("Restarted sign-in did not finish"); return; }
                     console.log("DRIVE SIGN IN PASS: real Files worker, loopback and manual callbacks, active Connect recovery, duplicate prevention, cancel/retry, popup dismissal, retention and hidden completion");

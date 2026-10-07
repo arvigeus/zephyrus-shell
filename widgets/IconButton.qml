@@ -4,6 +4,7 @@ Action {
     id: root
     property string iconName: "settings"
     property int iconSize: 24
+    toolTip: text
     implicitWidth: 42
     contentItem: Item { implicitWidth: root.iconSize; implicitHeight: root.iconSize; Icon { anchors.centerIn: parent; width: root.iconSize; height: root.iconSize; name: root.iconName; opacity: root.enabled ? 1 : 0.4 } }
 }

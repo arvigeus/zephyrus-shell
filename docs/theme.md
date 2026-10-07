@@ -144,12 +144,16 @@ The test suite checks that both match.
 ```sh
 python3 -m unittest discover -s tests -p test_theme.py
 bash scripts/check-theme.sh
+bash scripts/check-actions.sh
 bash scripts/check-theme-toolkits.sh
 ```
 
 The smoke test uses real theme entry points and isolated XDG directories, with
 desktop notifications disabled. It exercises repeated atomic edits, font and
 palette propagation, light/dark transitions, malformed input and recovery.
+The action check exercises intermediate light-theme hover frames and verifies
+pointer/focus tooltip behavior for labels, icon-only buttons, contextual hints,
+hold instructions and passive bar popups.
 The toolkit check requires development headers, native Kvantum styles and KDE integration
 plugins. It verifies real Qt 5/6 palettes and fonts and GTK 3/4 CSS parsers in both
 modes, rendering an offscreen gallery and checking the actual menu surface color

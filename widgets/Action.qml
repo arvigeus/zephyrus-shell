@@ -7,10 +7,12 @@ Button {
     id: root
     property string iconName: ""
     property url iconArtwork: ""
-    property string toolTip: text
+    property string toolTip: ""
     property bool destructive: false
     property real cornerRadius: Theme.controlRadius
-    property color idleColor: "transparent"
+    // Preserve the surface RGB while fading alpha; transparent black produces
+    // a dark flash halfway through a light-theme hover animation.
+    property color idleColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0)
     property int textAlignment: Text.AlignHCenter
     implicitHeight: 42
     implicitWidth: Math.max(42, contentItem.implicitWidth + 28)
@@ -18,7 +20,7 @@ Button {
     font.family: Theme.font
     font.pixelSize: Theme.sp(14)
     Accessible.name: text
-    ToolTip.visible: (hovered || activeFocus) && toolTip.length > 0
+    ToolTip.visible: (hovered || activeFocus) && ToolTip.text.length > 0
     ToolTip.text: toolTip
     ToolTip.delay: 800
     contentItem: RowLayout {

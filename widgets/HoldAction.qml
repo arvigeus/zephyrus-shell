@@ -7,6 +7,7 @@ W.IconButton {
     id: root
     property int holdDuration: 1300
     property bool showLabel: false
+    toolTip: showLabel ? "Hold for " + (holdDuration / 1000) + " seconds to " + text.toLowerCase() : text
     property bool activatedWhileDown: false
     signal activated()
     implicitWidth: Math.max(42, contentItem.implicitWidth + (showLabel ? 28 : 0))

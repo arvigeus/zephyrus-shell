@@ -139,9 +139,10 @@ Item {
                                 Label { text: root.taskDetail(modelData); color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); Layout.fillWidth: true }
                                 TapHandler { onTapped: root.editTaskRequested(modelData) }
                             }
-                            Action {
+                            IconButton {
                                 iconName: "chevron-right"
-                                Accessible.name: "Open task"
+                                iconSize: 20
+                                text: "Open task"
                                 Layout.preferredWidth: 28
                                 Layout.preferredHeight: 32
                                 onClicked: root.editTaskRequested(modelData)
@@ -214,7 +215,7 @@ Item {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Label { text: card.modelData.summary; Layout.fillWidth: true; font.weight: Font.DemiBold; wrapMode: Text.Wrap; elide: Text.ElideNone }
-                                Action { objectName: "dismissNotification:" + card.modelData.id; iconName: "x"; Accessible.name: "Dismiss notification"; onClicked: card.modelData.dismiss() }
+                                IconButton { objectName: "dismissNotification:" + card.modelData.id; iconName: "x"; iconSize: 20; text: "Dismiss notification"; onClicked: card.modelData.dismiss() }
                             }
                             Label { text: card.modelData.body; visible: text !== ""; Layout.fillWidth: true; wrapMode: Text.Wrap; elide: Text.ElideNone; color: Theme.muted }
                             Flow {

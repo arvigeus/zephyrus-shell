@@ -21,12 +21,12 @@ Action {
     Timer {
         id: toolTipDelay
         interval: 800
-        running: root.showToolTip && root.hovered && !root.down && !!root.text
+        running: root.showToolTip && root.hovered && !root.down && !!root.toolTip
         onTriggered: root.toolTipReady = true
     }
     PopupWindow {
         id: tip
-        visible: root.toolTipReady && root.showToolTip && root.hovered && !root.down && !!root.text
+        visible: root.toolTipReady && root.showToolTip && root.hovered && !root.down && !!root.toolTip
         anchor.item: root
         anchor.rect.x: (root.width - width) / 2
         anchor.rect.y: root.height + 6
@@ -39,7 +39,7 @@ Action {
             radius: Theme.controlRadius
             color: Theme.background
             border.color: Theme.border
-            Label { id: tipLabel; anchors.centerIn: parent; text: root.text; width: Math.min(implicitWidth, 480); elide: Text.ElideRight }
+            Label { id: tipLabel; anchors.centerIn: parent; text: root.toolTip; width: Math.min(implicitWidth, 480); elide: Text.ElideRight }
         }
     }
 }

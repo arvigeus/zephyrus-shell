@@ -10,6 +10,7 @@ Widgets.Action {
     id: root
     property var profile: ({name: Quickshell.env("USER"), username: Quickshell.env("USER"), avatar: "", home: Quickshell.env("HOME")})
     text: "Open user profile"
+    toolTip: text
     implicitHeight: 58
     leftPadding: 0; rightPadding: 4
     contentItem: RowLayout {

@@ -89,6 +89,7 @@ Item {
                     required property var modelData
                     width: Theme.pillControlHeight
                     text: modelData.title || modelData.appId
+                    toolTip: text
                     highlighted: modelData.activated
                     readonly property var desktopEntry: {
                         const entries = root.applicationEntries;

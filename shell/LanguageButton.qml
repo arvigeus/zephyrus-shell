@@ -34,6 +34,7 @@ BarAction {
     }
     objectName: "languageButton"
     text: InputLanguage.description
+    toolTip: text
     Accessible.name: "Input language: " + InputLanguage.languageName(InputLanguage.displayLanguage)
     highlighted: menu.visible
     contentItem: Item {
@@ -99,8 +100,8 @@ BarAction {
                         required property var modelData
                         objectName: "language-" + modelData.code
                         text: modelData.label
-                        toolTip: InputLanguage.languageName(modelData.code)
-                        Accessible.name: toolTip + (modelData.code === InputLanguage.secondary ? " · Secondary language" : "")
+                        toolTip: InputLanguage.languageName(modelData.code) !== text ? InputLanguage.languageName(modelData.code) : ""
+                        Accessible.name: InputLanguage.languageName(modelData.code) + (modelData.code === InputLanguage.secondary ? " · Secondary language" : "")
                         highlighted: modelData.code === InputLanguage.language
                         enabled: !root.loading
                         Layout.fillWidth: true; implicitWidth: 200

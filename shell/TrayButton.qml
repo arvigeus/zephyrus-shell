@@ -22,6 +22,7 @@ BarAction {
     }
     width: Theme.pillControlHeight
     text: trayItem.tooltipTitle || trayItem.title || trayItem.id
+    toolTip: text
     contentItem: Item {
         Image {
             id: trayImage

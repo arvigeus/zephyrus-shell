@@ -27,6 +27,7 @@ Flow {
             id: ratingButton
             required property var modelData
             text: ratingButton.modelData.source + ": " + modelData.value
+            toolTip: text
             implicitWidth: contentItem.implicitWidth + 8; implicitHeight: 32
             padding: 4
             onClicked: Browser.open(root.page(modelData), root.title.kind === "tv" ? "series" : "movies", "", root.host)

@@ -32,13 +32,13 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         spacing: 2
-        Action { iconName: "chevron-left"; Accessible.name: "Previous month"; Layout.preferredWidth: 28; Layout.preferredHeight: 34; onClicked: root.moveMonth(-1) }
+        IconButton { iconName: "chevron-left"; iconSize: 20; text: "Previous month"; Layout.preferredWidth: 28; Layout.preferredHeight: 34; onClicked: root.moveMonth(-1) }
         Label { text: Qt.formatDate(root.month, "MMMM"); font.family: Theme.font; font.pixelSize: Theme.sp(18) }
-        Action { iconName: "chevron-right"; Accessible.name: "Next month"; Layout.preferredWidth: 28; Layout.preferredHeight: 34; onClicked: root.moveMonth(1) }
+        IconButton { iconName: "chevron-right"; iconSize: 20; text: "Next month"; Layout.preferredWidth: 28; Layout.preferredHeight: 34; onClicked: root.moveMonth(1) }
         Item { Layout.fillWidth: true }
-        Action { iconName: "chevron-left"; Accessible.name: "Previous year"; Layout.preferredWidth: 28; Layout.preferredHeight: 34; onClicked: root.moveYear(-1) }
+        IconButton { iconName: "chevron-left"; iconSize: 20; text: "Previous year"; Layout.preferredWidth: 28; Layout.preferredHeight: 34; onClicked: root.moveYear(-1) }
         Label { text: root.month.getFullYear(); font.family: Theme.font; font.pixelSize: Theme.sp(18) }
-        Action { iconName: "chevron-right"; Accessible.name: "Next year"; Layout.preferredWidth: 28; Layout.preferredHeight: 34; onClicked: root.moveYear(1) }
+        IconButton { iconName: "chevron-right"; iconSize: 20; text: "Next year"; Layout.preferredWidth: 28; Layout.preferredHeight: 34; onClicked: root.moveYear(1) }
     }
     GridLayout {
         columns: 7; rowSpacing: 3; columnSpacing: 3; Layout.fillWidth: true
@@ -113,9 +113,10 @@ ColumnLayout {
                 Label { text: (modelData.all_day ? "All day" : Qt.formatTime(new Date(modelData.start), "HH:mm")) + " · " + modelData.calendar; Layout.fillWidth: true; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(11) }
                 TapHandler { onTapped: root.editEventRequested(modelData) }
             }
-            Action {
+            IconButton {
                 iconName: "chevron-right"
-                Accessible.name: "Open event"
+                iconSize: 20
+                text: "Open event"
                 Layout.preferredWidth: 28
                 Layout.preferredHeight: 32
                 onClicked: root.editEventRequested(modelData)

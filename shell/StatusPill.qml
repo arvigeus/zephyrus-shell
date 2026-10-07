@@ -12,6 +12,7 @@ import "../widgets"
 BarAction {
     id: root
     text: "Open Settings"
+    toolTip: text
     ToolTip.visible: false
     Accessible.description: [
         Networking.wifiEnabled ? wifiDescription : "",

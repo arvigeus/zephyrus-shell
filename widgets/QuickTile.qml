@@ -36,6 +36,7 @@ Rectangle {
         Rectangle { width: 1; Layout.preferredHeight: 34; color: Theme.border }
         Action {
             text: "Choose " + root.title; Layout.preferredWidth: 36
+            toolTip: text
             enabled: root.available
             contentItem: Icon { name: "chevron-right" }
             background: Rectangle { radius: Theme.controlRadius; color: parent.hovered ? Theme.raised : "transparent"; border.width: parent.activeFocus ? 2 : 0; border.color: Theme.text }

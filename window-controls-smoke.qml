@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import Quickshell.Wayland
 import "core"
 import "shell"
 
@@ -27,6 +28,20 @@ ShellRoot {
         Item { id: anchorButton; width: 34; height: 34 }
         WindowMenu { id: menu; barWindow: testWindow }
     }
+    // Keep an exclusive surface alive beyond the old 50ms activation delay.
+    // Its release must restore real Qt keyboard focus, not just activated flags.
+    PanelWindow {
+        id: delayedFocus
+        visible: false
+        anchors { top: true; left: true }
+        implicitWidth: 1; implicitHeight: 1
+        exclusionMode: ExclusionMode.Ignore
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.namespace: "zephyrus-window-focus-test"
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+        mask: Region {}
+    }
+    Timer { id: releaseFocus; interval: 300; onTriggered: delayedFocus.visible = false }
     Timer {
         id: check
         interval: 160; repeat: true; running: true
@@ -48,9 +63,12 @@ ShellRoot {
                 ShellState.openPlugin("apps"); advance();
             } else if (step === 1) {
                 if (!root.modules.item || !root.modules.item.currentModule) return;
-                WindowList.activate(target); advance();
+                delayedFocus.visible = true; step = 30; ticks = 0;
+            } else if (step === 30) {
+                if (!delayedFocus.contentItem.Window.active) return;
+                WindowList.activate(target); releaseFocus.restart(); step = 2; ticks = 0;
             } else if (step === 2) {
-                if (ShellState.pluginId || root.modules.item || !target.activated) return;
+                if (ShellState.pluginId || root.modules.item || !target.activated || !testWindow.contentItem.Window.active) return;
                 WindowList.moveToMonitor(target, "ZEPHYRUS-TEST"); step = 20; ticks = 0;
             } else if (step === 20 && ticks > 5) {
                 const monitor = WindowList.monitors.find(m => m.name === "ZEPHYRUS-TEST");
@@ -120,7 +138,7 @@ ShellRoot {
                 }
                 ShellState.stopPlugin("apps"); target.close(); step = 15; ticks = 0;
             } else if (step === 15 && !target && !root.modules.item) {
-                console.log("WINDOW CONTROLS PASS: module dismissal, native focus, single-window 25/50/75/100% sizes, float/tile, popup, monitor transfer/removal, retained module migration, close");
+                console.log("WINDOW CONTROLS PASS: module dismissal, delayed exclusive-layer release, native keyboard focus, single-window 25/50/75/100% sizes, float/tile, popup, monitor transfer/removal, retained module migration, close");
                 Qt.quit();
             }
         }

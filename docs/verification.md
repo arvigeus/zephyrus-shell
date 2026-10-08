@@ -308,3 +308,18 @@ profile generation, lid locking and rollback after failed service changes.
 `bash scripts/check-session-lock.sh` exercises the real Settings toggle, runtime
 state and service launcher with isolated XDG paths and fixture service commands.
 It captures `tests/artifacts/session-lock.png`; no live power action is executed.
+
+Module-to-window keyboard handoff, 2026-10-08: an isolated nested Hyprland
+compositor was sandboxed without physical display devices or session-control
+sockets. With an exclusive surface held for 300 ms, the original one-shot
+activation failed to deliver input in all three trials; compositor-state retries
+restored the selected window and typed input in all three. Ordinary Applications,
+Music search, column filters and genre-filter search passed 24 transitions,
+including retained modules and an independent application process. The native
+window-controls smoke check now includes delayed exclusive-layer release and
+checks actual Qt window focus. Native resizing, float/tile, monitor migration,
+retained-resource and close checks passed, as did the offscreen lifecycle/Spaces
+checks and 13 activation/window-order tests. The activation retry is bounded and
+cancelled by new clicks, panel openings and shell reloads. Ordinary timing alone
+did not reproduce the intermittent failure; native desktop timing and input-method
+behavior still need user confirmation.

@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import Quickshell.Services.Pipewire
 import "windows"
+import "WindowActivation.js" as WindowActivation
 
 QtObject {
     id: root
@@ -40,13 +41,24 @@ QtObject {
     }
     function activate(window) {
         if (!window || !windows.includes(window)) return;
+        cancelActivation();
         ShellState.showDesktop();
         pendingActivation = {window: window, action: ""};
         activation.restart();
     }
     property var pendingActivation: null
-    // Give the hidden module surface time to commit its keyboard-focus release,
-    // including after a monitor removal/reparent. A callLater can run before it.
+    function cancelActivation() {
+        pendingActivation = null;
+        activation.stop();
+        if (connected && Hyprland.usingLua)
+            Hyprland.dispatch("function() " + WindowActivation.cancel(Quickshell.processId) + " end");
+    }
+    property Connections panelEvents: Connections {
+        target: ShellState
+        function onPanelChanged() { if (ShellState.panel) root.cancelActivation(); }
+    }
+    // Coalesce window-menu actions with activation; native Lua waits for the
+    // compositor to commit the bar and module's exclusive-focus release.
     property Timer activation: Timer {
         interval: 50
         onTriggered: {
@@ -55,9 +67,7 @@ QtObject {
             if (!request || !root.windows.includes(request.window)) return;
             const address = root.selector(request.window);
             if (root.connected && Hyprland.usingLua && address) {
-                Hyprland.dispatch("function() local w = hl.get_window(" + address
-                    + "); if not w or not w.mapped then return end; hl.dispatch(hl.dsp.focus({window = w})); "
-                    + request.action + " end");
+                Hyprland.dispatch(WindowActivation.command(Quickshell.processId, address, request.action));
             } else request.window.activate();
             root.refresh.restart();
         }
@@ -151,5 +161,8 @@ QtObject {
         running: root.connected && ToplevelManager.toplevels.values.length > 1
         onTriggered: root.refresh.restart()
     }
-    Component.onCompleted: if (connected) refresh.restart()
+    Component.onCompleted: {
+        cancelActivation();
+        if (connected) refresh.restart();
+    }
 }

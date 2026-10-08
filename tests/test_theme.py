@@ -1,9 +1,11 @@
 import copy
+import configparser
 import json
 import os
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
 
@@ -96,6 +98,52 @@ class ThemeTests(unittest.TestCase):
             )
             self.assertEqual(code["editor.fontSize"], 16)
             self.assertEqual(code["editor.tabSize"], 4)
+
+    def test_qt_menu_text_is_readable_and_keeps_readable_custom_colors(self):
+        self.assertAlmostEqual(theme.contrast_ratio("#000000", "#ffffff"), 21)
+        for mode, expected in (("dark", "#1b2021"), ("light", "#ffffff")):
+            c = self.settings["palettes"][mode]
+            self.assertEqual(theme.qt_selection_text(c), expected)
+            self.assertGreaterEqual(theme.contrast_ratio(expected, c["accent"]), 4.5)
+        for accent, foreground in (("#224466", "#eeeeee"), ("#ffff00", "#222222")):
+            c = {**self.settings["palettes"]["dark"], "accent": accent, "accent_text": foreground}
+            self.assertEqual(theme.qt_selection_text(c), foreground)
+        c = {key: "#777777" for key in self.settings["palettes"]["dark"]}
+        self.assertEqual(theme.qt_selection_text(c), "#000000")
+
+    def test_generated_qt_theme_has_clear_dolphin_pane_and_readable_selections(self):
+        for mode in ("dark", "light"):
+            self.settings["mode"] = mode
+            self.sync.apply(self.settings)
+            c = self.settings["palettes"][mode]
+            foreground = c["text"]
+            background = theme.qt_selection_background(c)
+            # Released Dolphin uses regular Text for selected filenames and
+            # blends metadata with Base on focus loss. Check both paint paths.
+            secondary = theme.mix_colors(c["text"], c["background"], 0.3)
+            for text in (foreground, secondary):
+                self.assertGreaterEqual(theme.contrast_ratio(text, background), 4.5)
+            settings = configparser.ConfigParser(interpolation=None)
+            settings.read(self.config / "Kvantum/Zephyrus/Zephyrus.kvconfig")
+            self.assertTrue(settings.getboolean("Hacks", "transparent_dolphin_view"))
+            self.assertTrue(settings.getboolean("GenericFrame", "frame"))
+            self.assertEqual(settings["GeneralColors"]["highlight.text.color"], foreground)
+            self.assertEqual(settings["GeneralColors"]["highlight.color"], background)
+            self.assertEqual(settings["GeneralColors"]["inactive.highlight.color"], background)
+            for key in ("text.press.color", "text.toggle.color"):
+                self.assertEqual(settings["ItemView"][key], foreground)
+            self.assertEqual(settings["MenuItem"]["text.focus.color"], theme.qt_selection_text(c))
+            svg = ET.parse(self.config / "Kvantum/Zephyrus/Zephyrus.svg")
+            for state in ("pressed", "toggled"):
+                interior = svg.find(f'.//*[@id="itemview-{state}"]')
+                frame = svg.find(f'.//*[@id="itemview-{state}-top"]')
+                self.assertIn("fill:" + background, interior.attrib["style"])
+                self.assertIn("fill:" + c["accent"], frame.attrib["style"])
+            settings.read(self.config / "kdeglobals")
+            # Breeze uses the KDE highlight to color folder artwork.
+            self.assertEqual(settings["Colors:Selection"]["BackgroundNormal"], theme.rgb(c["accent"]))
+            for key in ("ForegroundNormal", "ForegroundInactive"):
+                self.assertEqual(settings["Colors:Selection"][key], theme.rgb(theme.qt_selection_text(c)))
 
     def test_repeated_apply_is_idempotent_and_css_has_one_block(self):
         self.write("gtk-3.0/gtk.css", "@import 'colors.css';\n/* Custom styles */\n")

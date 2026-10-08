@@ -83,10 +83,17 @@ explicitly select that engine.
 
 Dark mode uses softer charcoal backgrounds and rose-tinted text with the red
 brand accent. Light mode uses soft warm-gray backgrounds and plum-tinted text.
-Dolphin's Places sidebar shares its file-view background. Menus use the separate
-surface color. Native document tabs have a subtle selected background and accent
-underline. Kvantum geometry is adapted from Tsu Jan's KvFlat theme; its source
-and GPL license are in `assets/qt-theme/`. Applications keep their own artwork.
+Dolphin's Places sidebar shares its file-view background, and its file pane has
+no surrounding frame (Kvantum's `transparent_dolphin_view` option). Native Qt
+item selections use a subtle accent tint over the background with a thin accent
+outline and regular text. The tint is limited to keep both filenames and Dolphin's
+dimmed item counts readable, including when the view loses focus. The KDE accent
+stays vivid for folder artwork. Menus keep solid accent highlights and use
+`accent_text` when readable, or a contrasting palette color or black/white.
+Menus use the separate surface color. Native document tabs have a subtle selected
+background and accent underline. Kvantum geometry is adapted from Tsu Jan's KvFlat
+theme; its source and GPL license are in `assets/qt-theme/`. Applications keep their
+own artwork.
 
 The GTK Settings portal is explicitly selected in `hyprland/portals.conf`.
 GNOME's interface `color-scheme` setting supplies the standard dark/light

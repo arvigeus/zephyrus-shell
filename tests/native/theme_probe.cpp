@@ -8,6 +8,7 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QStyle>
+#include <QStyleOptionViewItem>
 #include <QTabWidget>
 #include <QToolButton>
 #include <QWidgetAction>
@@ -31,6 +32,7 @@ int main(int argc, char **argv) {
         for (const auto &folder : {"Documents", "Downloads", "Pictures"}) {
             new QListWidgetItem(QIcon::fromTheme("folder"), folder, view);
         }
+        view->setCurrentRow(0);
         tabs->addTab(view, name);
     }
     window.setCentralWidget(tabs);
@@ -75,6 +77,21 @@ int main(int argc, char **argv) {
     painter.end();
     if (argc > 1) screenshot.save(argv[1]);
     const auto palette = app.palette();
+    // Dolphin paints the selection primitive itself and uses regular Text for
+    // filenames. Inspect the SVG's actual fill, not just HighlightedText.
+    auto selectionFill = [&](bool active) {
+        QImage image(80, 60, QImage::Format_ARGB32_Premultiplied);
+        image.fill(palette.color(QPalette::Base));
+        QStyleOptionViewItem option;
+        option.palette = palette;
+        option.rect = image.rect();
+        option.state = QStyle::State_Enabled | QStyle::State_Selected;
+        if (active) option.state |= QStyle::State_Active;
+        QPainter painter(&image);
+        app.style()->drawPrimitive(QStyle::PE_PanelItemViewItem, &option, &painter, tabs->currentWidget());
+        painter.end();
+        return image.pixelColor(40, 30).name().toStdString();
+    };
     std::cout << palette.color(QPalette::Window).name().toStdString() << "\n"
               << palette.color(QPalette::Base).name().toStdString() << "\n"
               << palette.color(QPalette::Highlight).name().toStdString() << "\n"
@@ -83,5 +100,9 @@ int main(int argc, char **argv) {
               << app.style()->objectName().toStdString() << "\n"
               << popup.pixelColor(popup.width() / 2, popup.height() - 10).name().toStdString() << "\n"
               << folderButton->grab().toImage().pixelColor(10, 14).name().toStdString() << "\n"
-              << otherButton->grab().toImage().pixelColor(10, 5).name().toStdString() << "\n";
+              << otherButton->grab().toImage().pixelColor(10, 5).name().toStdString() << "\n"
+              << palette.color(QPalette::Active, QPalette::HighlightedText).name().toStdString() << "\n"
+              << palette.color(QPalette::Inactive, QPalette::HighlightedText).name().toStdString() << "\n"
+              << palette.color(QPalette::Text).name().toStdString() << "\n"
+              << selectionFill(true) << "\n" << selectionFill(false) << "\n";
 }

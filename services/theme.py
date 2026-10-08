@@ -208,8 +208,46 @@ def rgb(color):
     return ",".join(str(int(color[i : i + 2], 16)) for i in (1, 3, 5))
 
 
+def contrast_ratio(foreground, background):
+    """WCAG contrast for opaque sRGB colors."""
+    def luminance(color):
+        channels = [int(color[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+        linear = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in channels]
+        return sum(v * weight for v, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+
+    lighter, darker = sorted((luminance(foreground), luminance(background)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def qt_selection_text(c):
+    # Menu items retain solid accent backgrounds.
+    for foreground in (c["accent_text"], c["text"], c["background"], "#000000", "#ffffff"):
+        if contrast_ratio(foreground, c["accent"]) >= 4.5:
+            return foreground
+
+
+def mix_colors(first, second, amount):
+    return "#" + "".join(
+        f"{int(int(first[i : i + 2], 16) * (1 - amount) + int(second[i : i + 2], 16) * amount):02x}"
+        for i in (1, 3, 5)
+    )
+
+
+def qt_selection_background(c):
+    # Dolphin 26.08 uses Text even for selected filenames, and blends secondary
+    # text with Base when unfocused. Accommodate both, including newer versions
+    # that use HighlightedText, with a quiet fill and an accent-colored frame.
+    secondary = mix_colors(c["text"], c["background"], 0.3)
+    for opacity in range(16, -1, -1):
+        background = mix_colors(c["background"], c["accent"], opacity / 100)
+        if min(contrast_ratio(text, background) for text in (c["text"], secondary)) >= 4.5:
+            return background
+    return c["background"]
+
+
 def kde_groups(theme):
     c = theme["palettes"][theme["mode"]]
+    selection_text = qt_selection_text(c)
     groups = {
         "General": {"Name": "Zephyrus", "ColorScheme": "Zephyrus"},
         "KDE": {"contrast": "4"},
@@ -239,6 +277,10 @@ def kde_groups(theme):
             "DecorationHover": "accent",
         }
         groups["Colors:" + section] = {key: rgb(c[token]) for key, token in colors.items()}
+        if section == "Selection":
+            groups["Colors:" + section].update(
+                ForegroundNormal=rgb(selection_text), ForegroundInactive=rgb(selection_text)
+            )
     groups["ColorEffects:Disabled"] = {
         "Color": rgb(c["surface"]),
         "ColorAmount": "0",
@@ -253,6 +295,7 @@ def kde_groups(theme):
 
 def qt_style(c):
     """Native Kvantum geometry with colors from the shared palette."""
+    selection_background = qt_selection_background(c)
     template = ROOT / "assets/qt-theme"
     svg = (template / "KvFlat.svg").read_text()
 
@@ -274,6 +317,12 @@ def qt_style(c):
     # KvFlat uses shorthand colors for button fills and some indicators.
     # Only match paint values, leaving SVG fragment references untouched.
     svg = re.sub(r"(?<=:)#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b", color, svg)
+    # Keep KvFlat's one-pixel accent outline; recolor only the selected interiors.
+    svg = re.sub(
+        r'<path\b[^>]*\bid="itemview-(?:pressed|toggled)"[^>]*>',
+        lambda match: re.sub(r"fill:#[0-9a-fA-F]{6}", "fill:" + selection_background, match[0]),
+        svg,
+    )
     svg = svg.replace("opacity:.92", "opacity:1")
     # Flat document tabs: quiet labels, a subtle selected surface and an
     # accent underline, rather than boxed button borders.
@@ -298,15 +347,12 @@ def qt_style(c):
         "mid.light.color": "border",
         "dark.color": "background",
         "mid.color": "border",
-        "highlight.color": "accent",
-        "inactive.highlight.color": "accent",
         "tooltip.base.color": "surface",
         "text.color": "text",
         "window.text.color": "text",
         "button.text.color": "text",
         "disabled.text.color": "muted",
         "tooltip.text.color": "text",
-        "highlight.text.color": "accent_text",
         "link.color": "accent",
         "link.visited.color": "link_visited",
     }
@@ -320,7 +366,13 @@ def qt_style(c):
                 "blurring": "false",
                 "no_inactiveness": "true",
             },
-            "GeneralColors": {key: c[token] for key, token in colors.items()},
+            "GeneralColors": {
+                **{key: c[token] for key, token in colors.items()},
+                "highlight.color": selection_background,
+                "inactive.highlight.color": selection_background,
+                "highlight.text.color": c["text"],
+            },
+            "Hacks": {"transparent_dolphin_view": "true"},
             "Dock": {"frame": "false", "interior": "false"},
             "Tab": {
                 "frame": "false",
@@ -330,10 +382,10 @@ def qt_style(c):
                 "text.press.color": c["text"],
                 "text.toggle.color": c["text"],
             },
-            "MenuItem": {"text.focus.color": c["accent_text"]},
+            "MenuItem": {"text.focus.color": qt_selection_text(c)},
             "ItemView": {
-                "text.press.color": c["accent_text"],
-                "text.toggle.color": c["accent_text"],
+                "text.press.color": c["text"],
+                "text.toggle.color": c["text"],
             },
         },
     )

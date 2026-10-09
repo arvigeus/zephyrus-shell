@@ -1,5 +1,5 @@
-import copy
 import configparser
+import copy
 import json
 import os
 import subprocess
@@ -141,9 +141,13 @@ class ThemeTests(unittest.TestCase):
                 self.assertIn("fill:" + c["accent"], frame.attrib["style"])
             settings.read(self.config / "kdeglobals")
             # Breeze uses the KDE highlight to color folder artwork.
-            self.assertEqual(settings["Colors:Selection"]["BackgroundNormal"], theme.rgb(c["accent"]))
+            self.assertEqual(
+                settings["Colors:Selection"]["BackgroundNormal"], theme.rgb(c["accent"])
+            )
             for key in ("ForegroundNormal", "ForegroundInactive"):
-                self.assertEqual(settings["Colors:Selection"][key], theme.rgb(theme.qt_selection_text(c)))
+                self.assertEqual(
+                    settings["Colors:Selection"][key], theme.rgb(theme.qt_selection_text(c))
+                )
 
     def test_repeated_apply_is_idempotent_and_css_has_one_block(self):
         self.write("gtk-3.0/gtk.css", "@import 'colors.css';\n/* Custom styles */\n")

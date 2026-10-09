@@ -33,9 +33,24 @@ def still_frame(path):
         return target
     temporary = target.with_name("." + target.stem + "-" + uuid.uuid4().hex + ".jpg")
     try:
-        result = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", str(path),
-                                 "-frames:v", "1", "-q:v", "2", str(temporary)],
-                                stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-nostdin",
+                "-v",
+                "error",
+                "-i",
+                str(path),
+                "-frames:v",
+                "1",
+                "-q:v",
+                "2",
+                str(temporary),
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=30,
+        )
         if result.returncode or not temporary.is_file() or not temporary.stat().st_size:
             raise ValueError("Could not extract a still image from this video wallpaper.")
         os.replace(temporary, target)
@@ -54,9 +69,19 @@ def apply(path, provider):
     selection = uuid.uuid4().hex
     with engine.control_lock():
         previous = engine.read_setting()
-        atomic_write(engine.config_dir() / "wallpaper.json", json.dumps({
-            "mode": "video", "video": str(path), "provider": provider,
-            "selection": selection, "image": poster.as_uri()}) + "\n")
+        atomic_write(
+            engine.config_dir() / "wallpaper.json",
+            json.dumps(
+                {
+                    "mode": "video",
+                    "video": str(path),
+                    "provider": provider,
+                    "selection": selection,
+                    "image": poster.as_uri(),
+                }
+            )
+            + "\n",
+        )
     deadline = time.monotonic() + 45
     error = "Video wallpaper did not start. Ensure Zephyrus Shell is running."
     while time.monotonic() < deadline:
@@ -64,8 +89,11 @@ def apply(path, provider):
         if state.get("selection") == selection:
             if state.get("status") == "ready":
                 update_lock_background(poster, engine.config_dir().parent)
-                return {"path": str(path), "service": "mpvpaper",
-                        "message": "Video wallpaper applied. Lock screen uses a still frame."}
+                return {
+                    "path": str(path),
+                    "service": "mpvpaper",
+                    "message": "Video wallpaper applied. Lock screen uses a still frame.",
+                }
             if state.get("status") == "error":
                 error = state.get("error") or error
                 break
@@ -73,8 +101,10 @@ def apply(path, provider):
             raise ValueError("Wallpaper selection changed before Apply completed.")
         time.sleep(0.1)
     with engine.control_lock():
-        if (previous.get("mode") not in {"video", "wallpaper_engine"}
-                and engine.read_setting().get("selection") == selection):
+        if (
+            previous.get("mode") not in {"video", "wallpaper_engine"}
+            and engine.read_setting().get("selection") == selection
+        ):
             atomic_write(engine.config_dir() / "wallpaper.json", json.dumps(previous) + "\n")
     if previous.get("mode") not in {"video", "wallpaper_engine"}:
         engine.wait_idle()
@@ -127,33 +157,61 @@ class Player:
                 runtime.publish("waiting")
                 return {"screens": []}
             layers = engine.hypr_query("layers")
-            if any(s.get("namespace") == "mpvpaper" for m in layers.values()
-                   for s in m.get("levels", {}).get("0", [])):
-                raise ValueError("A separate mpvpaper session is running. Close it before applying.")
+            if any(
+                s.get("namespace") == "mpvpaper"
+                for m in layers.values()
+                for s in m.get("levels", {}).get("0", [])
+            ):
+                raise ValueError(
+                    "A separate mpvpaper session is running. Close it before applying."
+                )
             self.socket = self.ipc.directory() / ("mpv-" + uuid.uuid4().hex[:16] + ".sock")
             self.log = (engine.state_file().parent / "video.log").open("w")
             atomic_write(runtime.ownership_file, json.dumps({"owner": runtime.owner}) + "\n")
-            options = " ".join(["config=no", "load-scripts=no", "ytdl=no", "input-terminal=no", "audio=no",
-                                "loop-file=inf", "hwdec=auto", "panscan=1",
-                                "input-ipc-server=" + str(self.socket)])
+            options = " ".join(
+                [
+                    "config=no",
+                    "load-scripts=no",
+                    "ytdl=no",
+                    "input-terminal=no",
+                    "audio=no",
+                    "loop-file=inf",
+                    "hwdec=auto",
+                    "panscan=1",
+                    "input-ipc-server=" + str(self.socket),
+                ]
+            )
             self.process = subprocess.Popen(
                 ["mpvpaper", "-l", "background", "-o", options, "ALL", str(path)],
                 env=dict(os.environ, ZEPHYRUS_WALLPAPER_OWNER=runtime.owner),
-                stdin=subprocess.DEVNULL, stdout=self.log, stderr=self.log, start_new_session=True)
+                stdin=subprocess.DEVNULL,
+                stdout=self.log,
+                stderr=self.log,
+                start_new_session=True,
+            )
             self.token = token
             self.started = time.monotonic()
             runtime.publish("starting")
         if self.process.poll() is not None:
-            raise ValueError("Video wallpaper playback stopped. Check video.log in the wallpaper runtime directory.")
+            raise ValueError(
+                "Video wallpaper playback stopped. Check video.log in the wallpaper runtime directory."
+            )
         position = self.ipc.property(self.socket, "time-pos")
         if isinstance(position, (int, float)) and position > 0:
             self.ready = True
         layers = engine.hypr_query("layers")
-        screens = [m["name"] for m in monitors if any(
-            s.get("namespace") == "mpvpaper" and s.get("alpha", 1) > 0
-            and s.get("w", 0) > 0 and s.get("h", 0) > 0
-            and ("pid" not in s or s["pid"] == self.process.pid)
-            for s in layers.get(m["name"], {}).get("levels", {}).get("0", []))]
+        screens = [
+            m["name"]
+            for m in monitors
+            if any(
+                s.get("namespace") == "mpvpaper"
+                and s.get("alpha", 1) > 0
+                and s.get("w", 0) > 0
+                and s.get("h", 0) > 0
+                and ("pid" not in s or s["pid"] == self.process.pid)
+                for s in layers.get(m["name"], {}).get("levels", {}).get("0", [])
+            )
+        ]
         if not self.ready or not screens:
             if not awake:
                 self.started = time.monotonic()

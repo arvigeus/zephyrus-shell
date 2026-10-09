@@ -146,7 +146,7 @@ ShellRoot {
                 } else if (phase === 3) {
                     if (pictures.settingWallpaper || !runtime.externalScreens.includes("TEST")) return;
                     if (pictures.actionFailed) { fail(pictures.actionMessage); return; }
-                    ShellState.close(); phase = 4;
+                    ShellState.stopPlugin("pictures"); phase = 4;
                 } else if (phase === 4) {
                     if (overlay.item) return;
                     if (!runtime.externalScreens.includes("TEST") || ShellState.runningPluginIds.includes("pictures")) {

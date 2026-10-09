@@ -7,57 +7,55 @@ ShellRoot {
         if (JSON.stringify(actual) !== JSON.stringify(expected))
             throw new Error("Expected " + JSON.stringify(expected) + ", got " + JSON.stringify(actual));
     }
+    function reset() {
+        for (const id of ShellState.runningPluginIds.slice()) ShellState.stopPlugin(id);
+        ShellState.showDesktop();
+        ShellState.monitor = "primary";
+    }
     Timer {
         interval: 1; running: true
         onTriggered: {
             try {
-                for (const test of [test_idle_switch_stops_resources_and_clears_payload,
-                                   test_retained_owner_survives_desktop_and_other_monitor,
-                                   test_hidden_release_preserves_foreground,
+                for (const test of [test_navigation_preserves_open_modules,
+                                   test_owner_survives_desktop_and_other_monitor,
+                                   test_hidden_close_preserves_foreground,
                                    test_navigation_is_opaque_and_cancelled_on_desktop,
-                                   test_back_destroys_even_retained_module,
+                                   test_back_and_escape_hide,
+                                   test_close_from_drawer_keeps_drawer_open,
                                    test_clipboard_toggle_preserves_module_and_owner,
                                    test_removed_monitor_moves_module_ownership]) {
-                    init(); test(); cleanup();
+                    reset(); test(); reset();
                 }
-                console.log("STATE PASS: lifetime, owner, opaque navigation, cancellation");
+                console.log("STATE PASS: persistent lifetime, explicit stop, owner, opaque navigation, cancellation");
             } catch (error) { console.error("STATE FAIL", error); }
             Qt.quit();
         }
     }
-
-    function init() {
-        for (const id of ShellState.runningPluginIds.slice()) ShellState.stopPlugin(id);
-        ShellState.close();
-        ShellState.monitor = "primary";
-    }
-    function cleanup() { init(); }
-
-    function test_idle_switch_stops_resources_and_clears_payload() {
+    function test_navigation_preserves_open_modules() {
         ShellState.openPlugin("first", {title: "First"});
         ShellState.openPlugin("second");
-        compare(ShellState.runningPluginIds, ["second"]);
+        compare(ShellState.runningPluginIds, ["first", "second"]);
         compare(ShellState.pendingPluginOpen, null);
-        compare(ShellState.runningPluginMonitors.first, undefined);
+        compare(ShellState.runningPluginMonitors.first, "primary");
+        ShellState.openPlugin("first");
+        compare(ShellState.runningPluginIds, ["first", "second"]);
     }
-    function test_retained_owner_survives_desktop_and_other_monitor() {
+    function test_owner_survives_desktop_and_other_monitor() {
         ShellState.openPlugin("player");
-        ShellState.requestKeepRunning("player", true);
         ShellState.showDesktop();
         ShellState.monitor = "secondary";
         ShellState.openPlugin("other");
         ShellState.openPlugin("player");
         compare(ShellState.monitor, "primary");
-        compare(ShellState.runningPluginIds, ["player"]);
-        ShellState.close();
-        compare(ShellState.runningPluginIds, []);
-        compare(ShellState.retentionRequests.player, undefined);
+        compare(ShellState.runningPluginIds, ["player", "other"]);
+        ShellState.stopPlugin("player");
+        compare(ShellState.runningPluginIds, ["other"]);
+        compare(ShellState.runningPluginMonitors.player, undefined);
     }
-    function test_hidden_release_preserves_foreground() {
+    function test_hidden_close_preserves_foreground() {
         ShellState.openPlugin("player");
-        ShellState.requestKeepRunning("player", true);
         ShellState.openPlugin("other");
-        ShellState.requestKeepRunning("player", false);
+        ShellState.stopPlugin("player");
         compare(ShellState.runningPluginIds, ["other"]);
         compare(ShellState.pluginId, "other");
         compare(ShellState.panel, "module");
@@ -67,22 +65,32 @@ ShellRoot {
         ShellState.openPlugin("destination", payload);
         compare(ShellState.pendingPluginOpen.id, "destination");
         compare(ShellState.pendingPluginOpen.payload, payload);
-        ShellState.requestKeepRunning("destination", true);
         ShellState.showDesktop();
         compare(ShellState.pendingPluginOpen, null);
         compare(ShellState.runningPluginIds, ["destination"]);
     }
-    function test_back_destroys_even_retained_module() {
+    function test_back_and_escape_hide() {
         ShellState.openPlugin("player", {id: 1});
-        ShellState.requestKeepRunning("player", true);
         ShellState.backToSpaces();
         compare(ShellState.panel, "left");
-        compare(ShellState.runningPluginIds, []);
+        compare(ShellState.runningPluginIds, ["player"]);
         compare(ShellState.pendingPluginOpen, null);
+        ShellState.openPlugin("player");
+        ShellState.close();
+        compare(ShellState.panel, "");
+        compare(ShellState.pluginId, "");
+        compare(ShellState.runningPluginIds, ["player"]);
+    }
+    function test_close_from_drawer_keeps_drawer_open() {
+        ShellState.openPlugin("first");
+        ShellState.toggle("left");
+        ShellState.stopPlugin("first");
+        compare(ShellState.panel, "left");
+        compare(ShellState.runningPluginIds, []);
+        compare(ShellState.pluginMonitor, "");
     }
     function test_removed_monitor_moves_module_ownership() {
         ShellState.openPlugin("player");
-        ShellState.requestKeepRunning("player", true);
         ShellState.monitor = "secondary";
         ShellState.openPlugin("other");
         ShellState.reconcileScreens([]);
@@ -91,9 +99,8 @@ ShellRoot {
         compare(ShellState.monitor, "primary");
         compare(ShellState.pluginMonitor, "primary");
         compare(ShellState.runningPluginMonitors, {player: "primary", other: "primary"});
-        compare(ShellState.retentionRequests.player, true);
         ShellState.showDesktop();
-        compare(ShellState.runningPluginIds, ["player"]);
+        compare(ShellState.runningPluginIds, ["player", "other"]);
     }
     function test_clipboard_toggle_preserves_module_and_owner() {
         ShellState.openPlugin("first");
@@ -108,11 +115,10 @@ ShellRoot {
         ShellState.dismissPanel();
         compare(ShellState.panel, "module");
         compare(ShellState.monitor, "primary");
-        compare(ShellState.runningPluginIds, ["first"]);
         ShellState.showDesktop();
         ShellState.toggle("clipboard", "secondary");
         ShellState.dismissPanel();
         compare(ShellState.panel, "");
-        compare(ShellState.runningPluginIds, []);
+        compare(ShellState.runningPluginIds, ["first"]);
     }
 }

@@ -55,13 +55,14 @@ ShellRoot {
                     }
                 } else if (step === 4) {
                     module.fileWorker.startJob("transfer", {source:"local", path:Quickshell.env("ZEPHYRUS_TRANSFER_FIXTURE") + "/source.txt", destination:"local", target:Quickshell.env("ZEPHYRUS_TRANSFER_FIXTURE") + "/target", title:"Lifecycle fixture"});
-                    if (!ShellState.retentionRequests.files) { fail("Files did not retain pending transfers"); return; }
                     ShellState.showDesktop();
                     if (module.transferPicker.visible) { fail("Hidden Files left its destination popup open"); return; }
                     if (!ShellState.runningPluginIds.includes("files")) { fail("Desktop destroyed active Files"); return; }
                     step++; ticks = 0;
                 } else if (step === 5) {
-                    if (ShellState.runningPluginIds.includes("files")) return;
+                    if (!module.fileWorker.jobs.some(job => job.state === "finished")) return;
+                    if (!ShellState.runningPluginIds.includes("files")) { fail("Completion destroyed Files"); return; }
+                    module.host.close();
                     ShellState.openPlugin("music"); step++; ticks = 0;
                 } else if (step === 6) {
                     module = content();
@@ -69,18 +70,17 @@ ShellRoot {
                     const worker = find(module, "musicService");
                     if (!worker) { fail("Music owned worker missing"); return; }
                     worker.startJob("download_start", {kind:"track", item:{id:"fixture", title:"Fixture", artist:"Artist", album:"Album", releaseDate:"2020-01-01", duration:4}, title:"Lifecycle fixture"});
-                    if (!ShellState.retentionRequests.music) { fail("Music did not retain pending downloads"); return; }
                     ShellState.showDesktop();
                     if (!ShellState.runningPluginIds.includes("music")) { fail("Desktop destroyed downloading Music"); return; }
                     step++; ticks = 0;
                 } else if (step === 7) {
-                    if (ShellState.runningPluginIds.includes("music")) {
-                        const worker = find(module, "musicService");
-                        if (worker && worker.jobs.some(job => job.state === "running")) musicRan = true;
-                        return;
-                    }
+                    const worker = find(module, "musicService");
+                    if (worker.jobs.some(job => job.state === "running")) musicRan = true;
+                    if (!worker.jobs.some(job => job.state === "finished")) return;
+                    if (!ShellState.runningPluginIds.includes("music")) { fail("Completion destroyed Music"); return; }
+                    module.host.close();
                     if (!musicRan) { fail("Music stream download never ran"); return; }
-                    console.log("TRANSFERS PASS: Files popup geometry, destination picker, real copy and download-start retention, hidden completion releases owned modules");
+                    console.log("TRANSFERS PASS: Files popup geometry, destination picker, real copy and download-start retention, hidden completion preserves modules, explicit close releases workers");
                     Qt.quit();
                 }
             }

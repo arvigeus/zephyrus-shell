@@ -68,7 +68,7 @@ ShellRoot {
                 if (!delayedFocus.contentItem.Window.active) return;
                 WindowList.activate(target); releaseFocus.restart(); step = 2; ticks = 0;
             } else if (step === 2) {
-                if (ShellState.pluginId || root.modules.item || !target.activated || !testWindow.contentItem.Window.active) return;
+                if (ShellState.pluginId || !target.activated || !testWindow.contentItem.Window.active) return;
                 WindowList.moveToMonitor(target, "ZEPHYRUS-TEST"); step = 20; ticks = 0;
             } else if (step === 20 && ticks > 5) {
                 const monitor = WindowList.monitors.find(m => m.name === "ZEPHYRUS-TEST");
@@ -124,7 +124,6 @@ ShellRoot {
             } else if (step === 11) {
                 if (!root.modules.item || !root.modules.item.currentModule) return;
                 retainedModule = root.modules.item.currentModule;
-                retainedModule.host.requestKeepRunning("apps", true);
                 removeMonitor.running = true; advance();
             } else if (step === 12 && ticks > 5) {
                 if (WindowList.monitors.some(m => m.name === "ZEPHYRUS-TEST")) return;

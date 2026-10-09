@@ -7,6 +7,6 @@ QtObject {
     function launch(command, host) {
         if (!command || !command.length) return;
         Quickshell.execDetached(command);
-        if (host) host.close();
+        if (host) host.hide();
     }
 }

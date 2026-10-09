@@ -38,7 +38,6 @@ ShellRoot {
                     if (module.loading) return;
                     module.openEntry({path:"/Document.txt", name:"Document.txt", is_dir:false});
                     if (module.transferPicker.visible) { fail("Cloud open showed destination picker"); return; }
-                    if (!ShellState.retentionRequests.files) { fail("Cloud opening did not retain Files"); return; }
                     ShellState.showDesktop(); step++; ticks = 0;
                 } else if (step === 3) {
                     if (!ShellState.runningPluginIds.includes("files")) { fail("Desktop destroyed editing Files"); return; }
@@ -48,7 +47,9 @@ ShellRoot {
                     module.activityCenter.actionRequested(worker.editSessions[0]);
                     step++; ticks = 0;
                 } else if (step === 4) {
-                    if (ShellState.runningPluginIds.includes("files")) return;
+                    if (worker.editSessions.some(job => job.active)) return;
+                    if (!ShellState.runningPluginIds.includes("files")) { fail("Stopping sync destroyed hidden Files"); return; }
+                    module.host.close();
                     ShellState.openPlugin("files"); step++; ticks = 0;
                 } else if (step === 5) {
                     module = content();
@@ -73,7 +74,6 @@ ShellRoot {
                     worker = module.fileWorker;
                     if (!worker.editSessions.length) return;
                     if (worker.editSessions[0].active) { fail("Recovered copy resumed without an action"); return; }
-                    if (ShellState.retentionRequests.files) { fail("Paused recovery retained module"); return; }
                     console.log("FILE OPEN PASS: real cloud Open, default app, atomic save-back, hidden retention, Stop syncing release, explicit close and durable recovery");
                     Qt.quit();
                 }

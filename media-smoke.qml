@@ -121,7 +121,7 @@ ShellRoot {
                     require(media.tab === "cast" && grid.contentY === retainedScroll,"Settings lost tab or scroll state");
                     require(find(media,"mediaService").serial === retainedRequests,"Settings triggered new provider requests");
                     if (settingsPhase === 1) { ShellState.dismissPanel(); settingsPhase++; return; }
-                    ShellState.close();
+                    ShellState.stopPlugin(ShellState.pluginId);
                     require(!overlay.item,"Overlay not destroyed");
                     ShellState.openPlugin("series"); step++;
                 } else if (step === 5) {
@@ -348,7 +348,7 @@ ShellRoot {
                     media=loader.item;
                     require(media.kind === "tv" && media.animeMode && media.selected.id === "mal:3",
                             "Recommended series did not open in TV Series");
-                    ShellState.close();
+                    ShellState.stopPlugin(ShellState.pluginId);
                     console.log("MEDIA PASS: discovery, anime navigation and search, catalogue, details, favorites, grid, series episodes, subtitles, destruction");
                     Qt.quit();
                 }

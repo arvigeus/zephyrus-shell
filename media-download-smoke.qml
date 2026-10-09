@@ -34,7 +34,6 @@ ShellRoot {
                     media.tab = "torrent";
                     const search = find(media, "torrentSearch");
                     search.commitQueue({url:"magnet:?xt=urn:btih:movie-fixture"}, null);
-                    require(ShellState.retentionRequests.movies, "Queue did not request retention");
                     step++;
                 } else if (step === 2) {
                     const worker = find(media, "torrentService");
@@ -45,7 +44,9 @@ ShellRoot {
                     require(ShellState.runningPluginIds.includes("movies"), "Desktop destroyed active download monitor");
                     step++;
                 } else if (step === 3) {
-                    if (ShellState.runningPluginIds.includes("movies")) return;
+                    if (!find(media, "torrentService").jobs.some(job => job.status === "imported")) return;
+                    require(ShellState.runningPluginIds.includes("movies"), "Completion destroyed hidden Movies");
+                    media.host.close();
                     ShellState.openPlugin("movies"); step++;
                 } else if (step === 4) {
                     if (!overlay.item || !overlay.item.currentModule || overlay.item.currentModule.loading) return;
@@ -67,8 +68,7 @@ ShellRoot {
                 } else if (step === 7) {
                     const worker = find(media, "torrentService");
                     if (worker.pendingDownloads || !worker.jobs.length) return;
-                    require(ShellState.retentionRequests.series, "Series download did not request retention");
-                    ShellState.close();
+                    ShellState.stopPlugin("series");
                     require(!ShellState.runningPluginIds.includes("series"), "Explicit close retained series");
                     step++;
                 } else if (step === 8) {
@@ -84,7 +84,7 @@ ShellRoot {
                     if (media.loading || !media.localFiles.some(file => file.episodeTitle === "The beginning")) return;
                     const episode = media.localFiles.find(file => file.episodeTitle === "The beginning");
                     require(episode.path.endsWith("S01E01 - The beginning.mkv"), "Episode title is missing from filename");
-                    ShellState.close();
+                    ShellState.stopPlugin("series");
                     console.log("DOWNLOAD PASS: Find queue, title destination, Desktop retention, Local discovery, explicit close and resume, episode names");
                     Qt.quit();
                 }

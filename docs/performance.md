@@ -29,7 +29,8 @@ does not launch applications, run theme synchronization or operate session power
 
 `performance.qml` uses the real `SpaceSearch`, `WindowOrderModel`, `ModuleLoader`
 and Applications entry point. It checks search result counts, window identity and
-ordering, and releases Applications via the real Desktop lifecycle action. Five
+ordering, and releases Applications via the real explicit Close lifecycle action
+(`ShellState.stopPlugin`, also used by the Spaces sidebar X). Five
 process launches are the default; each includes:
 
 - 40 geometry response batches at 8, 32 and 64 windows, timed through deferred
@@ -97,6 +98,14 @@ steady idle CPU/RSS before changing compositor refresh or polling. In particular
 `WindowList`'s geometry fallback covers resize/layout messages that lack an
 order event; removing it requires verifying those cases on the compositor.
 
+The native focus regression is reproducible without operating the current shell:
+`python3 scripts/check-focus.py` creates a nested compositor and drives real
+Wayland keyboard events through the production `ShellScreen` and module loader.
+`--window-controls` additionally exercises window sizing, activation, monitor
+removal and retained module migration. These checks require a parent Wayland
+session and the dependencies listed in the README; they establish native input
+delivery and lifecycle correctness, rather than GPU or power performance.
+
 ## Experiment log
 
 2026-10-05, baseline `b01ce4f`, Quickshell 0.3.1 / Qt 6.11.2,
@@ -163,3 +172,71 @@ This session ends after four production hypotheses, with the fourth added to
 address the measured query regression. Native compositor/GPU measurements are
 the next independent research task; the geometry fallback remains necessary
 until resize/layout cases are measured there.
+
+### 2026-10-10: module lifetime, native focus and idle work
+
+Baseline `9ea023a`, Quickshell 0.3.1 / Qt 6.11.2, Python 3.14.7,
+Linux 7.2.8-arch1-2, offscreen/software. Bound: three production hypotheses.
+The explicit-close action in `performance.qml` was established before the
+baseline, because Desktop now deliberately retains modules. Its workload hash
+`a90afd1c4efdd48f25461ecdb81c224b46a56026a46ecb94870d4ebf968aa2bf`
+and the benchmark runner were fixed throughout all comparisons. The workload
+still requires correct results, catalogue readiness and zero workers after
+explicit release.
+
+Five independent launches before and after:
+
+| Metric (median) | Before | Final |
+| --- | ---: | ---: |
+| 64-window response batch | 0.35 ms | 0.35 ms |
+| Spaces query, 1,000 entries | 9.48 ms | 9.07 ms |
+| Applications query, 300 entries | 10.43 ms | 11.68 ms |
+| Applications first opening | 187 ms | 184 ms |
+| Applications warm opening | 156 ms | 151 ms |
+| Idle host process-group RSS | 177.05 MiB | 177.79 MiB |
+| Open Applications process-group RSS | 220.90 MiB | 219.50 MiB |
+| Released process-group RSS | 190.74 MiB | 187.00 MiB |
+| Python workers after explicit release | 0 | 0 |
+
+The Applications query regression triggered another comparison. Original
+production sources were restored for three launches, then the reviewed sources
+were restored for three launches immediately afterward. Query medians were
+12.20 ms original and 12.39 ms reviewed (+1.6%). Original raw results ranged
+11.53–12.43 ms; reviewed results ranged 11.58–12.51 ms. In that comparison,
+cold opening was 182 → 183 ms, warm opening 152 → 151 ms, open RSS
+220.19 → 219.81 MiB and released RSS 186.56 → 188.05 MiB.
+The first comparison's timing/memory gains and query regression did not reproduce
+consistently. Treat responsiveness and RSS as tied; no broad speed, steady CPU or
+power gain is claimed. Short idle CPU/context-switch samples remain near the
+measurement floor. Retained modules intentionally keep their owned memory and
+processes until explicit Close; the release phase measures Close, rather than
+Escape or Desktop.
+
+| Experiment | Hypothesis, evidence and change | Decision |
+| --- | --- | --- |
+| 1. Explicit lifetime and one keyboard owner | Feature-driven retention made navigation and completion destroy user state. The native test reproduces lost keyboard delivery after Escape in the original sources. Remove retention bookkeeping and use one transient exclusive surface for pills/module input, with a passive desktop bar. Native testing also exposed hidden content shrinking during desktop popups; preserve the host's full-screen geometry. Target: persistent object identity, native key delivery and explicit teardown. Expected tradeoff: opened modules retain resources. | Keep for correctness and simpler ownership. Native Escape/return, drawer/popup dismissal, query preservation, window actions and monitor migration pass. The fixed offscreen workload is effectively tied. |
+| 2. Actual activity and idle monitoring | Initial status loading opened an empty activity popup; persistent modules would also retain unconditional Files/torrent timers. Gate the popup on real activity. Poll Files editing sessions only while active; pause hidden idle torrent monitoring and refresh on return. Target: no empty popup, idle timers off, active work still monitored. | Keep. Real activity/worker/module smokes verify dismissal, hidden idle suspension, foreground refresh, retained completed jobs and active background work. Files' unconditional one-second idle timer is removed. No battery or native CPU gain is inferred from this. |
+| 3. Lazy Action artwork | A static `AppIcon` reference in every generic control imported Quickshell into portable QML and created blank artwork in default text/Lucide controls. Load it only when brand artwork is supplied. Target: portable compilation and removal of unnecessary default artwork creation. | Keep as a dependency cleanup. All 53 portable QML tests pass; the baseline had five compile failures. The profile records 15 default-Action AppIcon ranges before and none after. Real application icon creation dominates, so this is not a material benchmark speed/memory win. |
+
+One QML profile was captured for each endpoint with JavaScript, binding,
+creation, signal and compilation events. The XML includes inconsistent negative
+duration ranges; aggregated profile timings were discarded. Creation metadata
+still distinguishes default Action artwork from actual application artwork.
+Total AppIcon root creation ranges are essentially unchanged (11,409 → 11,391),
+consistent with keeping actual icons. Profile timings never enter comparisons.
+
+Final verification passes Ruff lint/format, ty, 610 Python tests, 53 portable QML
+tests, 20 JavaScript tests, backend budgets and all 24 smoke scripts through
+`make check`, including the required media checks. The isolated native focus
+runner fails on original Escape behavior and passes the reviewed behavior;
+`--window-controls` passes native window actions and retained screen migration.
+Those tests do not establish GPU pacing, physical hotplug, input-method behavior,
+provider latency or whole-desktop power/resource usage.
+
+Raw reports are `tests/artifacts/performance-review-before.json`,
+`performance-review-lifecycle.json` (three-launch intermediate),
+`performance-review-after.json`, `performance-review-before-repeat.json` and
+`performance-review-after-repeat.json`. Baseline/final `.qtd` traces, creation
+counts, original/final native focus logs, native window-control log and full
+verification log share that ignored directory. The three-hypothesis bound is
+complete; further optimization needs a representative native performance trace.

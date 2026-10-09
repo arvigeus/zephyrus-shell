@@ -297,7 +297,7 @@ Item {
             if (failure) detailError = failure;
             else if (result) {
                 notice = result.message || "Action started.";
-                if (result.started && host) host.close();
+                if (result.started && host) host.hide();
             }
         });
     }

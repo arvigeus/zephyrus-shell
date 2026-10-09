@@ -24,24 +24,25 @@ To add a space:
 
 The components are known at compile time. Their instances, native resources and
 workers remain lazy. Creation waits for drawers to close and uses the shared
-asynchronous loader. Escape cancels loading or closes the active module.
+asynchronous loader. Escape hides the active module, preserving its state.
 
 ## Host contract
 
 Every root exposes `property var host`. Its host belongs to that instance:
 
 - `host.close()` stops that instance, including when hidden.
-- `host.hide()` selects Desktop when that instance is visible; retained work continues.
-- `host.back()` stops it and opens Spaces when it is the foreground module.
-- `host.requestKeepRunning(id, enabled)` retains only its own ID while background
-  work continues. Release it when that work ends.
+- `host.hide()` selects Desktop when that instance is visible; its state and work continue.
+- `host.back()` hides it and opens Spaces when it is the foreground module.
 - `host.openPlugin(id, payload)` validates the destination and opens it. The
   destination's optional `handleOpen(payload)` interprets the opaque payload.
 - An optional `activate()` method restores focus when the module becomes visible.
 
-Selecting Desktop or another space destroys modules without a retention request.
-Retained instances keep their owned workers and playback. Explicit Close and
-Escape always stop the selected module. Lifecycle records live in
+Host API version 2 removes retention requests. Selecting Desktop, another space,
+or Escape hides modules; open instances retain their state, workers, and playback
+until the Spaces sidebar X or `host.close()` explicitly stops them. Successful
+external launches use `host.hide()`. Completing background work never closes a
+module. Hidden module controls are disabled, and idle download monitoring pauses
+until the module is shown again; active downloads continue to be monitored. Lifecycle records live in
 `core/ShellState.qml`; loading, hosts, and payload delivery live in
 `shell/ModuleOverlay.qml`.
 

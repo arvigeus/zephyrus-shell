@@ -1,5 +1,30 @@
 # Verification on this machine
 
+Module lifetime, native focus and operational cleanup, 2026-10-10: `make check`
+passes Ruff lint/format, ty, 610 Python tests, 53 portable QML tests, 20 JavaScript
+tests, backend performance budgets and all 24 smoke scripts. Idle modules survive
+Desktop, navigation and Escape; actual module hosts verify explicit stop,
+background completion, external launch, screen ownership and worker teardown.
+Activity checks reject empty popups, preserve dismissal and verify real jobs.
+Files and torrent worker checks verify idle polling suspension and active work.
+
+`python3 scripts/check-focus.py` runs production surfaces in its own nested
+Hyprland compositor, places a native text-input window on the module's output,
+and sends actual Wayland keyboard events. Original sources fail Escape focus
+restoration. Reviewed sources pass three Escape/return cycles, native typing,
+preserved query/object identity, drawer and popup Escape, stable hidden geometry,
+and explicit Close. `--window-controls` passes native Qt focus, delayed exclusive
+surface release, window sizes, float/tile, popups, monitor removal and module
+migration. Temporary compositor/session resources are cleaned up on exit.
+
+Five fixed offscreen baseline/final launches plus a three-launch repeat at each
+endpoint show broadly tied latency and RSS; the original sources also reproduce
+the initial query slowdown on repeat. No whole-desktop CPU, GPU or power gain is
+claimed. Keeping modules alive retains their resources until the sidebar X.
+Physical hotplug, input methods and configured remote providers remain separate
+desktop checks. See [review](architecture-review.md) and
+[experiment log](performance.md) for evidence and measurement limits.
+
 Performance/autoresearch, 2026-10-05: five fixed offscreen/software runs before
 and after confirmed batched window sorting (64-window responses 13.150 →
 0.375 ms), indexed search, and batched application catalogue publication

@@ -46,7 +46,6 @@ ShellRoot {
                 } else if (step === 1) {
                     musicItem = content("music");
                     if (!musicItem) return;
-                    musicItem.requestRetention(true);
                     ShellState.toggle("left");
                     if (ShellState.pluginId !== "music" || ShellState.panel !== "left") { fail("Drawer displaced Music"); return; }
                     ShellState.showDesktop(); step++; ticks = 0;
@@ -57,7 +56,6 @@ ShellRoot {
                 } else if (step === 3) {
                     radioItem = content("radio", overlay);
                     if (!radioItem) return;
-                    ShellState.requestKeepRunning("radio", true);
                     if (content("music") !== musicItem) { fail("Opening Radio stopped Music"); return; }
                     ShellState.toggle("left", "primary");
                     ShellState.dismissPanel();
@@ -75,8 +73,6 @@ ShellRoot {
                     ShellState.dismissPanel();
                     if (ShellState.monitor !== "secondary") { fail("Drawer returned Games to wrong monitor"); return; }
                     if (content("music") !== musicItem || content("radio", overlay) !== radioItem) { fail("Games stopped a player"); return; }
-                    musicItem.host.requestKeepRunning("radio", false);
-                    if (!ShellState.retentionRequests.radio) { fail("Music host changed Radio retention"); return; }
                     musicItem.host.close();
                     if (ShellState.pluginId !== "games") { fail("Hidden Music host closed Games"); return; }
                     step++; ticks = 0;
@@ -90,19 +86,20 @@ ShellRoot {
                     ShellState.monitor = "primary";
                     ShellState.openPlugin("music"); step++; ticks = 0;
                 } else if (step === 8) {
-                    if (!content("music")) return;
+                    musicItem = content("music");
+                    if (!musicItem) return;
                     ShellState.showDesktop(); step++; ticks = 0;
                 } else if (step === 9) {
-                    if (overlay.item) return;
+                    if (content("music") !== musicItem) { fail("Desktop destroyed idle Music"); return; }
+                    musicItem.host.close();
                     ShellState.openPlugin("games"); step++; ticks = 0;
                 } else if (step === 10) {
                     const game = content("games");
                     if (!game) return;
-                    game.host.requestKeepRunning("games", true);
                     ShellState.showDesktop(); step++; ticks = 0;
                 } else if (step === 11) {
-                    if (!content("games")) { fail("A general module could not request retention"); return; }
-                    content("games").host.requestKeepRunning("games", false); step++; ticks = 0;
+                    if (!content("games")) { fail("Desktop destroyed idle Games"); return; }
+                    content("games").host.close(); step++; ticks = 0;
                 } else if (step === 12) {
                     if (overlay.item) return;
                     ShellState.monitor = "secondary";
@@ -110,7 +107,6 @@ ShellRoot {
                 } else if (step === 13) {
                     musicItem = content("music");
                     if (!musicItem) return;
-                    musicItem.requestRetention(true);
                     ShellState.reconcileScreens(["primary"]);
                     secondarySurface.active = false;
                     step++; ticks = 0;
@@ -122,7 +118,7 @@ ShellRoot {
                     musicItem.host.close(); step++; ticks = 0;
                 } else if (step === 16) {
                     if (overlay.item) return;
-                    console.log("RETAINED PASS: drawer, Desktop, idle release, general retention, multi-monitor switching and explicit stop");
+                    console.log("RETAINED PASS: drawer, Desktop, idle module retention, multi-monitor switching and explicit stop");
                     Qt.quit();
                 }
             }

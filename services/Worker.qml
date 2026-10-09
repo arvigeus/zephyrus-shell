@@ -45,7 +45,7 @@ Item {
                          deadline: timeoutMs === 0 ? Infinity : Date.now() + (timeoutMs || timeout)};
         pendingCount++;
         if (stopped) {
-            settle(id, null, serviceName + " service stopped. Close and reopen this module.");
+            settle(id, null, serviceName + " service stopped. Close this module using the X in Spaces, then reopen it.");
             return id;
         }
         const line = JSON.stringify(Object.assign({}, args || {}, {id: id, op: op})) + "\n";
@@ -98,7 +98,7 @@ Item {
             root.processReady = false;
             root.startupRequests = [];
             root.stopped = true;
-            root.failPending(root.serviceName + " service stopped. Close and reopen this module.");
+            root.failPending(root.serviceName + " service stopped. Close this module using the X in Spaces, then reopen it.");
         }
     }
     Component.onDestruction: worker.running = false

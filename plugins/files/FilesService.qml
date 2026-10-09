@@ -56,7 +56,7 @@ JobWorker {
             }
         }
     }
-    Timer { interval: 1000; repeat: true; running: !root.stopped; onTriggered: root.pollEdits() }
+    Timer { objectName: "filesEditPoll"; interval: 1000; repeat: true; running: !root.stopped && root.activeEditCount > 0; onTriggered: root.pollEdits() }
 
     function connectDrive() {
         if (stopped) restart();

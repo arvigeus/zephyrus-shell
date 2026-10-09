@@ -18,10 +18,15 @@ def _path(value, base, description):
 
 
 def _env(value):
-    if (not isinstance(value, dict)
-            or not all(isinstance(key, str) and key and "=" not in key and "\0" not in key
-                       and isinstance(item, str) and "\0" not in item
-                       for key, item in value.items())):
+    if not isinstance(value, dict) or not all(
+        isinstance(key, str)
+        and key
+        and "=" not in key
+        and "\0" not in key
+        and isinstance(item, str)
+        and "\0" not in item
+        for key, item in value.items()
+    ):
         raise ProviderError("Command provider env must map environment names to text values.")
     return value
 
@@ -50,9 +55,13 @@ def _env_file(path):
                 if any(c.isspace() for c in value):
                     raise ValueError()
         except ValueError:
-            raise ProviderError(f"Invalid Command provider environment assignment on line {number}.") from None
+            raise ProviderError(
+                f"Invalid Command provider environment assignment on line {number}."
+            ) from None
         if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) or len(parts) > 1:
-            raise ProviderError(f"Invalid Command provider environment assignment on line {number}.")
+            raise ProviderError(
+                f"Invalid Command provider environment assignment on line {number}."
+            )
         # Values are literal: no variable, command, or shell expansion.
         values[key] = parts[0] if parts else ""
     return _env(values)
@@ -82,12 +91,18 @@ def configured_providers(config, base_dir=None):
                 manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
             except (OSError, ValueError, UnicodeError):
                 raise ProviderError("Cannot read Command provider plugin manifest.") from None
-            if (not isinstance(manifest, dict) or type(manifest.get("api_version")) is not int
-                    or manifest["api_version"] != 1):
+            if (
+                not isinstance(manifest, dict)
+                or type(manifest.get("api_version")) is not int
+                or manifest["api_version"] != 1
+            ):
                 raise ProviderError("Command provider plugin requires api_version 1.")
             command = manifest.get("command")
-        if (not isinstance(command, list) or not command
-                or not all(isinstance(part, str) and part and "\0" not in part for part in command)):
+        if (
+            not isinstance(command, list)
+            or not command
+            or not all(isinstance(part, str) and part and "\0" not in part for part in command)
+        ):
             raise ProviderError("Each Command provider command must be a nonempty argument array.")
         if "plugin" in row:
             command = [part.replace("{plugin_dir}", str(root)) for part in command]

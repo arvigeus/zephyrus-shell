@@ -9,9 +9,6 @@ import "../../media" as M
 ColumnLayout {
     id: root
     property var host
-    property bool playbackWantsRetention: false
-    function updateRetention() { if (host) host.requestKeepRunning("music", playbackWantsRetention || downloadLoading || torrentService.keepRunning); }
-    function requestRetention(enabled) { playbackWantsRetention = enabled; updateRetention(); }
     property string section: "discover"
     property var localSongs: []
     property string localQuery: ""
@@ -52,9 +49,7 @@ ColumnLayout {
     property string favoriteError: ""
     property string downloadError: ""
     readonly property bool downloadLoading: backendService.activeJobCount > 0
-    onHostChanged: updateRetention()
     onVisibleChanged: { if (!visible) { activity.close(); lyricsDialog.close(); artistInfoDialog.close(); genrePopup.close(); } }
-    onDownloadLoadingChanged: updateRetention()
     onSearchErrorChanged: { if (searchError) activity.notify(searchError, true); }
     onFavoriteErrorChanged: { if (favoriteError) activity.notify(favoriteError, true); }
     onEntityErrorChanged: { if (entityError) activity.notify(entityError, true); }
@@ -122,7 +117,7 @@ ColumnLayout {
     }
 
     function activate() {
-        if (downloadLoading || torrentService.keepRunning) activity.open();
+        if (activity.activeCount) activity.showActivity();
         if (section === "discover") searchField.focusField();
         else if (section === "local") songTable.focusList();
         else favoriteNavButton.forceActiveFocus();
@@ -991,7 +986,7 @@ ColumnLayout {
             Accessible.name: "Genre filter: " + text
             onClicked: root.showGenrePopup()
         }
-        W.Action { iconName: "download"; text: backendService.activeJobCount + root.torrentActivity.filter(j => j.state === "running").length > 0 ? "Transfers (" + (backendService.activeJobCount + root.torrentActivity.filter(j => j.state === "running").length) + ")" : "Activity"; onClicked: activity.open() }
+        W.Action { iconName: "download"; text: backendService.activeJobCount + root.torrentActivity.filter(j => j.state === "running").length > 0 ? "Transfers (" + (backendService.activeJobCount + root.torrentActivity.filter(j => j.state === "running").length) + ")" : "Activity"; enabled: activity.hasActivity; onClicked: activity.showActivity() }
         W.BusySpinner {
             visible: root.section === "discover" && root.loading
             running: visible
@@ -1004,7 +999,7 @@ ColumnLayout {
         id: torrentService
         monitorKind: "music"
         monitorJobs: true
-        onKeepRunningChanged: root.updateRetention()
+        foreground: root.visible
         onLibraryChanged: root.loadLocalSongs()
         onJobsErrorChanged: { if (jobsError && jobs.some(j => j.active)) activity.notify(jobsError, true); }
     }

@@ -738,7 +738,8 @@ def provider_catalog():
         "providers": [
             wallpaper_engine.descriptor() if value["id"] == "wallpaper_engine" else value
             for value in PROVIDERS.values()
-        ] + command_providers.descriptors(),
+        ]
+        + command_providers.descriptors(),
         "currentProvider": current_wallpaper_provider(),
     }
 
@@ -747,7 +748,10 @@ def current_wallpaper_provider():
     setting = wallpaper_engine.read_setting()
     if setting.get("mode") == "wallpaper_engine":
         return "wallpaper_engine"
-    if setting.get("provider") in PROVIDERS or setting.get("provider") in command_providers.configured():
+    if (
+        setting.get("provider") in PROVIDERS
+        or setting.get("provider") in command_providers.configured()
+    ):
         return setting["provider"]
     # Older still-image settings contain only the cached image URL.
     filename = Path(unquote(urlparse(str(setting.get("image") or "")).path)).name
@@ -763,7 +767,9 @@ def load_favorites(include_disabled=False):
         values = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(values, list):
             return []
-        items = [item for raw in values if (item := clean_item(raw, include_disabled=include_disabled))]
+        items = [
+            item for raw in values if (item := clean_item(raw, include_disabled=include_disabled))
+        ]
         return items[:2000]
     except (OSError, json.JSONDecodeError):
         return []
@@ -810,25 +816,32 @@ def download_wallpaper(item):
     path = wallpaper_file(item)
     if path.is_file() and path.stat().st_size:
         return path
-    url, headers = (command_providers.resolve(item) if item["provider"] not in PROVIDERS
-                    else (item["path"], {}))
+    url, headers = (
+        command_providers.resolve(item) if item["provider"] not in PROVIDERS else (item["path"], {})
+    )
     video = item.get("kind") == "video"
     maximum = 1024 * 1024 * 1024 if video else MAX_IMAGE_BYTES
-    request = Request(url, headers={"Accept": "video/*" if video else "image/*",
-                                    "User-Agent": USER_AGENT, **headers})
+    request = Request(
+        url,
+        headers={"Accept": "video/*" if video else "image/*", "User-Agent": USER_AGENT, **headers},
+    )
     temporary = None
     deadline = time.monotonic() + WALLPAPER_DOWNLOAD_SECONDS
     try:
         with urlopen(request, timeout=10) as response:
             content_type = response.headers.get_content_type()
             if not content_type.startswith("video/" if video else "image/") and not (
-                    video and content_type == "application/octet-stream"):
+                video and content_type == "application/octet-stream"
+            ):
                 raise ValueError(f"{item['providerName']} did not return a wallpaper file.")
             length = response.headers.get("Content-Length")
             if length and int(length) > maximum:
                 raise ValueError("This wallpaper is too large to download.")
             with tempfile.NamedTemporaryFile(
-                dir=path.parent, prefix=f".pictures-{os.getpid()}-", suffix=".download", delete=False
+                dir=path.parent,
+                prefix=f".pictures-{os.getpid()}-",
+                suffix=".download",
+                delete=False,
             ) as output:
                 temporary = Path(output.name)
                 total = 0

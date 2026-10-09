@@ -64,11 +64,10 @@ ShellRoot {
                         media.subtitlePath = media.localFiles[0].path; media.tab = "subtitles";
                         phase = 2; return;
                     } else if (action === "hidden-owner") {
-                        ShellState.requestKeepRunning("movies", true);
                         ShellState.openPlugin("series");
                         Browser.open("https://example.org/hidden-owner", "movies", "", media.host);
-                        require(ShellState.pluginId === "series" && !ShellState.runningPluginIds.includes("movies"), "Handoff closed the foreground module instead of its owner");
-                        ShellState.close(); next(); return;
+                        require(ShellState.pluginId === "series" && ShellState.runningPluginIds.includes("movies"), "Hidden handoff changed module lifetime or foreground");
+                        ShellState.stopPlugin("movies"); ShellState.stopPlugin("series"); next(); return;
                     }
                     phase = 3;
                 } else if (phase === 2) {
@@ -79,10 +78,11 @@ ShellRoot {
                     if (action === "failure") {
                         if (media.playLoading) return;
                         require(!!media.detailError && ShellState.pluginId === "movies", "Resolution failure closed module or lost error");
-                        ShellState.close();
+                        ShellState.stopPlugin("movies");
                     }
-                    if (overlay.item) return;
-                    require(ShellState.panel === "" && !ShellState.runningPluginIds.length, "Handoff left an overlay or live module");
+                    if (ShellState.pluginId) return;
+                    if (action !== "failure") require(overlay.item && ShellState.runningPluginIds.length === 1, "Handoff destroyed module state");
+                    for (const id of ShellState.runningPluginIds.slice()) ShellState.stopPlugin(id);
                     next();
                 }
             }

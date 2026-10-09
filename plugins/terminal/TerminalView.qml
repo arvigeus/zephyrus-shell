@@ -5,7 +5,6 @@ import "../../core"
 
 Item {
     id: root
-    signal commandSubmitted()
     signal finished()
     property bool hasInput: false
     readonly property string title: shellSession.title
@@ -23,7 +22,6 @@ Item {
         if (hasInput)
             return "Submit your current input, or press Ctrl+U to clear it first.";
         shellSession.sendText(command + "\n");
-        commandSubmitted();
         forceTerminalFocus();
         return "";
     }
@@ -41,7 +39,6 @@ Item {
             if ((event.modifiers & Qt.ControlModifier) && [Qt.Key_U, Qt.Key_C].includes(event.key)) {
                 root.hasInput = false;
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                if (root.hasInput) root.commandSubmitted();
                 root.hasInput = false;
             } else if (event.text && event.text.trim()) {
                 root.hasInput = true;

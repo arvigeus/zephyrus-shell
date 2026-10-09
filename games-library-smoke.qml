@@ -118,10 +118,12 @@ ShellRoot {
                     play.click();
                     step++;
                 } else if (step === 9) {
-                    if (overlay.item || !screenshotReady) return;
-                    require(ShellState.panel === "" && !ShellState.runningPluginIds.includes("games"),
-                            "Steam launch did not close its module");
-                    console.log("GAMES PASS: catalogue, details, ProtonDB identity, right-aligned filters, merged store Library, Installed/Purchased views, Alan Wake II Epic install, installed Steam Play action, overlay teardown");
+                    if (ShellState.pluginId || !screenshotReady) return;
+                    require(ShellState.panel === "" && overlay.item && ShellState.runningPluginIds.includes("games"),
+                            "Steam launch lost its module state");
+                    games.host.close();
+                    require(!overlay.item, "Explicit close did not release Games");
+                    console.log("GAMES PASS: catalogue, details, ProtonDB identity, right-aligned filters, merged store Library, Installed/Purchased views, Alan Wake II Epic install, installed Steam Play action, retained state and explicit teardown");
                     Qt.quit();
                 }
             }

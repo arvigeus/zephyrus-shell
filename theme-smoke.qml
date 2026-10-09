@@ -95,7 +95,6 @@ ShellRoot {
                 const holder = root.find(overlay.item, "retained-projects");
                 root.projectInstance = holder.children.find(child => child.item).item;
                 // Retain a real module, hide it through Desktop, and change mode.
-                root.projectInstance.host.requestKeepRunning("projects", true);
                 ShellState.showDesktop();
                 root.find(systemCard, "system-theme-toggle").clicked(); root.step = 5;
             } else if (root.step === 5 && !ThemeRuntime.busy && Theme.mode === "dark") {
@@ -111,6 +110,7 @@ ShellRoot {
             } else if (root.step === 8) {
                 if (!root.projectColors()) return;
                 root.projectInstance.host.close();
+                ShellState.stopPlugin("files");
                 root.projectInstance = null;
                 root.step = 9;
             } else if (root.step === 9 && !overlay.item) {

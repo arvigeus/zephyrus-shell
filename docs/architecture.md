@@ -51,8 +51,11 @@ in its module backend, so the shell only handles navigation and lifetime.
 | Independent library entries | `plugins/<id>/` |
 | Scrolling layout, optional floating and shortcuts | `hyprland/` |
 
-`ShellScreen` creates a bar and overlay windows per monitor. Its bar reserves 42 px
-for windows and uses an input mask containing only the pills and app icons. Drawers
+`ShellScreen` creates a passive desktop bar and a transient interaction window
+per monitor. Both reserve 42 px for desktop windows. One set of pills moves to
+the interaction window while a module or bar popup is open. The passive bar
+never requests keyboard focus; the interaction window unmaps on dismissal. Its
+input mask contains the pills and, for an open module, the area below them. Drawers
 ignore the exclusive zone and sit above the bar, covering the corresponding pill
 without rearranging desktop windows. They touch the top, bottom, and side edges
 with square corners. `DrawerSlide.qml` animates entry and exit from the owning
@@ -60,9 +63,10 @@ edge over 140 ms; the window and content remain alive until exit completes.
 Each drawer uses a transparent full-screen surface with a separate outside-click
 area that never overlaps the drawer rectangle. Outside clicks are consumed to
 dismiss, without activating the application behind it. Module backgrounds fill the desktop behind the bar; content starts below it.
-The bar uses the overlay layer above the module’s top layer, leaving pills visible and
-clickable. One module is visible at a time; retained modules can keep their owned
-players and workers alive behind the Desktop.
+The interaction window uses Overlay while a module is visible and Top while
+drawers are showing. Pills and module content share one keyboard owner. One
+module is visible at a time; all open modules keep their state and owned
+resources behind Desktop until explicitly closed.
 
 `WindowList` keeps Wayland activation handles and orders them by Hyprland's
 monitor, workspace and horizontal column geometry. It refreshes after compositor
@@ -82,10 +86,10 @@ Drawer windows stay declared but their Loader is inactive while hidden. The Spac
 drawer lists Desktop first, then built-in spaces. Opening it leaves the current
 module visible. Selecting Desktop hides the overlay and reveals the Hyprland
 session. The shared module overlay creates an asynchronous loader slot for each
-running module using statically declared components. Music and Radio request retention while playback is active, so switching
-modules can leave playback running. Escape or the drawer’s
-Close control destroys the selected module. Core services are shared across
-monitors. A retained module stays owned by the monitor where it opened; opening
+running module using statically declared components. Desktop, navigation and
+Escape hide the selected module. The Spaces sidebar X destroys it; closing an
+entry leaves the drawer open, so several modules can be stopped in one visit. Core services are shared across
+monitors. An open module stays owned by the monitor where it opened; opening
 a drawer on another monitor does not recreate its player. Optional plugin
 services must not be core singletons. In the live shell, one module loader is
 owned by the shell root and visually attached to the selected screen's module
@@ -93,7 +97,7 @@ surface. Removing that surface reparents the loader onto a surviving screen;
 the loaded module objects and their workers keep their lifetime.
 
 `ShellState` is the sole writer of module lifetime bookkeeping: running IDs,
-monitor ownership, retention, and pending navigation. Visual components never
+monitor ownership and pending navigation. Visual components never
 rewrite those maps. There is no runtime module scan, manifest parsing, or registry
 reload. Unopened modules have no instances, workers, or loader delegates. `ShellState.reconcileScreens` moves
 ownership when a screen disappears. `ModuleLoader` supports the shared live-shell

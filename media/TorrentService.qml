@@ -8,13 +8,14 @@ Worker {
     startOnDemand: true
     timeout: 600000
     property bool monitorJobs: false
+    property bool foreground: true
     property string monitorKind: ""
     property var jobs: []
     property bool jobsLoading: false
     property string jobsError: ""
     property int pendingDownloads: 0
     property int pendingChanges: 0
-    readonly property bool keepRunning: pendingDownloads > 0 || pendingChanges > 0 || (monitorJobs && jobsLoading) || jobs.some(job => job.active)
+    readonly property bool activeWork: pendingDownloads > 0 || pendingChanges > 0 || jobs.some(job => job.active)
     signal libraryChanged()
 
     function change(op, args, callback) {
@@ -38,9 +39,11 @@ Worker {
         });
     }
     Timer {
-        interval: root.keepRunning ? 5000 : 30000
-        repeat: true; running: root.monitorJobs
+        objectName: "torrentJobPoll"
+        interval: root.activeWork ? 5000 : 30000
+        repeat: true; running: root.monitorJobs && !root.stopped && (root.foreground || root.activeWork)
         onTriggered: root.refreshJobs()
     }
-    Component.onCompleted: if (monitorJobs) refreshJobs()
+    onForegroundChanged: if (foreground && monitorJobs && !stopped) refreshJobs()
+    Component.onCompleted: if (monitorJobs && foreground) refreshJobs()
 }

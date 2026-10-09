@@ -105,7 +105,7 @@ ShellRoot {
                     {job_id:"cancelled", title:"Cancelled transfer", state:"cancelled"},
                     {job_id:"running", title:"Active transfer", state:"running", done:50, total:100}
                 ];
-                activity.open(); ticks = 0; step = 11;
+                activity.showActivity(); ticks = 0; step = 11;
             } else if (step === 11 && ticks > 3) {
                 const retry = root.find(activity.contentItem, "activityAction:failed");
                 const dismiss = root.find(activity.contentItem, "dismissActivity:failed");
@@ -131,9 +131,9 @@ ShellRoot {
             } else if (step === 15) {
                 const button = root.find(activity.contentItem, "dismissActivity:running");
                 if (!button || !button.visible) return;
-                button.clicked(); activity.close(); activity.open(); step = 16;
+                button.clicked(); activity.close(); activity.showActivity(); step = 16;
             } else if (step === 16) {
-                if (activity.shownJobs.length) { fail("Reopening restored dismissed history"); return; }
+                if (activity.shownJobs.length || activity.visible) { fail("Empty activity reopened"); return; }
                 activity.jobs = activity.jobs.map(job => job.job_id === "failed" ? Object.assign({}, job, {state:"running"}) : job); step = 17;
             } else if (step === 17) {
                 if (activity.shownJobs.length !== 1 || activity.shownJobs[0].job_id !== "failed") { fail("Reactivated work remained hidden"); return; }

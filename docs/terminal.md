@@ -14,13 +14,11 @@ Keyboard shortcuts while Terminal is visible:
 - Ctrl+Shift+T: new tab.
 - Ctrl+Shift+W: close selected tab.
 - Ctrl+Tab / Ctrl+Shift+Tab: next / previous tab.
-- Escape: close the entire module and its sessions.
+- Escape: hide Terminal and preserve its sessions.
 
-Submitting input or running a saved command retains Terminal when selecting
-Desktop or another module. Returning to Terminal restores all tabs. Closing or
-restarting the last tab with submitted commands releases that retention. Explicit
-module close always destroys the sessions. Retention follows submitted input,
-not automatic foreground-job completion.
+Terminal stays alive when selecting Desktop, another module, or Escape, including
+unsubmitted input. Returning restores all tabs. Closing a tab destroys only that
+session; the Spaces sidebar X destroys the module and all remaining sessions.
 
 ## Saved commands
 

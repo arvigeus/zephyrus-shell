@@ -76,7 +76,7 @@ ShellRoot {
                     require(games.titles.find(game => game.title === "Smoke Game").summary === "Steam library fallback description.",
                             "Background metadata did not update the Library card");
                     require(games.selected.title === "Alan Wake 2", "Background metadata changed the selection");
-                    ShellState.close();
+                    ShellState.stopPlugin("games");
                     require(!overlay.item, "Games overlay did not close");
                     console.log("GAMES PASS: entry point, setup fallback, worker startup, overlay destruction");
                     Qt.quit();

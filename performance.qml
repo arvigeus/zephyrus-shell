@@ -151,7 +151,7 @@ ShellRoot {
         }
     }
     Timer { id: appsSample; interval: 1800; onTriggered: root.closeApps() }
-    function closeApps() { report("busy"); ShellState.showDesktop(); released.start(); }
+    function closeApps() { report("busy"); ShellState.stopPlugin("apps"); released.start(); }
     Timer {
         id: released; interval: 10; repeat: true
         onTriggered: {

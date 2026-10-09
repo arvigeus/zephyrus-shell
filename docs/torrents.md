@@ -88,14 +88,14 @@ associate downloads with their selected catalogue identities; sharing a save
 folder does not mix up their jobs. Duplicate tracked requests are rejected.
 
 The owned Movies/TV Series worker checks completion across all tabs. Selecting
-Desktop or another space keeps that module running while it has an active
-download. On completion, qBittorrent renames the files within their title folder
+Desktop, another space or Escape keeps that module and its state alive. Hidden
+monitoring continues while a download is active and pauses when idle. On completion, qBittorrent renames the files within their title folder
 and TV videos go into their season folders. Seeding continues from those paths,
 and the files appear in Local and in the selected catalogue title automatically.
-Escape or explicit Close still destroys the module; qBittorrent keeps downloading
+The Spaces sidebar X explicitly destroys the module; qBittorrent keeps downloading
 to the chosen library folder, and reopening the module resumes indexing.
 Restarting the shell likewise resumes indexing when the module opens. A download
-that needs review releases background retention. Tracking uses the current
+that needs review remains available when returning to the module. Tracking uses the current
 download schema; older staged jobs are not migrated or resumed.
 
 Music, Books, and Games still use unique staging folders under

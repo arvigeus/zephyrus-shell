@@ -65,7 +65,6 @@ Item {
         if (!queueSongs.length || index < 0 || index >= queueSongs.length) return;
         const track = queueSongs[index];
         if (!track) return;
-        controller.requestRetention(true);
         if (recordKey(track) === currentTrackKey && playerProcess) {
             togglePause();
             return;
@@ -96,14 +95,12 @@ Item {
             if (failure || !result || !Array.isArray(result.command)) {
                 playerPaused = true;
                 playMessage = failure || "Could not resolve this song's stream.";
-                controller.requestRetention(false);
                 return;
             }
             const process = playerComponent.createObject(root, {playerCommand: result.command});
             if (!process) {
                 playerPaused = true;
                 playMessage = "Could not start the audio player.";
-                controller.requestRetention(false);
                 service.request("player-cleanup", {ipcPath: result.ipcPath || ""}, () => {});
                 return;
             }
@@ -132,11 +129,9 @@ Item {
                 return;
             }
             playMessage = "Queue finished.";
-            controller.requestRetention(false);
             return;
         }
         playMessage = code === 0 ? "Playback ended." : "The stream ended or could not be played.";
-        controller.requestRetention(false);
     }
 
     function playNext(fromEnd) {
@@ -159,7 +154,6 @@ Item {
                 } else {
                     playerPaused = true;
                     playMessage = "Queue finished.";
-                    controller.requestRetention(false);
                     return;
                 }
             }
@@ -175,7 +169,6 @@ Item {
             }
             if (!repeatAllEnabled) {
                 playMessage = "Queue finished.";
-                controller.requestRetention(false);
                 return;
             }
             nextIndex = 0;
@@ -214,7 +207,6 @@ Item {
         shuffleHistory = [];
         playHistory = [];
         playMessage = "Playback stopped.";
-        controller.requestRetention(false);
     }
 
     Component.onDestruction: {

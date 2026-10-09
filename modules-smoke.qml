@@ -95,7 +95,7 @@ ShellRoot {
                     phase = 3;
                     overlay.grabToImage(result => {
                         result.saveToFile("tests/artifacts/module-" + modules[index] + ".png");
-                        ShellState.close();
+                        ShellState.stopPlugin(modules[index]);
                     });
                 } else if (phase === 3 && !overlay.item) {
                     index++; ticks = 0; phase = 0;

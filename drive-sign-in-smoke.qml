@@ -50,11 +50,10 @@ ShellRoot {
                     if (!module.errorText || !module.driveNeedsSignIn) { fail("Isolated Drive should initially require sign-in"); return; }
                     const activity = module.activityCenter;
                     // Status messages use notifications; Activity is opened explicitly.
-                    if (!activity.visible) { activity.open(); return; }
+                    if (!activity.visible) { activity.showActivity(); return; }
                     const retry = find(activity.contentItem, "activityRetry");
                     if (!retry || !retry.visible || retry.text !== "Connect Google Drive") { fail("Folder retry did not offer Google sign-in"); return; }
                     retry.clicked();
-                    if (!ShellState.retentionRequests.files) { fail("Pending sign-in was not retained"); return; }
                     advance();
                 } else if (step === 3) {
                     const job = module.fileWorker.jobs.find(job => job.kind === "authorization" && job.state === "running");
@@ -101,8 +100,9 @@ ShellRoot {
                     if (input.text) { fail("Submitted callback was not cleared"); return; }
                     ShellState.showDesktop(); advance();
                 } else if (step === 8) {
-                    if (ShellState.runningPluginIds.includes("files")) return;
-                    if (!restartedFinished) { fail("Restarted sign-in did not finish"); return; }
+                    if (!restartedFinished) return;
+                    if (!ShellState.runningPluginIds.includes("files")) { fail("Completion destroyed hidden Files"); return; }
+                    module.host.close();
                     console.log("DRIVE SIGN IN PASS: real Files worker, loopback and manual callbacks, active Connect recovery, duplicate prevention, cancel/retry, popup dismissal, retention and hidden completion");
                     Qt.quit();
                 }

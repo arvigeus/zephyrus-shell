@@ -22,40 +22,68 @@ if mode == "failure":
     print(json.dumps({"success": False, "error": "Search unavailable. Retry later."}))
     sys.exit(1)
 if mode in ("stderr", "private-error"):
-    detail = "Cannot connect " + os.environ.get(os.environ.get("FIXTURE_ENV_KEY", ""), "") + " https://example.org/private?token=short-lived"
+    detail = (
+        "Cannot connect "
+        + os.environ.get(os.environ.get("FIXTURE_ENV_KEY", ""), "")
+        + " https://example.org/private?token=short-lived"
+    )
     if mode == "stderr":
         print(detail, file=sys.stderr)
         sys.exit(2)
     print(json.dumps({"success": False, "error": detail}))
     sys.exit(1)
 if mode == "multiple-json":
-    print('{}\n{}')
+    print("{}\n{}")
     sys.exit(0)
 if mode == "array":
-    print('[]')
+    print("[]")
     sys.exit(0)
 if request["op"] == "resolve":
     reference = request["ref"]
     url = os.environ.get("FIXTURE_URL", "https://example.org/read?token=short-lived")
     if request.get("purpose") == "download" and os.environ.get("FIXTURE_DOWNLOAD_BASE"):
-        url = os.environ["FIXTURE_DOWNLOAD_BASE"] + "/book." + reference["file"] + "?token=short-lived"
+        url = (
+            os.environ["FIXTURE_DOWNLOAD_BASE"]
+            + "/book."
+            + reference["file"]
+            + "?token=short-lived"
+        )
     response = {"success": True, "url": url}
     if root:
         (root / "resolved-ref.json").write_text(json.dumps(reference))
 else:
     results = []
     for fmt in ("epub", "pdf"):
-        results.append({
-            "id": "OL100W", "title": "The Example Book", "authors": ["Ada Lovelace"],
-            "year": 2001, "format": fmt, "language": "eng", "publisher": "Example Press",
-            "pages": 312, "identifiers": ["978-0-000000-00-1"], "size_bytes": 2048000,
-            "size": "2 MB", "cover_url": "https://example.org/cover.jpg",
-            "description": "A generic fixture edition.", "page_url": "https://example.org/book",
-            "ref": {"file": fmt},
-        })
+        results.append(
+            {
+                "id": "OL100W",
+                "title": "The Example Book",
+                "authors": ["Ada Lovelace"],
+                "year": 2001,
+                "format": fmt,
+                "language": "eng",
+                "publisher": "Example Press",
+                "pages": 312,
+                "identifiers": ["978-0-000000-00-1"],
+                "size_bytes": 2048000,
+                "size": "2 MB",
+                "cover_url": "https://example.org/cover.jpg",
+                "description": "A generic fixture edition.",
+                "page_url": "https://example.org/book",
+                "ref": {"file": fmt},
+            }
+        )
         if mode == "echo":
-            results[-1]["ref"].update(request=request, argv=sys.argv[1:],
-                                     env=os.environ.get(os.environ.get("FIXTURE_ENV_KEY", ""), ""))
-    response = {"success": True, "query": request["query"], "count": len(results), "results": results}
+            results[-1]["ref"].update(
+                request=request,
+                argv=sys.argv[1:],
+                env=os.environ.get(os.environ.get("FIXTURE_ENV_KEY", ""), ""),
+            )
+    response = {
+        "success": True,
+        "query": request["query"],
+        "count": len(results),
+        "results": results,
+    }
 print("Separate diagnostic channel", file=sys.stderr)
 print(json.dumps(response))

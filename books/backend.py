@@ -12,18 +12,18 @@ import sys
 import tempfile
 import threading
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import cached_property
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from media.local import BOOK_EXTENSIONS, LocalLibrary, destination
 from books.providers import CommandProviders, ProviderError, configured_providers, normalize_result
+from media.local import BOOK_EXTENSIONS, LocalLibrary, destination
 from services.jobs import Jobs, check_cancelled, progress
 
 ROOT = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "zephyrus-shell"
@@ -738,8 +738,16 @@ class BooksBackend:
                         if matches and not match:
                             continue
                         # Repeated queries may return the same offer; formats remain distinct.
-                        key = json.dumps([row.get("id"), row["ref"], row.get("format"),
-                                          row.get("language"), row.get("size_bytes")], sort_keys=True)
+                        key = json.dumps(
+                            [
+                                row.get("id"),
+                                row["ref"],
+                                row.get("format"),
+                                row.get("language"),
+                                row.get("size_bytes"),
+                            ],
+                            sort_keys=True,
+                        )
                         if key not in seen:
                             seen.add(key)
                             items.append(row | ({"match": match} if match else {}))
@@ -752,8 +760,10 @@ class BooksBackend:
             return {"items": [], "warning": ""}
         with ThreadPoolExecutor(max_workers=min(4, len(providers))) as executor:
             results = list(executor.map(search, providers))
-        return {"items": [row for rows, _ in results for row in rows],
-                "warning": " ".join(error for _, errors in results for error in errors)}
+        return {
+            "items": [row for rows, _ in results for row in rows],
+            "warning": " ".join(error for _, errors in results for error in errors),
+        }
 
     def provider_offers(self, request):
         """Match only the selected Work, never discovery pages or provider IDs."""
@@ -779,18 +789,28 @@ class BooksBackend:
             warnings.append("Matching is limited to the first 72 editions.")
 
         title = normalized_name(book.get("title"))
-        authors = {normalized_name(author.get("name")) for author in book.get("authors", [])
-                   if author.get("name")}
+        authors = {
+            normalized_name(author.get("name"))
+            for author in book.get("authors", [])
+            if author.get("name")
+        }
 
         def match(row):
             if isbns:
-                return "isbn" if isbns.intersection(normalized_isbns(row.get("identifiers"))) else ""
+                return (
+                    "isbn" if isbns.intersection(normalized_isbns(row.get("identifiers"))) else ""
+                )
             if title and authors and normalized_name(row.get("title")) == title:
                 names = {normalized_name(author) for author in row["authors"]}
                 return "title-author" if authors.intersection(names) else ""
             return ""
 
-        query = " ".join([book["title"], *[author["name"] for author in book.get("authors", []) if author.get("name")]])
+        query = " ".join(
+            [
+                book["title"],
+                *[author["name"] for author in book.get("authors", []) if author.get("name")],
+            ]
+        )
         # ISBN queries have priority; the title query can find further formats with matching ISBNs.
         queries = sorted(isbns)[:3] + [query] if isbns else [query]
         result = self._search_providers(providers, queries, matches=match)
@@ -798,7 +818,9 @@ class BooksBackend:
         return result
 
     def provider_resolve(self, request):
-        provider = next((row for row in self.providers() if row["name"] == request.get("provider")), None)
+        provider = next(
+            (row for row in self.providers() if row["name"] == request.get("provider")), None
+        )
         if provider is None:
             raise BooksError("This Books provider is no longer configured.")
         if "ref" not in request:
@@ -818,29 +840,57 @@ class BooksBackend:
             work = normalize_work(selected)
             if work:
                 with self.db(self.cache_db) as db:
-                    pages = db.execute("SELECT value FROM cache WHERE key LIKE ?", ("editions:" + work["id"] + ":%",)).fetchall()
+                    pages = db.execute(
+                        "SELECT value FROM cache WHERE key LIKE ?",
+                        ("editions:" + work["id"] + ":%",),
+                    ).fetchall()
                 known_isbns, complete = set(), False
                 for (value,) in pages:
                     page = json.loads(value)
-                    known_isbns.update(isbn for edition in page.get("items", []) for isbn in normalized_isbns(edition.get("isbn")))
+                    known_isbns.update(
+                        isbn
+                        for edition in page.get("items", [])
+                        for isbn in normalized_isbns(edition.get("isbn"))
+                    )
                     complete = complete or not page.get("next")
-                isbn_match = bool(known_isbns.intersection(normalized_isbns(offer.get("identifiers"))))
-                name_match = (complete and not known_isbns and normalized_name(work["title"]) == normalized_name(offer["title"])
-                              and bool({normalized_name(a["name"]) for a in work["authors"] if a.get("name")}
-                                       .intersection(normalized_name(a) for a in offer["authors"])))
+                isbn_match = bool(
+                    known_isbns.intersection(normalized_isbns(offer.get("identifiers")))
+                )
+                name_match = (
+                    complete
+                    and not known_isbns
+                    and normalized_name(work["title"]) == normalized_name(offer["title"])
+                    and bool(
+                        {
+                            normalized_name(a["name"]) for a in work["authors"] if a.get("name")
+                        }.intersection(normalized_name(a) for a in offer["authors"])
+                    )
+                )
                 if isbn_match or name_match:
-                    return work | {"kind": "book", "year": work.get("firstPublishYear"),
-                                   "author": next((a["name"] for a in work["authors"] if a.get("name")), "")}
+                    return work | {
+                        "kind": "book",
+                        "year": work.get("firstPublishYear"),
+                        "author": next((a["name"] for a in work["authors"] if a.get("name")), ""),
+                    }
 
         # Store a separate local identity, never an external ID in the Work namespace.
         key = json.dumps([offer["provider"], offer.get("id") or offer["ref"]], sort_keys=True)
-        return {"kind": "book", "source": "provider", "provider": offer["provider"],
-                "id": "book-command:" + hashlib.sha256(key.encode()).hexdigest(),
-                "title": offer["title"], "authors": [{"id": "", "name": a} for a in offer["authors"]],
-                "author": next(iter(offer["authors"]), ""), "year": offer.get("year"),
-                "firstPublishYear": offer.get("year"), "description": offer.get("description", ""),
-                "coverSmall": offer.get("cover_url", ""), "coverLarge": offer.get("cover_url", ""),
-                "format": offer.get("format", ""), "languages": [offer["language"]] if offer.get("language") else []}
+        return {
+            "kind": "book",
+            "source": "provider",
+            "provider": offer["provider"],
+            "id": "book-command:" + hashlib.sha256(key.encode()).hexdigest(),
+            "title": offer["title"],
+            "authors": [{"id": "", "name": a} for a in offer["authors"]],
+            "author": next(iter(offer["authors"]), ""),
+            "year": offer.get("year"),
+            "firstPublishYear": offer.get("year"),
+            "description": offer.get("description", ""),
+            "coverSmall": offer.get("cover_url", ""),
+            "coverLarge": offer.get("cover_url", ""),
+            "format": offer.get("format", ""),
+            "languages": [offer["language"]] if offer.get("language") else [],
+        }
 
     def queue_provider_download(self, request):
         row = request.get("offer")
@@ -854,7 +904,9 @@ class BooksBackend:
         except ProviderError as error:
             raise BooksError(str(error)) from None
         title = self.download_title(offer, request.get("book"))
-        return self.downloads.start(title["title"], lambda: self.download_provider_book(provider, offer, title))
+        return self.downloads.start(
+            title["title"], lambda: self.download_provider_book(provider, offer, title)
+        )
 
     def download_provider_book(self, provider, offer, title):
         check_cancelled()
@@ -868,21 +920,28 @@ class BooksBackend:
         staging.mkdir(parents=True, exist_ok=True, mode=0o700)
         try:
             with tempfile.TemporaryDirectory(dir=staging) as temporary:
-                request = urllib.request.Request(url, headers={"User-Agent": "Zephyrus Shell Books/1.0"})
+                request = urllib.request.Request(
+                    url, headers={"User-Agent": "Zephyrus Shell Books/1.0"}
+                )
                 with urllib.request.urlopen(request, timeout=15) as response:
                     content_type = response.headers.get_content_type()
                     if content_type in ("text/html", "application/xhtml+xml", "application/json"):
                         raise BooksError("Provider returned a web page instead of a book file.")
                     suffix = "." + _text(offer.get("format")).lower().lstrip(".")
                     if suffix not in BOOK_EXTENSIONS:
-                        filename = response.headers.get_filename() or urllib.parse.urlsplit(response.geturl()).path
+                        filename = (
+                            response.headers.get_filename()
+                            or urllib.parse.urlsplit(response.geturl()).path
+                        )
                         suffix = Path(filename).suffix.lower()
                     if suffix not in BOOK_EXTENSIONS:
                         raise BooksError("Provider download has an unsupported book format.")
                     source = Path(temporary) / ("book" + suffix)
                     target = destination(title, source)
                     if target.exists():
-                        raise BooksError("A different file already exists at the library destination.")
+                        raise BooksError(
+                            "A different file already exists at the library destination."
+                        )
                     try:
                         total = max(0, int(response.headers.get("Content-Length", 0)))
                     except ValueError:
@@ -895,8 +954,12 @@ class BooksBackend:
                             chunk = response.read(128 * 1024)
                             if not chunk:
                                 break
-                            if done == 0 and chunk.lstrip().lower().startswith((b"<!doctype html", b"<html")):
-                                raise BooksError("Provider returned a web page instead of a book file.")
+                            if done == 0 and chunk.lstrip().lower().startswith(
+                                (b"<!doctype html", b"<html")
+                            ):
+                                raise BooksError(
+                                    "Provider returned a web page instead of a book file."
+                                )
                             output.write(chunk)
                             done += len(chunk)
                             progress(done=done)
@@ -910,7 +973,9 @@ class BooksBackend:
         except urllib.error.HTTPError as error:
             code = error.code
             error.close()
-            raise BooksError(f"Book download returned HTTP {code}. Resolve a fresh link and retry.") from None
+            raise BooksError(
+                f"Book download returned HTTP {code}. Resolve a fresh link and retry."
+            ) from None
         except (OSError, urllib.error.URLError):
             raise BooksError("Cannot download the book. Check your connection and retry.") from None
 
@@ -932,8 +997,11 @@ class BooksBackend:
             return self.local.files(request["title"])
         if op == "init":
             contact = self.contact()
-            return {"pageSize": PAGE_SIZE, "contactConfigured": bool(contact),
-                    "providers": [row["name"] for row in self.providers()]}
+            return {
+                "pageSize": PAGE_SIZE,
+                "contactConfigured": bool(contact),
+                "providers": [row["name"] for row in self.providers()],
+            }
         if op == "providerSearch":
             return self.provider_search(request)
         if op == "providerOffers":
@@ -973,8 +1041,12 @@ def normalized_name(value):
 
 def normalized_isbns(value):
     if isinstance(value, dict):
-        value = [item for key, values in value.items() if re.sub(r"[^a-z0-9]", "", key.casefold())
-                 in ("isbn", "isbn10", "isbn13") for item in (values if isinstance(values, list) else [values])]
+        value = [
+            item
+            for key, values in value.items()
+            if re.sub(r"[^a-z0-9]", "", key.casefold()) in ("isbn", "isbn10", "isbn13")
+            for item in (values if isinstance(values, list) else [values])
+        ]
     if isinstance(value, str):
         value = [value]
     result = set()
@@ -987,8 +1059,15 @@ def normalized_isbns(value):
             digits = [10 if char == "X" else int(char) for char in isbn]
             if sum((10 - index) * digit for index, digit in enumerate(digits)) % 11 == 0:
                 prefix = "978" + isbn[:9]
-                isbn = prefix + str((-sum(int(char) * (1 if index % 2 == 0 else 3)
-                                         for index, char in enumerate(prefix))) % 10)
+                isbn = prefix + str(
+                    (
+                        -sum(
+                            int(char) * (1 if index % 2 == 0 else 3)
+                            for index, char in enumerate(prefix)
+                        )
+                    )
+                    % 10
+                )
         result.add(isbn)
     return result
 
@@ -1030,6 +1109,7 @@ def main():
     from services.worker import serve
 
     backend = BooksBackend()
+
     def stop(_signal, _frame):
         backend.downloads.stop()
         backend.commands.close()
@@ -1041,8 +1121,16 @@ def main():
         serve(
             backend.handle,
             errors=(BooksError, ValueError, OSError),
-            latest=("browse", "details", "authorDetails", "authorWorks", "editions", "personal",
-                    "providerSearch", "providerOffers"),
+            latest=(
+                "browse",
+                "details",
+                "authorDetails",
+                "authorWorks",
+                "editions",
+                "personal",
+                "providerSearch",
+                "providerOffers",
+            ),
             controls=("save", "providerDownload", "cancel_job"),
         )
     finally:

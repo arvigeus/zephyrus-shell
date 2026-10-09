@@ -1,8 +1,8 @@
-import json
 import io
+import json
 import os
-import signal
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -14,8 +14,8 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from books.backend import BooksBackend, BooksError, normalize_work, normalized_isbns
 from books import providers
+from books.backend import BooksBackend, BooksError, normalize_work, normalized_isbns
 from media.local import destination
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,7 +23,9 @@ FIXTURE = ROOT / "tests/fixtures/books/command-provider.py"
 
 
 class BookResponse(io.BytesIO):
-    def __init__(self, body=b"%PDF-1.7\nfixture book", content_type="application/pdf", length=None, delay=0):
+    def __init__(
+        self, body=b"%PDF-1.7\nfixture book", content_type="application/pdf", length=None, delay=0
+    ):
         super().__init__(body)
         self.headers = Message()
         self.headers["Content-Type"] = content_type
@@ -44,30 +46,52 @@ class BookProviderTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.backend = BooksBackend(self.root / "books.json", self.root / "data", self.root / "cache")
+        self.backend = BooksBackend(
+            self.root / "books.json", self.root / "data", self.root / "cache"
+        )
         self.addCleanup(self.backend.commands.close)
         self.addCleanup(self.backend.downloads.stop)
         self.documents = self.root / "documents"
         env = patch.dict(os.environ, {"XDG_DOCUMENTS_DIR": str(self.documents)})
         env.start()
         self.addCleanup(env.stop)
-        self.provider = {"name": "Personal provider", "command": [sys.executable, str(FIXTURE)], "env": {}}
-        self.book = {"id": "OL100W", "title": "The Example Book", "authors": [{"id": "OL1A", "name": "Ada Lovelace"}]}
+        self.provider = {
+            "name": "Personal provider",
+            "command": [sys.executable, str(FIXTURE)],
+            "env": {},
+        }
+        self.book = {
+            "id": "OL100W",
+            "title": "The Example Book",
+            "authors": [{"id": "OL1A", "name": "Ada Lovelace"}],
+        }
         self.backend.put_cache("work:OL100W", self.book)
         self.editions(["9780000000001"])
         self.configure()
 
     def configure(self, rows=None, **extra):
-        self.backend.config_path.write_text(json.dumps({"contact": "reader@example.org", "providers": rows if rows is not None else [self.provider], **extra}))
+        self.backend.config_path.write_text(
+            json.dumps(
+                {
+                    "contact": "reader@example.org",
+                    "providers": rows if rows is not None else [self.provider],
+                    **extra,
+                }
+            )
+        )
 
     def editions(self, isbns):
-        self.backend.put_cache("editions:OL100W:0", {"items": [{"id": "OL100M", "isbn": isbns}], "next": ""})
+        self.backend.put_cache(
+            "editions:OL100W:0", {"items": [{"id": "OL100M", "isbn": isbns}], "next": ""}
+        )
 
     def plugin(self):
         package = self.root / "provider plugin"
         package.mkdir()
         shutil.copyfile(FIXTURE, package / "provider.py")
-        (package / "manifest.json").write_text(json.dumps({"api_version": 1, "command": [sys.executable, "{plugin_dir}/provider.py"]}))
+        (package / "manifest.json").write_text(
+            json.dumps({"api_version": 1, "command": [sys.executable, "{plugin_dir}/provider.py"]})
+        )
         return package, {"name": "Packaged provider", "plugin": package.name}
 
     def search(self, **extra):
@@ -87,11 +111,19 @@ class BookProviderTests(unittest.TestCase):
         self.assertNotIn("env", initialized)
 
     def test_configuration_rejects_invalid_commands_env_names_and_duplicate_names(self):
-        invalid = [None, {}, [None], [{"name": "", "command": ["python3"]}],
-                   [self.provider | {"command": "python3 command.py"}],
-                   [self.provider | {"command": []}], [self.provider | {"command": ["a", 1]}],
-                   [self.provider | {"env": {"key": 5}}], [self.provider | {"env": {"bad=key": "x"}}],
-                   [self.provider | {"env": {"key": "\0"}}], [self.provider, self.provider]]
+        invalid = [
+            None,
+            {},
+            [None],
+            [{"name": "", "command": ["python3"]}],
+            [self.provider | {"command": "python3 command.py"}],
+            [self.provider | {"command": []}],
+            [self.provider | {"command": ["a", 1]}],
+            [self.provider | {"env": {"key": 5}}],
+            [self.provider | {"env": {"bad=key": "x"}}],
+            [self.provider | {"env": {"key": "\0"}}],
+            [self.provider, self.provider],
+        ]
         for rows in invalid:
             with self.subTest(rows=rows):
                 self.backend.config_path.write_text(json.dumps({"providers": rows}))
@@ -103,14 +135,20 @@ class BookProviderTests(unittest.TestCase):
         marker = self.root / "must-not-exist"
         literal = "$(touch " + str(marker) + ")"
         self.provider["command"].append(literal)
-        self.provider["env"] = {key: "configured value", "FIXTURE_ENV_KEY": key, "FIXTURE_MODE": "echo"}
+        self.provider["env"] = {
+            key: "configured value",
+            "FIXTURE_ENV_KEY": key,
+            "FIXTURE_MODE": "echo",
+        }
         self.configure()
         with patch.dict(os.environ, {key: "inherited value", "FIXTURE_MODE": "normal"}):
             result = self.search(page=3, limit=17)
         self.assertEqual(result["warning"], "")
         self.assertEqual([row["format"] for row in result["items"]], ["epub", "pdf"])
         offer = result["items"][0]
-        self.assertEqual(offer["ref"]["request"], {"op": "search", "query": "Example", "page": 3, "limit": 17})
+        self.assertEqual(
+            offer["ref"]["request"], {"op": "search", "query": "Example", "page": 3, "limit": 17}
+        )
         self.assertEqual(offer["ref"]["argv"], [literal])
         self.assertEqual(offer["ref"]["env"], "configured value")
         self.assertFalse(marker.exists())
@@ -129,9 +167,13 @@ class BookProviderTests(unittest.TestCase):
         offers = self.search()["items"]
         self.assertEqual([offer["format"] for offer in offers], ["epub", "pdf"])
         self.assertEqual(offers[0]["provider"], row["name"])
-        response = self.backend.provider_resolve({"provider": row["name"], "ref": offers[1]["ref"], "purpose": "read"})
+        response = self.backend.provider_resolve(
+            {"provider": row["name"], "ref": offers[1]["ref"], "purpose": "read"}
+        )
         self.assertEqual(response["url"], "https://example.org/read?token=short-lived")
-        self.assertEqual(json.loads((self.root / "resolved-ref.json").read_text()), offers[1]["ref"])
+        self.assertEqual(
+            json.loads((self.root / "resolved-ref.json").read_text()), offers[1]["ref"]
+        )
         with patch.object(books_urllib_request(), "urlopen", return_value=BookResponse()):
             job = self.finish_download(self.download(offers[1]))
         self.assertEqual(job["state"], "finished", job)
@@ -143,7 +185,9 @@ class BookProviderTests(unittest.TestCase):
         key = "FIXTURE_" + uuid.uuid4().hex.upper()
         marker = self.root / "must-not-exist"
         literal = "$(touch " + str(marker) + ")"
-        settings.write_text(f'# private settings\nexport {key}="{literal}"\nFIXTURE_ENV_KEY={key}\nFIXTURE_MODE=echo\nEMPTY=\nLITERAL=word#part\\end\nVARIABLE=$NAME # ignored comment\n')
+        settings.write_text(
+            f'# private settings\nexport {key}="{literal}"\nFIXTURE_ENV_KEY={key}\nFIXTURE_MODE=echo\nEMPTY=\nLITERAL=word#part\\end\nVARIABLE=$NAME # ignored comment\n'
+        )
         row["env_file"] = "settings.env"
         self.configure([row])
         with patch.dict(os.environ, {key: "inherited"}):
@@ -152,13 +196,17 @@ class BookProviderTests(unittest.TestCase):
         self.assertEqual(self.backend.providers()[0]["env"]["EMPTY"], "")
         self.assertEqual(self.backend.providers()[0]["env"]["LITERAL"], "word#part\\end")
         self.assertEqual(self.backend.providers()[0]["env"]["VARIABLE"], "$NAME")
-        settings.write_text(f'{key}="new private value"\nFIXTURE_ENV_KEY={key}\nFIXTURE_MODE=echo\n')
+        settings.write_text(
+            f'{key}="new private value"\nFIXTURE_ENV_KEY={key}\nFIXTURE_MODE=echo\n'
+        )
         self.assertEqual(self.search()["items"][0]["ref"]["env"], "new private value")
         row["env"] = {key: "explicit override"}
         self.configure([row])
         self.assertEqual(self.search()["items"][0]["ref"]["env"], "explicit override")
         row.pop("env")
-        settings.write_text(f'{key}="new private value"\nFIXTURE_ENV_KEY={key}\nFIXTURE_MODE=private-error\n')
+        settings.write_text(
+            f'{key}="new private value"\nFIXTURE_ENV_KEY={key}\nFIXTURE_MODE=private-error\n'
+        )
         self.configure([row])
         warning = self.search()["warning"]
         self.assertIn("Cannot connect", warning)
@@ -167,7 +215,13 @@ class BookProviderTests(unittest.TestCase):
 
     def test_plugin_rejects_invalid_manifests_and_settings_without_exposing_values(self):
         package, row = self.plugin()
-        for manifest in ([], {}, {"api_version": True}, {"api_version": 2}, {"api_version": 1, "command": "python3"}):
+        for manifest in (
+            [],
+            {},
+            {"api_version": True},
+            {"api_version": 2},
+            {"api_version": 1, "command": "python3"},
+        ):
             with self.subTest(manifest=manifest):
                 (package / "manifest.json").write_text(json.dumps(manifest))
                 self.configure([row])
@@ -177,12 +231,19 @@ class BookProviderTests(unittest.TestCase):
         self.configure([row])
         with self.assertRaisesRegex(BooksError, "plugin manifest"):
             self.backend.handle({"op": "init"})
-        (package / "manifest.json").write_text('{"api_version":1,"command":["python3","{plugin_dir}/provider.py"]}')
+        (package / "manifest.json").write_text(
+            '{"api_version":1,"command":["python3","{plugin_dir}/provider.py"]}'
+        )
         self.configure([row | {"command": ["python3"]}])
         with self.assertRaisesRegex(BooksError, "either"):
             self.backend.handle({"op": "init"})
         self.configure([row | {"env_file": "settings.env"}])
-        for value in ('PRIVATE="secret value', 'PRIVATE=secret unquoted value', 'bad-key=private', 'private without assignment'):
+        for value in (
+            'PRIVATE="secret value',
+            "PRIVATE=secret unquoted value",
+            "bad-key=private",
+            "private without assignment",
+        ):
             (package / "settings.env").write_text(value)
             with self.subTest(value=value), self.assertRaises(BooksError) as error:
                 self.backend.handle({"op": "init"})
@@ -194,7 +255,7 @@ class BookProviderTests(unittest.TestCase):
 
     def test_command_env_file_is_relative_to_config_and_plugin_timeout_uses_owned_runtime(self):
         settings = self.root / "private.env"
-        settings.write_text('FIXTURE_MODE=failure\n')
+        settings.write_text("FIXTURE_MODE=failure\n")
         self.configure([self.provider | {"env_file": settings.name}])
         self.assertIn("Search unavailable", self.search()["warning"])
         package, row = self.plugin()
@@ -210,11 +271,21 @@ class BookProviderTests(unittest.TestCase):
         self.configure([self.provider, second, third])
         result = self.search()
         self.assertEqual(len(result["items"]), 4)
-        self.assertEqual([row["provider"] for row in result["items"]], ["Personal provider"] * 2 + ["Other provider"] * 2)
+        self.assertEqual(
+            [row["provider"] for row in result["items"]],
+            ["Personal provider"] * 2 + ["Other provider"] * 2,
+        )
         self.assertIn("Unavailable provider: Search unavailable", result["warning"])
 
     def test_catalogue_browsing_details_and_editions_never_search_providers(self):
-        with patch.object(self.backend, "request", return_value={"num_found": 0, "docs": []}), patch.object(self.backend.commands, "search", side_effect=AssertionError("Provider search must be on demand")):
+        with (
+            patch.object(self.backend, "request", return_value={"num_found": 0, "docs": []}),
+            patch.object(
+                self.backend.commands,
+                "search",
+                side_effect=AssertionError("Provider search must be on demand"),
+            ),
+        ):
             self.backend.handle({"op": "init"})
             self.backend.browse({})
             self.backend.details({"book": self.book})
@@ -230,19 +301,28 @@ class BookProviderTests(unittest.TestCase):
         self.assertEqual(self.backend.details({"book": self.book}), original)
         self.editions(["9780000000002"])
         self.assertEqual(self.backend.provider_offers({"book": self.book})["items"], [])
-        self.assertEqual(normalized_isbns({"isbn_10": ["0-306-40615-2"], "other": "9780000000001"}), {"9780306406157"})
+        self.assertEqual(
+            normalized_isbns({"isbn_10": ["0-306-40615-2"], "other": "9780000000001"}),
+            {"9780306406157"},
+        )
 
     def test_missing_isbn_requires_exact_title_and_known_author(self):
         self.editions([])
         self.assertEqual(len(self.backend.provider_offers({"book": self.book})["items"]), 2)
-        for update in ({"title": "The Example Book Companion"}, {"authors": [{"name": "Other Writer"}]}, {"authors": []}):
+        for update in (
+            {"title": "The Example Book Companion"},
+            {"authors": [{"name": "Other Writer"}]},
+            {"authors": []},
+        ):
             self.backend.put_cache("work:OL100W", self.book | update)
             result = self.backend.provider_offers({"book": self.book | update})
             self.assertEqual(result["items"], [])
 
     def test_lookup_checks_later_editions_and_deduplicates_queries_without_merging_formats(self):
         self.backend.put_cache("editions:OL100W:0", {"items": [{"isbn": []}], "next": "24"})
-        self.backend.put_cache("editions:OL100W:24", {"items": [{"isbn": ["9780000000001"]}], "next": ""})
+        self.backend.put_cache(
+            "editions:OL100W:24", {"items": [{"isbn": ["9780000000001"]}], "next": ""}
+        )
         # Stable references across query responses identify repeated offers.
         rows = self.search()["items"]
         with patch.object(self.backend.commands, "search", return_value=rows) as search:
@@ -255,7 +335,9 @@ class BookProviderTests(unittest.TestCase):
         self.configure()
         refs = [{"nested": [1, False, None, {"key": "value"}]}, "opaque token", [1, "two"], None]
         for ref in refs:
-            response = self.backend.handle({"op": "providerResolve", "provider": self.provider["name"], "ref": ref})
+            response = self.backend.handle(
+                {"op": "providerResolve", "provider": self.provider["name"], "ref": ref}
+            )
             self.assertEqual(response["url"], "https://example.org/read?token=short-lived")
             self.assertEqual(json.loads((self.root / "resolved-ref.json").read_text()), ref)
         with self.backend.db(self.backend.cache_db) as db:
@@ -276,7 +358,11 @@ class BookProviderTests(unittest.TestCase):
     def test_diagnostics_redact_environment_values_and_urls(self):
         key = "FIXTURE_" + uuid.uuid4().hex.upper()
         for mode in ("stderr", "private-error"):
-            self.provider["env"] = {"FIXTURE_MODE": mode, "FIXTURE_ENV_KEY": key, key: "private fixture value"}
+            self.provider["env"] = {
+                "FIXTURE_MODE": mode,
+                "FIXTURE_ENV_KEY": key,
+                key: "private fixture value",
+            }
             self.configure()
             warning = self.search()["warning"]
             self.assertIn("Cannot connect", warning)
@@ -299,7 +385,15 @@ class BookProviderTests(unittest.TestCase):
         for args in ({"provider": "Missing", "ref": {}}, {"provider": self.provider["name"]}):
             with self.assertRaises(BooksError):
                 self.backend.handle({"op": "providerResolve", **args})
-        for url in ("file:///tmp/book", "javascript:alert(1)", "https://user:pass@example.org", "https://@example.org", "https://example.org:bad", "https://", "https://example.org/\nprivate"):
+        for url in (
+            "file:///tmp/book",
+            "javascript:alert(1)",
+            "https://user:pass@example.org",
+            "https://@example.org",
+            "https://example.org:bad",
+            "https://",
+            "https://example.org/\nprivate",
+        ):
             self.provider["env"] = {"FIXTURE_URL": url}
             self.configure()
             with self.assertRaisesRegex(BooksError, "invalid web URL"):
@@ -318,32 +412,58 @@ class BookProviderTests(unittest.TestCase):
 
     def download(self, offer=None, book=None):
         offer = offer or self.search()["items"][1]
-        return self.backend.handle({"op": "providerDownload", "offer": offer, "book": book or self.book})["job_id"]
+        return self.backend.handle(
+            {"op": "providerDownload", "offer": offer, "book": book or self.book}
+        )["job_id"]
 
     def finish_download(self, job_id):
         for _ in range(300):
-            row = next(j for j in self.backend.handle({"op": "jobs"})["jobs"] if j["job_id"] == job_id)
+            row = next(
+                j for j in self.backend.handle({"op": "jobs"})["jobs"] if j["job_id"] == job_id
+            )
             if row["state"] not in ("queued", "running"):
                 return row
             time.sleep(0.01)
         self.fail("Download did not settle")
 
     def test_download_resolves_fresh_link_and_uses_shared_torrent_destination_and_import(self):
-        with patch.object(self.backend.commands, "resolve", wraps=self.backend.commands.resolve) as resolve, patch.object(books_urllib_request(), "urlopen", return_value=BookResponse()):
+        with (
+            patch.object(
+                self.backend.commands, "resolve", wraps=self.backend.commands.resolve
+            ) as resolve,
+            patch.object(books_urllib_request(), "urlopen", return_value=BookResponse()),
+        ):
             job = self.finish_download(self.download())
         self.assertEqual(job["state"], "finished", job)
-        expected = destination(self.book | {"kind": "book", "author": "Ada Lovelace"}, Path("book.pdf"))
+        expected = destination(
+            self.book | {"kind": "book", "author": "Ada Lovelace"}, Path("book.pdf")
+        )
         self.assertEqual(job["result"]["path"], str(expected))
         self.assertEqual(expected.read_bytes(), b"%PDF-1.7\nfixture book")
         self.assertEqual(resolve.call_args.args[2], "download")
-        self.assertEqual(self.backend.local.files(self.book | {"kind": "book"})[0]["path"], str(expected))
+        self.assertEqual(
+            self.backend.local.files(self.book | {"kind": "book"})[0]["path"], str(expected)
+        )
         self.assertTrue(expected.with_suffix(".pdf.zephyrus.json").is_file())
         self.assertNotIn("short-lived", json.dumps(self.backend.downloads.snapshots()))
-        self.assertNotIn(b"short-lived", self.backend.local.data.joinpath("library.sqlite").read_bytes())
+        self.assertNotIn(
+            b"short-lived", self.backend.local.data.joinpath("library.sqlite").read_bytes()
+        )
 
     def test_unmatched_offer_imports_its_own_metadata_without_open_library_operations(self):
-        offer = self.search()["items"][1] | {"title": "An Example Book Companion", "authors": ["Other Writer"], "identifiers": ["9780000000002"]}
-        with patch.object(books_urllib_request(), "urlopen", return_value=BookResponse()), patch.object(self.backend, "request", side_effect=AssertionError("Provider-only result must stay outside Open Library")):
+        offer = self.search()["items"][1] | {
+            "title": "An Example Book Companion",
+            "authors": ["Other Writer"],
+            "identifiers": ["9780000000002"],
+        }
+        with (
+            patch.object(books_urllib_request(), "urlopen", return_value=BookResponse()),
+            patch.object(
+                self.backend,
+                "request",
+                side_effect=AssertionError("Provider-only result must stay outside Open Library"),
+            ),
+        ):
             job = self.finish_download(self.download(offer))
         self.assertEqual(job["state"], "finished", job)
         record = self.backend.local.list("book")[0]
@@ -355,8 +475,16 @@ class BookProviderTests(unittest.TestCase):
         self.assertIsNone(normalize_work(record))
 
     def test_download_refuses_web_pages_empty_incomplete_files_and_does_not_leave_partials(self):
-        for response in (BookResponse(b"<html>login</html>", "text/html"), BookResponse(b"<!doctype html>login", "application/octet-stream"), BookResponse(b""), BookResponse(b"partial", length=100)):
-            with self.subTest(), patch.object(books_urllib_request(), "urlopen", return_value=response):
+        for response in (
+            BookResponse(b"<html>login</html>", "text/html"),
+            BookResponse(b"<!doctype html>login", "application/octet-stream"),
+            BookResponse(b""),
+            BookResponse(b"partial", length=100),
+        ):
+            with (
+                self.subTest(),
+                patch.object(books_urllib_request(), "urlopen", return_value=response),
+            ):
                 job = self.finish_download(self.download())
             self.assertEqual(job["state"], "failed", job)
             self.assertEqual(self.backend.local.list("book"), [])
@@ -365,8 +493,16 @@ class BookProviderTests(unittest.TestCase):
 
     def test_download_failure_sanitizes_http_error_and_retry_resolves_again(self):
         offer = self.search()["items"][1]
-        with patch.object(self.backend.commands, "resolve", wraps=self.backend.commands.resolve) as resolve:
-            with patch.object(books_urllib_request(), "urlopen", side_effect=HTTPError("https://example.org/?token=short-lived", 403, "private message", {}, None)):
+        with patch.object(
+            self.backend.commands, "resolve", wraps=self.backend.commands.resolve
+        ) as resolve:
+            with patch.object(
+                books_urllib_request(),
+                "urlopen",
+                side_effect=HTTPError(
+                    "https://example.org/?token=short-lived", 403, "private message", {}, None
+                ),
+            ):
                 failed = self.finish_download(self.download(offer))
             with patch.object(books_urllib_request(), "urlopen", return_value=BookResponse()):
                 retried = self.finish_download(self.download(offer))
@@ -387,10 +523,18 @@ class BookProviderTests(unittest.TestCase):
         download.assert_not_called()
 
     def test_download_cancel_reports_progress_and_keeps_existing_files(self):
-        with patch.object(books_urllib_request(), "urlopen", return_value=BookResponse(b"%PDF" + b"a" * 1048576, delay=0.03)):
+        with patch.object(
+            books_urllib_request(),
+            "urlopen",
+            return_value=BookResponse(b"%PDF" + b"a" * 1048576, delay=0.03),
+        ):
             identifier = self.download()
             for _ in range(100):
-                job = next(j for j in self.backend.downloads.snapshots()["jobs"] if j["job_id"] == identifier)
+                job = next(
+                    j
+                    for j in self.backend.downloads.snapshots()["jobs"]
+                    if j["job_id"] == identifier
+                )
                 if job["done"]:
                     break
                 time.sleep(0.01)
@@ -403,7 +547,9 @@ class BookProviderTests(unittest.TestCase):
         with patch.object(books_urllib_request(), "urlopen", return_value=BookResponse()):
             completed = self.finish_download(self.download())
         target = Path(completed["result"]["path"])
-        with patch.object(books_urllib_request(), "urlopen", return_value=BookResponse(b"new content")):
+        with patch.object(
+            books_urllib_request(), "urlopen", return_value=BookResponse(b"new content")
+        ):
             duplicate = self.finish_download(self.download())
         self.assertEqual(duplicate["state"], "failed")
         self.assertEqual(target.read_bytes(), b"%PDF-1.7\nfixture book")
@@ -424,8 +570,20 @@ class BookProviderTests(unittest.TestCase):
         config_root = self.root / "config/zephyrus-shell"
         config_root.mkdir(parents=True)
         (config_root / "books.json").write_text(json.dumps({"providers": [self.provider]}))
-        env = dict(os.environ, XDG_CONFIG_HOME=str(config_root.parent), XDG_DATA_HOME=str(self.root / "worker-data"), XDG_CACHE_HOME=str(self.root / "worker-cache"))
-        worker = subprocess.Popen([sys.executable, str(ROOT / "books/backend.py")], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+        env = dict(
+            os.environ,
+            XDG_CONFIG_HOME=str(config_root.parent),
+            XDG_DATA_HOME=str(self.root / "worker-data"),
+            XDG_CACHE_HOME=str(self.root / "worker-cache"),
+        )
+        worker = subprocess.Popen(
+            [sys.executable, str(ROOT / "books/backend.py")],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
         self.addCleanup(lambda: worker.kill() if worker.poll() is None else None)
         worker.stdin.write(json.dumps({"id": 1, "op": "providerSearch", "query": "fixture"}) + "\n")
         worker.stdin.flush()
@@ -445,6 +603,7 @@ class BookProviderTests(unittest.TestCase):
 
 def books_urllib_request():
     from books import backend
+
     return backend.urllib.request
 
 

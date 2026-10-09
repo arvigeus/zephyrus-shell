@@ -60,8 +60,6 @@ Item {
     property int findGeneration: 0
     property bool updatingCatalogue: false
     readonly property bool workSelected: !!selected.id && selected.source !== "provider" && /^OL\d+W$/.test(String(selected.id))
-    readonly property bool keepRunning: service.activeJobCount > 0 || localService.keepRunning
-    onKeepRunningChanged: updateRetention()
     readonly property var downloadJobs: service.jobs
     readonly property bool titleLoading: detailLoading
     readonly property string readingAction: selected.ebookAccess === "public" ? "Read on Open Library" : selected.ebookAccess === "borrowable" ? "Borrow on Open Library" : selected.ebookAccess === "printdisabled" ? "Preview on Open Library" : ""
@@ -82,7 +80,7 @@ Item {
         }
     }
     M.TorrentService {
-        id: localService; monitorJobs: true; monitorKind: "book"
+        id: localService; monitorJobs: true; foreground: root.visible; monitorKind: "book"
         onLibraryChanged: root.refreshLocalLibrary()
     }
     W.OperationCenter {
@@ -90,7 +88,6 @@ Item {
         onCancelRequested: jobId => service.cancelJob(jobId)
         onActionRequested: job => service.retryJob(job.job_id)
     }
-    function updateRetention() { if (host) host.requestKeepRunning("books", keepRunning); }
     function refreshLocalLibrary() {
         const generation = selectionGeneration;
         if (selected.id) service.request("local_files", {title:Object.assign({}, selected, {kind:"book"})}, (result, failure) => {
@@ -335,7 +332,7 @@ Item {
     function downloadOffer(offer) {
         findOffersError = "";
         service.startJob("providerDownload", {title:offer.title, offer:offer, book:selected});
-        activity.open();
+        activity.showActivity();
     }
     function resetFindOffers() {
         ++findGeneration;
@@ -373,7 +370,7 @@ Item {
             W.Action { iconName: "folder-open"; text: "Local"; highlighted: root.localMode; onClicked: { root.localMode = true; root.favorites = false; root.browse(false, false); } }
             W.Action { iconName: "globe"; text: "Discover"; highlighted: !root.localMode && !root.favorites; onClicked: { root.localMode = false; root.favorites = false; root.browse(false, false); } }
             W.Action { iconName: "star"; text: "Favorites"; highlighted: !root.localMode && root.favorites; onClicked: { root.localMode = false; root.favorites = true; root.browse(false, false); } }
-            W.Action { iconName: "download"; text: service.activeJobCount ? "Transfers (" + service.activeJobCount + ")" : "Activity"; onClicked: activity.open() }
+            W.Action { iconName: "download"; text: service.activeJobCount ? "Transfers (" + service.activeJobCount + ")" : "Activity"; enabled: activity.hasActivity; onClicked: activity.showActivity() }
             Item { Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.preferredWidth: 0 }
             Flickable {
                 id: inlineFilters; objectName: "inlineFilters"

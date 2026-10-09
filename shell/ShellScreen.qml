@@ -18,7 +18,7 @@ Scope {
     property var sharedModules: null
     function syncModuleSurface() {
         if (!sharedModules || !screen || screenName !== ShellState.pluginMonitor) return;
-        sharedModules.parent = moduleWindow.contentItem;
+        sharedModules.parent = moduleSurface;
         sharedModules.readyToLoad = !leftDrawer.visible && !rightDrawer.visible;
     }
     Component.onCompleted: {
@@ -26,7 +26,7 @@ Scope {
         syncModuleSurface();
     }
     Component.onDestruction: {
-        if (sharedModules && sharedModules.parent === moduleWindow.contentItem) sharedModules.parent = null;
+        if (sharedModules && sharedModules.parent === moduleSurface) sharedModules.parent = null;
     }
     Connections {
         target: ShellState
@@ -34,6 +34,8 @@ Scope {
         function onPanelChanged() { Qt.callLater(root.syncModuleSurface); }
     }
     readonly property bool selected: !!screen && (ShellState.monitor === screenName || (!Quickshell.screens.some(s => s.name === ShellState.monitor) && screen === Quickshell.screens[0]))
+    readonly property bool moduleShown: root.screenName === ShellState.pluginMonitor && !!ShellState.pluginId
+    readonly property var pillWindow: interactionWindow.visible ? interactionWindow : bar
     readonly property bool popupOpen: languageButton.menuVisible || (root.selected && ["center", "clipboard"].includes(ShellState.panel))
     PanelWindow {
         screen: root.screen
@@ -53,18 +55,25 @@ Scope {
         implicitHeight: Theme.pillHeight
         exclusiveZone: Theme.pillHeight
         color: "transparent"
-        // Desktop panels sit below fullscreen apps. Raise the pills above an
-        // open module, then lower them while the overlay drawers animate.
-        WlrLayershell.layer: moduleWindow.visible && !leftDrawer.visible && !rightDrawer.visible
-            ? WlrLayer.Overlay : WlrLayer.Top
+        visible: !interactionWindow.visible
+        WlrLayershell.layer: WlrLayer.Top
         WlrLayershell.namespace: "zephyrus-shell-bar"
-        // Hyprland restricts pointer input to exclusive-focus surfaces. Keep the
-        // bar in that set alongside the module, whose hit region starts below it.
-        WlrLayershell.keyboardFocus: languageButton.restoringInputFocus ? WlrKeyboardFocus.Exclusive
-            : root.screenName === ShellState.pluginMonitor && (ShellState.panel === "module" || root.popupOpen)
-            ? WlrKeyboardFocus.Exclusive
-            : root.popupOpen ? WlrKeyboardFocus.OnDemand
-            : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+        mask: Region {
+            Region { item: spaces }
+            Region { item: runningApps }
+            Region { item: center }
+            Region { item: rightPills }
+        }
+        IdleInhibitor { window: root.pillWindow; enabled: KeepAwake.mode === "screen" && KeepAwake.active }
+    }
+    // A single set of pills moves with the visible interaction surface. The
+    // passive desktop bar never owns keyboard focus; leaving a module unmaps
+    // its exclusive surface, allowing the compositor to restore native focus.
+    Item {
+        parent: root.pillWindow.contentItem
+        width: root.pillWindow.width; height: Theme.pillHeight
+        z: 10
         Shortcut {
             sequence: "Escape"
             enabled: (root.screenName === ShellState.pluginMonitor && ShellState.panel === "module") || root.popupOpen
@@ -77,20 +86,11 @@ Scope {
                 else ShellState.close();
             }
         }
-        mask: Region {
-            Region { item: spaces }
-            Region { item: runningApps }
-            Region { item: center }
-            // Track the anchored row itself so newly added controls keep their
-            // hit region when the row moves as tray/status widths change.
-            Region { item: rightPills }
-        }
-        IdleInhibitor { window: bar; enabled: KeepAwake.mode === "screen" && KeepAwake.active }
         Row {
             id: left
             x: 14; y: Theme.pillVerticalPadding; spacing: 8
             BarAction { id: spaces; text: "Spaces"; iconName: "grid-vertical"; showToolTip: false; highlighted: root.selected && ShellState.panel === "left"; onClicked: ShellState.toggle("left", root.screenName) }
-            RunningApps { id: runningApps; maximumWidth: Math.max(0, center.x - left.x - spaces.width - 2 * left.spacing); window: bar }
+            RunningApps { id: runningApps; maximumWidth: Math.max(0, center.x - left.x - spaces.width - 2 * left.spacing); window: root.pillWindow }
         }
         ClockPill {
             id: center
@@ -103,8 +103,8 @@ Scope {
             id: rightPills
             anchors.right: parent.right; anchors.rightMargin: 14; y: Theme.pillVerticalPadding
             spacing: 8
-            TrayPill { id: tray; window: bar; maximumWidth: Math.max(0, bar.width - 14 - right.width - clipboardButton.width - languageButton.width - center.x - center.width - 24) }
-            LanguageButton { id: languageButton; barWindow: bar }
+            TrayPill { id: tray; window: root.pillWindow; maximumWidth: Math.max(0, root.pillWindow.width - 14 - right.width - clipboardButton.width - languageButton.width - center.x - center.width - 24) }
+            LanguageButton { id: languageButton; barWindow: root.pillWindow }
             ClipboardButton { id: clipboardButton; screenName: root.screenName }
             StatusPill {
                 id: right
@@ -114,25 +114,44 @@ Scope {
         }
     }
     PanelWindow {
-        id: moduleWindow
+        id: interactionWindow
         screen: root.screen
-        visible: root.screenName === ShellState.pluginMonitor && !!ShellState.pluginId
-        anchors { top: true; bottom: true; left: true; right: true }
-        exclusionMode: ExclusionMode.Ignore
+        visible: root.moduleShown || root.popupOpen || languageButton.restoringInputFocus
+        anchors { top: true; bottom: root.moduleShown; left: true; right: true }
+        implicitHeight: Theme.pillHeight
+        exclusiveZone: Theme.pillHeight
         color: "transparent"
-        WlrLayershell.layer: WlrLayer.Top
-        WlrLayershell.namespace: "zephyrus-shell-module"
-        // Keep focus stable while the anchored popup is open. Reacquiring it
-        // on dismissal can redirect the stationary pointer away from the bar.
-        WlrLayershell.keyboardFocus: visible && (ShellState.panel === "module" || root.popupOpen) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-        // The backdrop still fills the screen; module input leaves the pills to the bar.
-        mask: Region { x: 0; y: Theme.pillHeight; width: moduleWindow.width; height: Math.max(0, moduleWindow.height - y) }
-        ModuleLoader {
-            anchors.fill: parent
-            enabled: !root.sharedModules
-            visible: !root.sharedModules
-            screenName: root.sharedModules ? "__shared__" : root.screenName
-            readyToLoad: !leftDrawer.visible && !rightDrawer.visible
+        WlrLayershell.layer: root.moduleShown && !leftDrawer.visible && !rightDrawer.visible ? WlrLayer.Overlay : WlrLayer.Top
+        WlrLayershell.namespace: "zephyrus-shell-interaction"
+        // Keep Exclusive until unmapping. Setting None before unmapping can
+        // clear the compositor's last focus while another layer still owns it.
+        WlrLayershell.keyboardFocus: root.moduleShown && ShellState.panel !== "module" && !root.popupOpen
+            ? WlrKeyboardFocus.None : WlrKeyboardFocus.Exclusive
+        mask: Region {
+            Region { item: moduleInput; }
+            Region { item: spaces }
+            Region { item: runningApps }
+            Region { item: center }
+            Region { item: rightPills }
+        }
+        Item {
+            id: moduleInput
+            visible: root.moduleShown
+            y: Theme.pillHeight; width: interactionWindow.width; height: Math.max(0, interactionWindow.height - y)
+        }
+        Item {
+            id: moduleSurface
+            // Desktop popups use a 42px interaction window. Hidden modules
+            // retain full-screen geometry so opening one cannot reset layouts.
+            width: root.screenWidth; height: root.screenHeight
+            visible: root.moduleShown
+            ModuleLoader {
+                anchors.fill: parent
+                enabled: !root.sharedModules
+                visible: !root.sharedModules
+                screenName: root.sharedModules ? "__shared__" : root.screenName
+                readyToLoad: !leftDrawer.visible && !rightDrawer.visible
+            }
         }
     }
     DrawerWindow {
@@ -165,8 +184,8 @@ Scope {
     PopupWindow {
         id: attentionWindow
         visible: root.selected && ShellState.panel === "center"
-        anchor.window: bar
-        anchor.rect.x: (bar.width - width) / 2
+        anchor.window: root.pillWindow
+        anchor.rect.x: (root.pillWindow.width - width) / 2
         anchor.rect.y: Theme.pillHeight + 6
         implicitWidth: Math.min(1240, root.screenWidth - 28)
         implicitHeight: Math.min(root.screenWidth < 900 ? 700 : 600, root.screenHeight - Theme.pillHeight - 24)
@@ -176,7 +195,7 @@ Scope {
         onVisibleChanged: { if (!visible) attentionGrab.active = false; }
         HyprlandFocusGrab {
             id: attentionGrab
-            windows: [attentionWindow, bar]
+            windows: [attentionWindow, root.pillWindow]
             onCleared: {
                 if (root.selected && ShellState.panel === "center") ShellState.dismissPanel();
             }
@@ -184,7 +203,7 @@ Scope {
         Loader { id: attentionContent; anchors.fill: parent; active: parent.visible; sourceComponent: AttentionPanel {} }
     }
     ClipboardPopup {
-        barWindow: bar
+        barWindow: root.pillWindow
         screenName: root.screenName
         readyToOpen: !leftDrawer.visible && !rightDrawer.visible
     }

@@ -215,7 +215,8 @@ The Activity panel shows byte progress, cancellation, errors, and retry. Finishe
 or failed rows can be dismissed; plain status messages use desktop notifications
 and Attention. Retry
 resolves a new URL. Selecting Desktop or another space keeps active transfers
-running. Escape or explicit Close destroys the worker and cancels direct transfers.
+running. Escape hides Books and preserves its state. The Spaces sidebar X
+destroys the worker and cancels direct transfers.
 Partial files are removed, existing library files are never replaced, and HTML
 responses are reported as failed downloads. Completed files appear in Local.
 

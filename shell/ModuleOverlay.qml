@@ -23,6 +23,9 @@ Item {
     property var currentModule: null
     property string currentModuleId: ""
     property bool currentLoadFailed: false
+    Keys.onEscapePressed: event => {
+        if (ShellState.panel === "module") { ShellState.close(); event.accepted = true; }
+    }
     readonly property var entry: Modules.find(ShellState.pluginId)
     // Modules may tune backdrop opacity and decode width; defaults preserve prior behavior.
     readonly property url backgroundImage: currentModule && currentModule.backgroundImage !== undefined ? currentModule.backgroundImage : ""
@@ -91,7 +94,6 @@ Item {
         imageWidth: root.backgroundImageWidth
         opacity: root.backgroundImageOpacity
     }
-    Shortcut { sequence: "Escape"; enabled: ShellState.panel === "module"; onActivated: ShellState.close() }
     Component.onCompleted: {
         forceActiveFocus();
         Qt.callLater(root.syncCurrentModule);
@@ -146,17 +148,13 @@ Item {
             Component {
                 id: hostFactory
                 QtObject {
-                    readonly property int apiVersion: 1
+                    readonly property int apiVersion: 2
                     function close() { ShellState.stopPlugin(retained.pluginId); }
                     function hide() {
                         if (ShellState.pluginId === retained.pluginId) ShellState.showDesktop();
                     }
                     function back() {
                         if (ShellState.pluginId === retained.pluginId) ShellState.backToSpaces();
-                        else ShellState.stopPlugin(retained.pluginId);
-                    }
-                    function requestKeepRunning(pluginId, enabled) {
-                        if (pluginId === retained.pluginId) ShellState.requestKeepRunning(pluginId, enabled);
                     }
                     function openPlugin(pluginId, payload) {
                         if (!Modules.find(pluginId)) return false;
@@ -177,6 +175,7 @@ Item {
                     && (root.readyToLoad || loadedOnce)
                 asynchronous: true
                 visible: status === Loader.Ready && ShellState.pluginId === retained.pluginId
+                enabled: visible && ShellState.panel === "module"
                 sourceComponent: root.components[retained.pluginId] || null
                 onActiveChanged: if (!active) loadedOnce = false
                 onLoaded: {
@@ -193,7 +192,7 @@ Item {
     Label {
         anchors.centerIn: parent
         visible: !!ShellState.pluginId && root.currentLoadFailed
-        text: "This space could not load. Close it with Escape and try again."
+        text: "This space could not load. Close it using the X in Spaces and try again."
         color: Theme.danger
         width: Math.min(500, parent.width - 56); wrapMode: Text.Wrap
     }

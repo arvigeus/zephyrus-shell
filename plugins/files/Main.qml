@@ -18,14 +18,12 @@ ColumnLayout {
     readonly property string rootPath: providerName === "local" ? service.homePath : providerName === "nextcloud" ? "/" : "root"
     readonly property int activeWorkCount: service.activeJobCount + service.activeEditCount + activeActionJobs.length + pendingActionStarts
     readonly property bool driveSignInActive: service.jobs.some(job => job.title === "Connect Google Drive" && ["queued", "running"].includes(job.state) && !job.cancel_requested)
-    onHostChanged: updateActionRetention()
     onVisibleChanged: {
         if (!visible) {
             destinationPicker.close(); newFolder.close(); driveCallback.close(); activity.close();
             if (activeActionsMenu) activeActionsMenu.close();
         }
     }
-    onActiveWorkCountChanged: updateActionRetention()
     property bool statusIsError: false
     onStatusTextChanged: { if (statusText) activity.notify(statusText, statusIsError); }
     function notifyStatus(message, error) { statusText = ""; statusIsError = !!error; statusText = message || ""; }
@@ -55,7 +53,7 @@ ColumnLayout {
     }
     function createFolder() { folderName.text = ""; newFolder.open(); }
     function connectDrive() {
-        activity.open();
+        activity.showActivity();
         service.connectDrive();
     }
     function retryFolder() {
@@ -132,7 +130,7 @@ ColumnLayout {
             notifyStatus(error || (result ? result.message : ""), !!error);
         });
     }
-    function activate() { fileList.forceActiveFocus(); if (activeWorkCount) activity.open(); }
+    function activate() { fileList.forceActiveFocus(); if (activeWorkCount) activity.showActivity(); }
 
     function load(path, more) {
         const generation = ++browseGeneration;
@@ -165,14 +163,14 @@ ColumnLayout {
         } else if (providerName !== "local") service.openCloudFile(providerName, entry);
         else service.request("open", {path: entry.path}, function(result, error) {
             notifyStatus(error || "", !!error);
-            if (!error && result && host && !activeWorkCount) host.close();
+            if (!error && result && host && !activeWorkCount) host.hide();
         });
     }
     function runAction(op, entry) {
         statusText = "";
         service.request(op, {path: entry.path}, function(result, error) {
             notifyStatus(error || (result ? result.message : ""), !!error);
-            if (!error && result && ["terminal", "reveal"].includes(op) && host && !activeWorkCount) host.close();
+            if (!error && result && ["terminal", "reveal"].includes(op) && host && !activeWorkCount) host.hide();
         });
     }
     function showActions(button, menu, selectedIndex) {
@@ -235,23 +233,17 @@ ColumnLayout {
     function runCustomAction(action, entry) {
         statusText = "";
         pendingActionStarts++;
-        updateActionRetention();
         service.request("custom_action", {path: entry.path, index: action.index}, function(result, error) {
             pendingActionStarts = Math.max(0, pendingActionStarts - 1);
             if (error) {
                 notifyStatus(error, true);
-                updateActionRetention();
                 return;
             }
             notifyStatus(result ? result.message : "", false);
             if (result && result.job_id !== undefined) {
                 activeActionJobs = activeActionJobs.concat([{jobId: result.job_id, name: action.name}]);
             }
-            updateActionRetention();
         });
-    }
-    function updateActionRetention() {
-        if (host) host.requestKeepRunning("files", activeWorkCount > 0);
     }
     function pollActionJobs() {
         for (const job of activeActionJobs.slice()) {
@@ -267,7 +259,6 @@ ColumnLayout {
                 if (error) {
                     notifyStatus(error, true);
                     activeActionJobs = activeActionJobs.filter(item => item.jobId !== job.jobId);
-                    updateActionRetention();
                     return;
                 }
                 if (!result || !result.finished) return;
@@ -277,7 +268,6 @@ ColumnLayout {
                     : result.returncode === null
                         ? "Stopped tracking " + job.name
                         : job.name + " exited with code " + result.returncode, result.returncode !== 0 && result.returncode !== null);
-                updateActionRetention();
             });
         }
     }
@@ -448,7 +438,7 @@ ColumnLayout {
         Action { objectName: "connectGoogleDrive"; visible: root.providerName === "gdrive"; iconName: "link"; text: root.driveSignInActive ? "Continue Google sign-in" : "Connect Google Drive"; enabled: !service.startingJobs; onClicked: root.connectDrive() }
         Action { visible: root.providerName === "gdrive" && root.driveSignInActive; iconName: "link"; text: "Finish sign-in"; onClicked: root.finishDriveSignIn() }
         Action { iconName: "folder-plus"; text: "New folder"; enabled: !!root.currentPath && !root.errorText && !root.loading; onClicked: root.createFolder() }
-        Action { iconName: "download"; text: root.activeWorkCount ? "Activity (" + root.activeWorkCount + ")" : "Activity"; onClicked: activity.open() }
+        Action { iconName: "download"; text: root.activeWorkCount ? "Activity (" + root.activeWorkCount + ")" : "Activity"; enabled: activity.hasActivity; onClicked: activity.showActivity() }
     }
 
     RowLayout {

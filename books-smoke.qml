@@ -146,7 +146,6 @@ ShellRoot {
                     const downloadButton = find(browser, "providerDownloadButton");
                     require(downloadButton && downloadButton.iconName === "download" && downloadButton.text.startsWith("Download "), "Provider Find action is not Download");
                     lookup.extraResultRequested(lookup.extraResults[1]);
-                    require(ShellState.retentionRequests.books, "Provider download did not request module retention");
                     step++;
                 } else if (step === 13) {
                     if (!browser.downloadJobs.length) return;
@@ -154,7 +153,9 @@ ShellRoot {
                     require(ShellState.runningPluginIds.includes("books"), "Desktop destroyed the provider transfer");
                     step++;
                 } else if (step === 14) {
-                    if (ShellState.runningPluginIds.includes("books")) return;
+                    if (browser.downloadJobs.some(job => ["queued", "running"].includes(job.state))) return;
+                    require(ShellState.runningPluginIds.includes("books"), "Completion destroyed hidden Books");
+                    browser.host.close();
                     ShellState.openPlugin("books");
                     step++;
                 } else if (step === 15) {

@@ -26,7 +26,13 @@ Button {
     contentItem: RowLayout {
         spacing: 8
         Icon { visible: !!root.iconName && !root.iconArtwork.toString(); name: root.iconName; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
-        AppIcon { visible: !!root.iconArtwork.toString(); artwork: root.iconArtwork; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
+        Loader {
+            active: !!root.iconArtwork.toString()
+            visible: active
+            Layout.preferredWidth: 20; Layout.preferredHeight: 20
+            source: active ? Qt.resolvedUrl("AppIcon.qml") : ""
+            onLoaded: item.artwork = Qt.binding(() => root.iconArtwork)
+        }
         Label {
             text: root.text
             Layout.fillWidth: true

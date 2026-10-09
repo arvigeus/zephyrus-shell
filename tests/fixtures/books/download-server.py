@@ -19,7 +19,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         try:
             for start in range(0, len(content), 32768):
-                self.wfile.write(content[start:start + 32768])
+                self.wfile.write(content[start : start + 32768])
                 self.wfile.flush()
                 time.sleep(0.05)
         except (BrokenPipeError, ConnectionResetError):

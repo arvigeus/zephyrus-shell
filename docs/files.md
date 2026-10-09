@@ -27,10 +27,9 @@ floating popup with progress, throughput, time estimates, cancellation, and
 recent results, and retry for failed/cancelled jobs. Unknown sizes use indeterminate progress rather than invented
 time estimates. Finished and failed rows can be dismissed without removing files.
 Plain status and error messages use desktop notifications and Attention. Files stays
-alive while editing sessions, jobs, or custom actions are active, including after
-selecting Desktop or another space, and releases its hidden instance when the
-last job and editing session settle. Escape or explicit Close destroys the module and cancels its
-owned work. Transfers are session jobs and are not restored after a shell restart.
+alive after selecting Desktop, another space, or Escape, including after the
+last job and editing session settle. The Spaces sidebar X destroys the module
+and cancels its owned work. Transfers are session jobs and are not restored after a shell restart.
 
 **Activity** lists cloud editing sessions. Choose **Stop syncing** after finishing
 in the editor; pending saves finish before the session ends. Files cannot infer

@@ -1182,8 +1182,10 @@ class Runtime:
                 if (
                     not isinstance(selection, str)
                     or not selection
-                    or (setting.get("mode") == "wallpaper_engine"
-                        and not WORKSHOP_ID.fullmatch(str(setting.get("workshop_id", ""))))
+                    or (
+                        setting.get("mode") == "wallpaper_engine"
+                        and not WORKSHOP_ID.fullmatch(str(setting.get("workshop_id", "")))
+                    )
                 ):
                     raise ValueError(
                         "Invalid saved Wallpaper Engine selection. Apply an installed wallpaper again."
@@ -1212,8 +1214,11 @@ class Runtime:
         self.failed_selection = self.selection
         message = (
             str(error)
-            + (" Check video.log in " if read_setting().get("mode") == "video"
-               else " Check daemon.log and daemon.previous.log in ")
+            + (
+                " Check video.log in "
+                if read_setting().get("mode") == "video"
+                else " Check daemon.log and daemon.previous.log in "
+            )
             + str(state_file().parent)
             + "."
             + " Apply wallpaper to retry, or choose a still image."

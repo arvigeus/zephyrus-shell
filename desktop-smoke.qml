@@ -80,7 +80,7 @@ ShellRoot {
                     if (popup.panel.entries.length) { fail("History did not clear"); return; }
                     popup.panel.closeRequested(); phase = 9;
                 } else if (phase === 9 && !popup.panel) {
-                    ShellState.close();
+                    ShellState.stopPlugin("apps");
                     console.log("DESKTOP PASS: real clipboard popover, deferred opening, search, delete, copy, toggle, clear and owned worker release");
                     stop(); Qt.quit();
                 }

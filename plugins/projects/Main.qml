@@ -78,7 +78,7 @@ Item {
         service.request("open", {path: project.path}, (result, error) => {
             busy = false;
             if (error) { errorText = error; return; }
-            if (result && host) host.close();
+            if (result && host) host.hide();
         });
     }
     function suggestedName(url) {

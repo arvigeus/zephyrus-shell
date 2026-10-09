@@ -2,11 +2,11 @@ import QtQuick
 import Quickshell
 import "services"
 import "media"
+import "plugins/files" as Files
 
 ShellRoot {
-    Worker {
+    Files.FilesService {
         id: files
-        backend: "plugins/files/backend.py"
         startOnDemand: true
     }
     TorrentService { id: torrents }
@@ -17,6 +17,8 @@ ShellRoot {
         property int ticks: 0
         property int replies: 0
         property int phase: 0
+        property int hiddenSerial: 0
+        function pollTimer() { return torrents.data.find(child => child.objectName === "torrentJobPoll"); }
         function fail(message) { console.error("WORKER FAIL", message); Qt.quit(); }
         onTriggered: {
             if (++ticks > 80) { fail("Startup requests did not settle"); return; }
@@ -55,7 +57,22 @@ ShellRoot {
                 });
             } else if (phase === 3 && replies === 5) {
                 if (recovery.stopped || recovery.pendingCount || !recovery.processReady) { fail("Unexpected restarted worker state"); return; }
-                console.log("WORKER PASS: unused services stay stopped, startup requests settle, callbacks release, stopped worker restarts and accepts requests");
+                torrents.monitorJobs = true;
+                torrents.refreshJobs(); phase = 4;
+            } else if (phase === 4 && !torrents.jobsLoading) {
+                if (files.data.find(child => child.objectName === "filesEditPoll").running) { fail("Idle Files kept polling editing sessions"); return; }
+                torrents.foreground = false;
+                hiddenSerial = torrents.serial;
+                phase = 5; ticks = 0;
+            } else if (phase === 5 && ticks > 4) {
+                if (pollTimer().running || torrents.serial !== hiddenSerial) { fail("Hidden idle module kept polling"); return; }
+                torrents.jobs = [{id:"background", active:true}];
+                if (!pollTimer().running) { fail("Hidden active job lost its monitor"); return; }
+                torrents.jobs = [];
+                torrents.foreground = true; phase = 6;
+            } else if (phase === 6 && !torrents.jobsLoading) {
+                if (!pollTimer().running || torrents.serial <= hiddenSerial) { fail("Returning did not refresh the monitor"); return; }
+                console.log("WORKER PASS: lazy startup, buffered requests, restart, hidden idle suspension, background job monitoring and foreground refresh");
                 Qt.quit();
             }
         }

@@ -6,10 +6,9 @@ QtObject {
     property string monitor: ""
     property string pluginId: ""
     property string pluginMonitor: ""
-    // A retained module owns its player and worker while another space is shown.
+    // Open modules own their resources until explicitly stopped from Spaces.
     property var runningPluginIds: []
     property var runningPluginMonitors: ({})
-    property var retentionRequests: ({})
     property var userProfile: ({})
     // Opaque navigation payload; only the destination module interprets it.
     property var pendingPluginOpen: null
@@ -22,7 +21,6 @@ QtObject {
     }
     function openPlugin(id, payload) {
         if (!id) return;
-        if (pluginId && pluginId !== id && !retentionRequests[pluginId]) stopPlugin(pluginId);
         pendingPluginOpen = payload === undefined ? null : {id: id, payload: payload};
         const owner = runningPluginMonitors[id] !== undefined ? runningPluginMonitors[id] : monitor;
         if (!runningPluginIds.includes(id)) runningPluginIds = runningPluginIds.concat([id]);
@@ -32,14 +30,8 @@ QtObject {
         pluginMonitor = monitor;
         panel = "module";
     }
-    function requestKeepRunning(id, enabled) {
-        if (!runningPluginIds.includes(id)) return;
-        retentionRequests = Object.assign({}, retentionRequests, {[id]: !!enabled});
-        if (!enabled && pluginId !== id) stopPlugin(id);
-    }
     function showDesktop() {
         pendingPluginOpen = null;
-        if (pluginId && !retentionRequests[pluginId]) stopPlugin(pluginId);
         pluginId = ""; pluginMonitor = ""; panel = "";
     }
     function reconcileScreens(names) {
@@ -60,23 +52,20 @@ QtObject {
         const owners = Object.assign({}, runningPluginMonitors);
         delete owners[id];
         runningPluginMonitors = owners;
-        const requests = Object.assign({}, retentionRequests);
-        delete requests[id];
-        retentionRequests = requests;
-        if (pluginId === id) { pluginId = ""; pluginMonitor = ""; panel = ""; }
+        if (pluginId === id) {
+            pluginId = ""; pluginMonitor = "";
+            if (panel === "module") panel = "";
+        }
     }
     function backToSpaces() {
-        pendingPluginOpen = null;
-        if (pluginId) stopPlugin(pluginId);
-        pluginId = ""; pluginMonitor = ""; panel = "left";
+        showDesktop();
+        panel = "left";
     }
     function dismissPanel() {
         if (pluginId) monitor = pluginMonitor;
         panel = pluginId ? "module" : "";
     }
     function close() {
-        pendingPluginOpen = null;
-        if (pluginId) stopPlugin(pluginId);
-        panel = ""; pluginId = ""; pluginMonitor = "";
+        showDesktop();
     }
 }

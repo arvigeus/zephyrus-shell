@@ -72,7 +72,7 @@ ShellRoot {
                             || !desktop.wallpaperSource.toString().endsWith(".poster.jpg")) {
                         fail("Apply: " + pictures.actionMessage); return;
                     }
-                    ShellState.showDesktop(); phase = 6;
+                    ShellState.stopPlugin("pictures"); phase = 6;
                 } else if (phase === 6) {
                     if (content()) return;
                     if (!runtime.externalScreens.includes("TEST")) { fail("Playback lost on module close"); return; }

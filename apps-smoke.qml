@@ -94,7 +94,7 @@ ShellRoot {
                             fixtureEntry.noDisplay = false; search.text = "";
                             Qt.callLater(() => {
                                 require(apps.applications.includes(fixtureEntry), "Restored entry did not return to catalogue");
-                                ShellState.close();
+                                ShellState.stopPlugin("apps");
                                 require(overlay.item === null, "Overlay was retained after close");
                                 console.log("APPS PASS", Quickshell.env("APPS_TEST_PHASE"), "loading gate, favorites, GPU picker toggle, metadata changes, destruction");
                                 Qt.quit();

@@ -27,10 +27,11 @@ FocusScope {
     }
 
     function activate() {
+        if (!tabs.count) addTab();
         if (currentTerminal) currentTerminal.forceTerminalFocus();
     }
     function addTab() {
-        tabs.append({number: ++nextTab, submitted: false});
+        tabs.append({number: ++nextTab});
         currentIndex = tabs.count - 1;
         message = "";
         Qt.callLater(activate);
@@ -40,27 +41,19 @@ FocusScope {
         message = "";
         Qt.callLater(activate);
     }
-    function updateRetention() {
-        let keep = false;
-        for (let index = 0; index < tabs.count; ++index) keep = keep || tabs.get(index).submitted;
-        if (host) host.requestKeepRunning("terminal", keep);
-    }
     function closeTab(index) {
         if (index < 0 || index >= tabs.count) return;
         tabs.remove(index);
         if (index < currentIndex) currentIndex--;
         currentIndex = Math.max(0, Math.min(currentIndex, tabs.count - 1));
-        updateRetention();
         if (!tabs.count) {
-            if (host) host.close();
+            if (host) host.hide();
             else addTab();
         } else Qt.callLater(activate);
     }
     function restartShell() {
         const holder = sessions.itemAt(currentIndex);
         if (!holder) return;
-        tabs.setProperty(currentIndex, "submitted", false);
-        updateRetention();
         holder.restart();
     }
     function runCommand(command) {
@@ -209,10 +202,6 @@ FocusScope {
                     Timer { id: restartTimer; interval: 1; onTriggered: terminalLoader.active = true }
                     Connections {
                         target: terminalLoader.item
-                        function onCommandSubmitted() {
-                            tabs.setProperty(holder.index, "submitted", true);
-                            root.updateRetention();
-                        }
                         function onFinished() {
                             const number = holder.number;
                             Qt.callLater(() => {
@@ -230,7 +219,7 @@ FocusScope {
                             text: "Open system terminal"; iconName: "terminal"
                             onClicked: fallback.request("terminal", {}, (result, error) => {
                                 root.message = error || "";
-                                if (!error && root.host) root.host.close();
+                                if (!error && root.host) root.host.hide();
                             })
                         }
                     }

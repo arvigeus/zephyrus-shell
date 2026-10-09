@@ -10,7 +10,6 @@ import "../../widgets" as W
 ColumnLayout {
     id: root
     property var host
-    onPlayerProcessChanged: if (host) host.requestKeepRunning("radio", !!playerProcess)
     property var results: []
     property var stationRows: []
     property var stationRowsByKey: ({})

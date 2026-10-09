@@ -56,7 +56,6 @@ ShellRoot {
             } else if (root.step === 3) {
                 resultFile.reload();
                 if (resultFile.text() !== "first:/tmp") return;
-                if (!ShellState.retentionRequests.terminal) { root.fail("Command retention"); return; }
                 root.find(m, "terminalNewTab").clicked(); root.step = 4;
             } else if (root.step === 4) {
                 if (!m.currentTerminal || m.currentTerminal === root.first) return;
@@ -146,7 +145,7 @@ ShellRoot {
                 if (m.currentTerminal !== root.first) { root.fail("Shell exit closed another tab"); return; }
                 root.step = 14;
             } else if (root.step === 14) {
-                ShellState.close(); root.step = 15;
+                ShellState.stopPlugin("terminal"); root.step = 15;
             } else if (root.step === 15 && !overlay.item) {
                 console.log("TERMINAL PASS: commands, isolated PTYs, menu reload/error, live colors, draft/busy guards, retention, restart, shell exit and close");
                 Qt.quit();

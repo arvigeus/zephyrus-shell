@@ -14,6 +14,7 @@ Popup {
     readonly property bool hasFinishedJobs: shownJobs.some(job => ["finished", "failed", "cancelled"].includes(job.state))
     readonly property int activeCount: jobs.filter(j => j.state === "running" || j.state === "queued").length
     property bool retryAvailable: false
+    readonly property bool hasActivity: shownJobs.length > 0 || retryAvailable
     property string retryText: "Retry"
     signal retryRequested()
     signal actionRequested(var job)
@@ -35,6 +36,10 @@ Popup {
         if (!text) return;
         Attention.notify(notificationTitle, text, error);
     }
+    function showActivity() {
+        if (hasActivity && parent && parent.visible) open();
+    }
+    onHasActivityChanged: if (!hasActivity) { dismiss.stop(); close(); }
     function dismissJob(jobId) {
         const job = jobs.find(job => String(job.job_id) === String(jobId));
         if (!job || ["queued", "running"].includes(job.state)) return;
@@ -56,8 +61,14 @@ Popup {
         const seconds = Math.ceil(job.eta);
         return seconds < 60 ? seconds + "s remaining" : Math.ceil(seconds / 60) + "m remaining";
     }
-    onActiveCountChanged: { if (activeCount > 0) { dismiss.stop(); if (parent && parent.visible) open(); } else dismiss.restart(); }
-    Connections { target: root.parent; function onVisibleChanged() { if (!root.parent.visible) root.close(); } }
+    onActiveCountChanged: { if (activeCount > 0) { dismiss.stop(); showActivity(); } else if (visible) dismiss.restart(); }
+    Connections {
+        target: root.parent
+        function onVisibleChanged() {
+            if (!root.parent.visible) root.close();
+            else if (root.activeCount) root.showActivity();
+        }
+    }
     Timer { id: dismiss; interval: 7000; onTriggered: { if (!root.activeCount) root.close(); } }
     background: Rectangle { radius: Theme.controlRadius; color: Theme.surface; border.color: Theme.border }
     contentItem: ColumnLayout {
@@ -130,6 +141,5 @@ Popup {
                 }
             }
         }
-        W.Label { visible: !root.shownJobs.length; text: "No recent activity"; color: Theme.muted }
     }
 }

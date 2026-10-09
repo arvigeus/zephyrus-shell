@@ -91,7 +91,7 @@ ShellRoot {
                     const pictures = content().item;
                     if (pictures.settingWallpaper || !desktopsReady()) return;
                     if (pictures.actionFailed) { fail("Retry failed: " + pictures.actionMessage); return; }
-                    ShellState.close(); phase = 5;
+                    ShellState.stopPlugin("pictures"); phase = 5;
                 } else if (phase === 5 && !overlay.item) {
                     if (ShellState.runningPluginIds.includes("pictures") || !desktopsReady()) {
                         fail("Closing Pictures lost desktop wallpaper or retained its worker"); return;

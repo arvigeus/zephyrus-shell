@@ -11,7 +11,6 @@ import "../widgets/Catalogue.js" as Catalogue
 Item {
     id: root
     property var host
-    onHostChanged: updateRetention()
     property string kind: "movie"
     property url backgroundImage: ""
     property var titles: []
@@ -99,15 +98,12 @@ Item {
         id: localService
         objectName: "torrentService"
         monitorJobs: true
+        foreground: root.visible
         monitorKind: root.kind
         onFailed: message => root.detailError = message
-        onKeepRunningChanged: root.updateRetention()
         onLibraryChanged: root.refreshLocalLibrary()
     }
 
-    function updateRetention() {
-        if (host) host.requestKeepRunning(kind === "movie" ? "movies" : "series", localService.keepRunning);
-    }
 
     function refreshLocalLibrary() {
         if (selected.id) {

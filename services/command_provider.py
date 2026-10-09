@@ -18,8 +18,12 @@ def safe_url(value):
         return ""
     try:
         parsed = urllib.parse.urlsplit(value)
-        if (parsed.scheme.lower() in ("https", "http") and parsed.hostname
-                and parsed.username is None and parsed.password is None):
+        if (
+            parsed.scheme.lower() in ("https", "http")
+            and parsed.hostname
+            and parsed.username is None
+            and parsed.password is None
+        ):
             _ = parsed.port  # Validate the optional port before handing the URL to a browser.
             return value
     except ValueError:
@@ -70,13 +74,19 @@ class CommandRunner:
             with self._lock:
                 if self._closed:
                     raise ProviderError(self.label + " provider service stopped.")
-                process = subprocess.Popen(provider["command"], stdin=subprocess.PIPE,
-                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                           env=env, start_new_session=True)
+                process = subprocess.Popen(
+                    provider["command"],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                    start_new_session=True,
+                )
                 self._processes.add(process)
             try:
                 stdout, stderr = process.communicate(
-                    (json.dumps(request, ensure_ascii=False) + "\n").encode(), timeout=self.timeout)
+                    (json.dumps(request, ensure_ascii=False) + "\n").encode(), timeout=self.timeout
+                )
             except subprocess.TimeoutExpired:
                 self._kill(process)
                 process.communicate()
@@ -86,14 +96,22 @@ class CommandRunner:
             try:
                 payload = json.loads(stdout, parse_constant=_invalid_constant)
             except (ValueError, UnicodeDecodeError):
-                detail = diagnostic(stderr.decode(errors="replace"), provider) if process.returncode else ""
+                detail = (
+                    diagnostic(stderr.decode(errors="replace"), provider)
+                    if process.returncode
+                    else ""
+                )
                 if process.returncode:
-                    raise ProviderError("Command failed" + (": " + detail if detail else ".")) from None
+                    raise ProviderError(
+                        "Command failed" + (": " + detail if detail else ".")
+                    ) from None
                 raise ProviderError("Command must return exactly one JSON object.") from None
             if not isinstance(payload, dict) or type(payload.get("success")) is not bool:
                 raise ProviderError("Command returned an invalid response.")
             if payload["success"] is False:
-                raise ProviderError(diagnostic(payload.get("error"), provider) or "Provider request failed.")
+                raise ProviderError(
+                    diagnostic(payload.get("error"), provider) or "Provider request failed."
+                )
             if process.returncode:
                 raise ProviderError("Command exited unsuccessfully.")
             return payload
@@ -104,4 +122,3 @@ class CommandRunner:
                 self._kill(process)
                 with self._lock:
                     self._processes.discard(process)
-

@@ -99,14 +99,14 @@ ColumnLayout {
         publishedMatches = next;
     }
     function activate() { search.forceActiveFocus(); }
-    function launch(app) { app.execute(); if (host) host.close(); }
+    function launch(app) { app.execute(); if (host) host.hide(); }
     function launchOnGpu(app, gpu) {
         if (launching) return;
         launching = true; launchError = "";
         gpuWorker.request("launch", {gpu: gpu.id, command: app.command, directory: app.workingDirectory, terminal: app.runInTerminal}, (result, error) => {
             root.launching = false;
             root.launchError = error;
-            if (result && result.ok && root.host) root.host.close();
+            if (result && result.ok && root.host) root.host.hide();
         });
     }
     spacing: 16

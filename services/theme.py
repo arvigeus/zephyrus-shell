@@ -210,10 +210,11 @@ def rgb(color):
 
 def contrast_ratio(foreground, background):
     """WCAG contrast for opaque sRGB colors."""
+
     def luminance(color):
         channels = [int(color[i : i + 2], 16) / 255 for i in (1, 3, 5)]
         linear = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in channels]
-        return sum(v * weight for v, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+        return sum(v * weight for v, weight in zip(linear, (0.2126, 0.7152, 0.0722), strict=True))
 
     lighter, darker = sorted((luminance(foreground), luminance(background)), reverse=True)
     return (lighter + 0.05) / (darker + 0.05)

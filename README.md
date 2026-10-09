@@ -80,7 +80,7 @@ migration are already prepared. The scrolling layout needs no plugins. See
 - Terminal has independent shell tabs, shared light/dark colors and a Play menu for
   configurable named commands. Closing the module ends its sessions. See
   [Terminal configuration](docs/terminal.md).
-- Spaces opens the module drawer over the current view. Desktop reveals the Hyprland session; Music and Radio can keep playing there until closed.
+- Spaces opens the module drawer over the current view. Desktop and Escape reveal the Hyprland session while preserving open module state; use the X beside a space to release it.
 - Tap Win to open Spaces, then type to search installed applications and space names.
   Up/Down selects a result and Enter opens it; Escape closes the drawer/search.
 - Running-window activation and tray activation/context menus beside the left pill.
@@ -199,13 +199,22 @@ python3 scripts/benchmark-shell.py --output tests/artifacts/performance-baseline
 bash scripts/check-wayland.sh
 # Exercises native controls against its own temporary window:
 bash scripts/check-windows.sh
+# Native keyboard regression in its own nested compositor:
+python3 scripts/check-focus.py
+# Window actions, monitor removal and module migration in the same isolation:
+python3 scripts/check-focus.py --window-controls
 ```
 
 The preview check opens every panel and saves images under `tests/artifacts/`.
 Apps, catalogue, and module checks load real entry points. The retained check
 also tests `ShellState` transitions and host ownership inside Quickshell.
 The offscreen backend emits expected window-mask warnings. Actual layer-shell
-placement, focus, and multi-monitor behavior also need testing in Hyprland.
+placement, focus, and multi-monitor behavior use the native checks. The isolated
+runner requires a parent Wayland session, Hyprland, a C compiler, pkg-config,
+libwayland and xkbcommon. It uses temporary XDG paths and a private bus, runs a
+nested Wayland backend without acquiring physical displays, and stops its own
+compositor and clients on exit.
+Physical hotplug, input methods and GPU timing still need desktop measurements.
 
 See [performance and autoresearch](docs/performance.md) for reproducible UI,
 process-resource benchmarks and the profile/verify/improve experiment loop.

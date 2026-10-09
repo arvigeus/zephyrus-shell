@@ -5,7 +5,8 @@ authorized for AI training are documented in [Local library and qBittorrent](tor
 
 Open **Spaces → Movies** or **Spaces → TV Series**. They are separate plugins
 sharing the browser and provider service in `media/`. The shell's normal overlay
-owns their lifecycle: Escape or selecting Desktop closes the module and stops its worker.
+owns their lifecycle: Escape, Desktop and navigation hide them while preserving
+state. The Spaces sidebar X explicitly closes a module and stops its workers.
 
 The default view has a detail area above a horizontal poster rail. The grid button
 switches to posters on the left and details on the right. That preference is shared

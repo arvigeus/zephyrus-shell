@@ -38,9 +38,15 @@ def configured():
         commands = configured_providers(config, path.parent)
         for row, command in zip(config.get("providers", []), commands, strict=True):
             identifier = row.get("id", "")
-            if (not isinstance(identifier, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", identifier)
-                    or identifier in RESERVED or identifier in result):
-                raise ValueError("Pictures providers need unique IDs distinct from built-in providers.")
+            if (
+                not isinstance(identifier, str)
+                or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", identifier)
+                or identifier in RESERVED
+                or identifier in result
+            ):
+                raise ValueError(
+                    "Pictures providers need unique IDs distinct from built-in providers."
+                )
             result[identifier] = dict(command, id=identifier)
     except ProviderError as error:
         raise ValueError(str(error)) from error
@@ -48,8 +54,17 @@ def configured():
 
 
 def descriptors():
-    return [{"id": p["id"], "name": p["name"], "search": True, "random": False,
-             "defaultFilters": {}, "filters": []} for p in configured().values()]
+    return [
+        {
+            "id": p["id"],
+            "name": p["name"],
+            "search": True,
+            "random": False,
+            "defaultFilters": {},
+            "filters": [],
+        }
+        for p in configured().values()
+    ]
 
 
 def clean_item(raw, include_disabled=False):
@@ -63,9 +78,16 @@ def clean_item(raw, include_disabled=False):
         provider = {"id": provider_id, "name": str(raw.get("providerName") or provider_id)}
     identifier, title = raw.get("id"), raw.get("title")
     kind = raw.get("kind", "image")
-    if (not provider or not isinstance(identifier, str) or not identifier.strip()
-            or len(identifier) > 512 or not isinstance(title, str) or not title.strip()
-            or kind not in {"image", "video"} or "ref" not in raw):
+    if (
+        not provider
+        or not isinstance(identifier, str)
+        or not identifier.strip()
+        or len(identifier) > 512
+        or not isinstance(title, str)
+        or not title.strip()
+        or kind not in {"image", "video"}
+        or "ref" not in raw
+    ):
         return None
     preview = safe_url(raw.get("preview")) or safe_url(raw.get("thumbLarge"))
     try:
@@ -73,13 +95,25 @@ def clean_item(raw, include_disabled=False):
         json.dumps(raw["ref"], allow_nan=False)
     except (ValueError, TypeError, OverflowError):
         return None
-    return dict(dimensions, provider=provider["id"], providerName=provider["name"],
-                siteName=provider["name"], id=identifier, title=title.strip(), kind=kind,
-                ref=raw["ref"], preview=preview, path=preview,
-                thumbSmall=safe_url(raw.get("thumbSmall")) or preview,
-                thumbLarge=safe_url(raw.get("thumbLarge")) or preview,
-                url=safe_url(raw.get("url")), description=str(raw.get("description") or "")[:10000],
-                fileType="video/mp4" if kind == "video" else "image/jpeg", colors=[], tags=[])
+    return dict(
+        dimensions,
+        provider=provider["id"],
+        providerName=provider["name"],
+        siteName=provider["name"],
+        id=identifier,
+        title=title.strip(),
+        kind=kind,
+        ref=raw["ref"],
+        preview=preview,
+        path=preview,
+        thumbSmall=safe_url(raw.get("thumbSmall")) or preview,
+        thumbLarge=safe_url(raw.get("thumbLarge")) or preview,
+        url=safe_url(raw.get("url")),
+        description=str(raw.get("description") or "")[:10000],
+        fileType="video/mp4" if kind == "video" else "image/jpeg",
+        colors=[],
+        tags=[],
+    )
 
 
 def call(provider, request):
@@ -91,8 +125,15 @@ def call(provider, request):
 
 def browse(args):
     provider = configured()[args["provider"]]
-    payload = call(provider, {"op": "browse", "query": str(args.get("query") or "")[:500],
-                              "page": args.get("page", 1), "filters": args.get("filters", {})})
+    payload = call(
+        provider,
+        {
+            "op": "browse",
+            "query": str(args.get("query") or "")[:500],
+            "page": args.get("page", 1),
+            "filters": args.get("filters", {}),
+        },
+    )
     rows = payload.get("items")
     if not isinstance(rows, list) or len(rows) > 500:
         raise ValueError("Wallpaper provider must return an items list of at most 500 entries.")
@@ -115,10 +156,17 @@ def resolve(item):
     payload = call(provider, {"op": "resolve", "ref": item["ref"]})
     url = safe_url(payload.get("url"))
     headers = payload.get("headers", {})
-    if not url or not isinstance(headers, dict) or not all(
-            isinstance(k, str) and re.fullmatch(r"[A-Za-z0-9-]+", k)
-            and isinstance(v, str) and not any(ord(c) < 32 for c in v)
-            for k, v in headers.items()):
+    if (
+        not url
+        or not isinstance(headers, dict)
+        or not all(
+            isinstance(k, str)
+            and re.fullmatch(r"[A-Za-z0-9-]+", k)
+            and isinstance(v, str)
+            and not any(ord(c) < 32 for c in v)
+            for k, v in headers.items()
+        )
+    ):
         raise ValueError("Wallpaper provider returned an invalid download URL or headers.")
     return url, headers
 
@@ -133,5 +181,6 @@ def install_shutdown_handler(cleanup=None):
         if cleanup:
             cleanup()
         os._exit(0)
+
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)

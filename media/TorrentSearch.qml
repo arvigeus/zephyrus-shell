@@ -122,7 +122,7 @@ ColumnLayout {
         service.request("start_qbittorrent", {}, (result, failure) => {
             startLoading = false;
             if (failure) { error = failure; canStartQbittorrent = true; return; }
-            if (result && result.started && host) { host.close(); return; }
+            if (result && result.started && host) { host.hide(); return; }
             launchPending = true;
             launchDeadline = Date.now() + 30000;
             connect();

@@ -284,7 +284,7 @@ is needed. The choice is saved in
 and restarting the shell. Downloaded originals are kept in
 `$XDG_DATA_HOME/zephyrus-shell/wallpapers` (or `~/.local/share/zephyrus-shell/wallpapers`).
 Downloads have a one-minute deadline; failures restore the button and display
-an error. Close Pictures with Escape or select Desktop to see the wallpaper.
+an error. Hide Pictures with Escape or select Desktop to see the wallpaper.
 
 To set a random wallpaper at startup in Hyprland, add the backend command to
 `hyprland.conf`:

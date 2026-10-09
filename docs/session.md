@@ -122,8 +122,8 @@ Clicking a window button reveals the desktop and focuses that app. Hovering its
 bar button only shows the title tooltip. Pointer focus follows the actual window
 under the mouse, so an inactive window can receive scroll input while keyboard
 focus stays on the active window; clicking changes keyboard focus.
-Modules with active retention requests continue in the
-background; other modules close. Right-click offers Close, Mute/Unmute
+Open modules continue in the background until explicitly closed with the
+Spaces sidebar X. Right-click offers Close, Mute/Unmute
 when PipeWire identifies an audio stream, 25%/50%/75%/Full width, Float/Tile,
 and a destination Monitor when another output is active. Scrolling sizes affect
 the selected column; floating sizes use the display's usable area. Audio mute

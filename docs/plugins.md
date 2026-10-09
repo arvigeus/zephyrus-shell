@@ -8,6 +8,10 @@ These are external command packages owned by the Books worker, using the generic
 Books JSON protocol. They add provider offers to Books without registering another
 Space or adding provider logic to the shell host.
 
+Pictures also supports explicitly configured [wallpaper provider plugins](pictures.md#command-provider-plugins).
+They share Books' command package loader and process lifecycle, with their own
+browse/resolve protocol and optional session-owned video playback.
+
 To add a space:
 
 1. Add its entry point under `plugins/<id>/Main.qml`.

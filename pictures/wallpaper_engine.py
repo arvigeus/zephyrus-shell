@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pictures import workshop
+from pictures import video_wallpaper, workshop
 from services.storage import atomic_write
 from services.wallpaper import update_lock_background
 
@@ -839,14 +839,14 @@ def apply(item):
         time.sleep(0.1)
     with control_lock():
         if (
-            previous.get("mode") != "wallpaper_engine"
+            previous.get("mode") not in {"wallpaper_engine", "video"}
             and read_setting().get("selection") == selection
         ):
             atomic_write(config_dir() / "wallpaper.json", json.dumps(previous) + "\n")
     # Restoring an animated selection here triggers another renderer launch and
     # clears its failure latch. Keep this failed request until explicit Apply;
     # its saved still image continues to supply the desktop fallback.
-    if previous.get("mode") != "wallpaper_engine":
+    if previous.get("mode") not in {"wallpaper_engine", "video"}:
         wait_idle()
     raise ValueError(error)
 
@@ -978,6 +978,7 @@ class Runtime:
         self.paused = False
         self.suspended = {}
         self.daemon = None
+        self.video = video_wallpaper.Player()
         self.closing = threading.Event()
         self.lifecycle = threading.RLock()
         self.started_at = 0
@@ -1008,7 +1009,7 @@ class Runtime:
             atomic_write(self.ownership_file, json.dumps({"owner": self.owner}) + "\n")
             previous_state, setting = read_state(), read_setting()
             if (
-                setting.get("mode") == "wallpaper_engine"
+                setting.get("mode") in {"wallpaper_engine", "video"}
                 and setting.get("selection")
                 and previous_state.get("selection") == setting["selection"]
                 and previous_state.get("status") == "error"
@@ -1104,6 +1105,7 @@ class Runtime:
             self.stop()
 
     def stop(self):
+        self.video.stop()
         self.resume_renderer()
         if self.daemon:
             if self.daemon.poll() is None:
@@ -1161,7 +1163,7 @@ class Runtime:
             if self.closing.is_set():
                 return {"screens": []}
             setting = read_setting()
-            if setting.get("mode") != "wallpaper_engine":
+            if setting.get("mode") not in {"wallpaper_engine", "video"}:
                 self.stop()
                 # A QML unload can immediately kill the worker. Clear the
                 # journal before acknowledging that all owned children are gone.
@@ -1180,13 +1182,17 @@ class Runtime:
                 if (
                     not isinstance(selection, str)
                     or not selection
-                    or not WORKSHOP_ID.fullmatch(str(setting.get("workshop_id", "")))
+                    or (setting.get("mode") == "wallpaper_engine"
+                        and not WORKSHOP_ID.fullmatch(str(setting.get("workshop_id", ""))))
                 ):
                     raise ValueError(
                         "Invalid saved Wallpaper Engine selection. Apply an installed wallpaper again."
                     )
                 if time.monotonic() < self.restart_at:
                     return {"screens": [], "recovering": True}
+                if setting.get("mode") == "video":
+                    return self.video.sync(self, request, setting)
+                self.video.stop()
                 result = self.sync_engine(request, setting)
                 self.transient_since = None
                 return result
@@ -1206,7 +1212,8 @@ class Runtime:
         self.failed_selection = self.selection
         message = (
             str(error)
-            + " Check daemon.log and daemon.previous.log in "
+            + (" Check video.log in " if read_setting().get("mode") == "video"
+               else " Check daemon.log and daemon.previous.log in ")
             + str(state_file().parent)
             + "."
             + " Apply wallpaper to retry, or choose a still image."

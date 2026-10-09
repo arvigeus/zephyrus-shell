@@ -16,6 +16,7 @@ Item {
     property var wallpapers: []
     property var selected: ({})
     readonly property bool engineSelected: selected.provider === "wallpaper_engine"
+    readonly property bool videoSelected: selected.kind === "video"
     property bool favoritesView: false
     property bool gridMode: false
     property bool searchOpen: false
@@ -211,7 +212,7 @@ Item {
                 || wallpaperPreview.displayedSource.toString() !== selectedPreviewSource.toString()) return;
         const targetWidth = Math.ceil(fittedImageWidth() * 1.5);
         const previewWidth = selected.preview === selected.thumbLarge ? 400 : 960;
-        const preferred = !engineSelected && targetWidth <= previewWidth
+        const preferred = (!engineSelected && !videoSelected) && targetWidth <= previewWidth
             ? (selected.preview || selected.path) : (selected.path || selected.preview);
         if (preferred && preferred !== selectedImageSource.toString()) selectedImageSource = preferred;
     }
@@ -291,12 +292,14 @@ Item {
     function setDesktopWallpaper() {
         if (!selected || !selected.id || settingWallpaper) return;
         const wallpaper = selected;
+        const key = wallpaperKey(wallpaper);
         settingWallpaper = true;
         engineSetupMessage = "";
         actionMessage = engineSelected ? "Starting Wallpaper Engine…" : "Downloading wallpaper…";
         actionFailed = false;
         service.request("set", {wallpaper:wallpaper}, (result, failure) => {
             settingWallpaper = false;
+            if (key !== wallpaperKey(selected)) return;
             actionMessage = failure || (result ? result.message : "Wallpaper could not be set.");
             actionFailed = !!failure;
         });
@@ -699,7 +702,7 @@ Item {
                         wrapMode: Text.Wrap
                     }
                     W.Label {
-                        visible: root.engineSelected && !!root.selected.description
+                        visible: !!root.selected.description
                         Layout.fillWidth: true
                         text: root.selected.description || ""
                         color: Theme.muted
@@ -726,14 +729,14 @@ Item {
                         spacing: 8
                         W.Action {
                             iconName: "image"
-                            text: root.engineSelected ? "View preview" : "View full image"
+                            text: root.engineSelected || root.videoSelected ? "View preview" : "View full image"
                             enabled: !!root.selected.path
                             onClicked: gallery.show([{url: root.selected.path}], 0, root.selected.title || "Wallpaper")
                         }
                         W.Action {
                             objectName: "setWallpaperButton"
                             iconName: "monitor"
-                            text: root.settingWallpaper ? "Setting wallpaper…" : root.engineSelected ? "Apply wallpaper" : "Set wallpaper & lock screen"
+                            text: root.settingWallpaper ? "Setting wallpaper…" : root.engineSelected || root.videoSelected ? "Apply wallpaper" : "Set wallpaper & lock screen"
                             enabled: !!root.selected.id && !root.settingWallpaper
                             onClicked: root.setDesktopWallpaper()
                         }

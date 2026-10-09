@@ -312,3 +312,140 @@ Setting a wallpaper also updates the lock-screen image. Hyprlock reads the
 atomic `zephyrus-shell/lock-wallpaper` symlink on the next lock; the image stays
 in the Pictures cache, with no second download or wallpaper daemon. This applies
 to both shell and external desktop targets.
+
+## Command provider plugins
+
+Pictures supports explicitly configured, user-owned wallpaper commands in
+`$XDG_CONFIG_HOME/zephyrus-shell/pictures.json`. Provider code, accounts, scraping,
+and dependencies belong to those packages outside the repository. Nothing is
+scanned or installed automatically; removing a configuration entry disables it.
+The built-in providers do not require any command plugins.
+
+See [pictures.example.json](../pictures/pictures.example.json):
+
+```json
+{
+  "providers": [
+    {
+      "id": "personal_wallpapers",
+      "name": "Personal wallpapers",
+      "plugin": "/absolute/path/to/wallpaper-provider",
+      "env": {}
+    }
+  ]
+}
+```
+
+IDs must be unique lower-case identifiers (`[a-z][a-z0-9_-]{0,63}`), distinct from
+built-in IDs. Names must be unique nonempty single lines. Choose either `plugin`
+or a direct argument-array `command`. A package contains `manifest.json` with
+`api_version: 1` and `command`, as in the
+[example manifest](../pictures/provider-plugin.example/manifest.json).
+`{plugin_dir}` expands to the absolute package directory without shell expansion.
+Relative plugin paths resolve beside `pictures.json`; paths with spaces work.
+Optional `env_file` and `env` follow the shared
+[Books provider configuration rules](books.md#provider-plugins), including literal
+assignments, per-operation reload, private files, and diagnostic redaction.
+Pictures and Books share the package loader and owned command runner, while their
+operation protocols remain separate.
+
+Commands receive one JSON request on stdin and return one JSON object on stdout.
+Send diagnostics to stderr. Commands run directly without a shell or third-party
+Python imports, with a 25-second timeout. Timeout, module closure, and worker
+shutdown terminate owned command process groups. Loading the provider list
+starts no command. Commands run only when browsing their category or applying a
+selected item. Provider failures appear through existing loading/error states.
+
+### Browse and resolve protocol
+
+Browse uses one-based pages by default. The next page may be a nonnegative
+integer or an opaque string; Pictures returns it unchanged on the next request.
+Queries and filters belong to the command.
+
+```json
+{"op":"browse","query":"clouds","page":1,"filters":{}}
+```
+
+```json
+{
+  "success": true,
+  "items": [
+    {
+      "id": "clouds-1",
+      "title": "Clouds",
+      "kind": "video",
+      "preview": "https://example.org/clouds.jpg",
+      "thumbSmall": "https://example.org/clouds-thumb.jpg",
+      "url": "https://example.org/clouds",
+      "ref": {"record":"clouds-1"}
+    }
+  ],
+  "next": "next-page-token"
+}
+```
+
+Each item requires a nonempty string `id`, nonempty `title`, and opaque JSON
+`ref`. `kind` is `image` (default) or `video`. Optional `preview`, `thumbSmall`,
+`thumbLarge`, and `url` are HTTP(S) URLs without embedded credentials. Previews
+and thumbnails are still images, including for videos. Optional `width`, `height`,
+`fileSize`, and `description` populate the existing details. Each response is
+limited to 500 items. Generic command providers support discovery, free-text
+search, pagination, and Favorites; random selection and provider-specific filter
+controls are not exposed in this initial protocol.
+
+Applying a selected wallpaper sends its reference back unchanged:
+
+```json
+{"op":"resolve","ref":{"record":"clouds-1"}}
+```
+
+```json
+{"success":true,"url":"https://example.org/clouds.mp4","headers":{"Referer":"https://example.org/clouds"}}
+```
+
+Optional headers are string mappings without control characters. Resolved URLs
+and headers are used only for the download, never saved in Favorites or wallpaper
+settings. Both operations can return `{"success":false,"error":"Retry later."}`.
+References and still-image metadata persist with Favorites; do not include
+credentials or short-lived download URLs in references. Cached original files
+use hashed item IDs and provider IDs, so arbitrary catalogue IDs cannot escape
+the wallpaper directory or collide after punctuation replacement. Removing a
+provider hides its Favorites until re-enabled; saving other Favorites preserves
+those disabled-provider records.
+
+Image downloads use the existing desktop and lock-screen path. Video downloads
+accept MP4 containers only, validate content type and the MP4 signature, and
+reject HTML/software responses. Downloads have a 60-second deadline; images
+are limited to 250 MiB, videos to 1 GiB. Partial files are removed on failure.
+
+### Optional video playback
+
+Install `mpvpaper` and `ffmpeg` separately to apply a video wallpaper in a Hyprland
+session. These are optional dependencies; browsing, Favorites, and image wallpapers
+continue to work without them. Missing requirements appear when applying a video,
+before resolving or downloading it. See the
+[mpvpaper documentation](https://github.com/GhostNaN/mpvpaper).
+
+The existing session wallpaper controller owns the player, with silent looping,
+hardware decoding when available, and fill cropping across all outputs. It waits
+for MPV playback and visible Background-layer surfaces before yielding the shell's
+still backdrop. A separate manually started `mpvpaper` session is left alone and
+reported to the user. Fullscreen applications and sleeping outputs pause playback.
+Closing Pictures leaves playback running; the saved video restores when the shell
+starts. Choosing a still wallpaper or another renderer stops the owned player.
+Shell shutdown and crash recovery use the same process-ownership journal as the
+existing animated wallpaper controller. A playback failure keeps a still backdrop
+and requires explicit Apply to retry.
+
+`ffmpeg` extracts one still frame into the wallpaper cache for the desktop fallback
+and lock screen; video itself never becomes the lock-screen image. Saved settings
+contain `mode: "video"`, the local MP4 path, provider ID, selection identity, and
+still-frame image URL. Failed startup restores a previous static choice; failures
+when replacing animated playback remain latched until explicit Apply, avoiding
+repeated renderer launches.
+
+Verification: `python3 -m unittest discover -s tests -p 'test_picture*.py'`,
+`bash scripts/check-pictures.sh`, and `bash scripts/check-picture-providers.sh`.
+The plugin smoke check uses real module entry points, command packages, downloads,
+FFmpeg still extraction, the session controller, and owned player/IPC fixtures.
+Native visual quality and hardware decoding still need a real desktop check.

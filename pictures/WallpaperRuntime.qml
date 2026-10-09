@@ -42,7 +42,7 @@ Item {
         onLoaded: {
             let data = {};
             try { data = JSON.parse(text()); } catch (exception) {}
-            root.configure(data.mode === "wallpaper_engine", String(data.selection || ""));
+            root.configure(["wallpaper_engine", "video"].includes(data.mode), String(data.selection || ""));
         }
         onLoadFailed: root.configure(false, "")
     }
@@ -95,7 +95,7 @@ Item {
             pending = false;
             if (requestedGeneration === generation) {
                 screens = error || !result ? [] : result.screens || [];
-                if (error || (result && result.error)) console.warn("Wallpaper Engine:", error || result.error);
+                if (error || (result && result.error)) console.warn("Wallpaper playback:", error || result.error);
                 if (!animated && !error) stopping = false;
                 if (!animated && error) { stopping = false; failed = true; }
                 if (animated && error && workerRestarts < 3) {
@@ -116,7 +116,7 @@ Item {
         sourceComponent: Worker {
             objectName: "wallpaperRuntimeWorker"
             backend: "pictures/wallpaper_engine.py"
-            serviceName: "Wallpaper Engine"
+            serviceName: "Wallpaper playback"
             onReady: refresh.restart()
         }
     }

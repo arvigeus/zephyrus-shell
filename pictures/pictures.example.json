@@ -1,0 +1,10 @@
+{
+  "providers": [
+    {
+      "id": "personal_wallpapers",
+      "name": "Personal wallpapers",
+      "plugin": "/absolute/path/to/wallpaper-provider",
+      "env": {}
+    }
+  ]
+}

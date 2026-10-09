@@ -18,7 +18,8 @@ from urllib.parse import unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pictures import wallpaper_engine
+from pictures import providers as command_providers
+from pictures import video_wallpaper, wallpaper_engine
 from services.storage import atomic_write
 
 API_ROOT = "https://wallhaven.cc/api/v1"
@@ -392,7 +393,7 @@ def clean_bing_item(raw):
     }
 
 
-def clean_item(raw):
+def clean_item(raw, include_disabled=False):
     if not isinstance(raw, dict):
         return None
     provider = str(raw.get("provider") or "wallhaven")
@@ -402,7 +403,7 @@ def clean_item(raw):
         return clean_bing_item(raw)
     if provider == "wallhaven":
         return clean_wallhaven_item(raw)
-    return None
+    return command_providers.clean_item(raw, include_disabled=include_disabled)
 
 
 def api_error_message(error, provider="Wallhaven"):
@@ -557,7 +558,7 @@ def search_parameters(args, random_order=False):
 
 def selected_provider(args):
     provider = str(args.get("provider") or "wallhaven").strip().lower()
-    if provider not in PROVIDERS:
+    if provider not in PROVIDERS and provider not in command_providers.configured():
         raise ValueError(f"Unknown wallpaper provider: {provider}")
     return provider
 
@@ -693,6 +694,8 @@ def browse(args):
     if args.get("favorites"):
         return browse_favorites(args)
     provider = selected_provider(args)
+    if provider not in PROVIDERS:
+        return command_providers.browse(dict(args, provider=provider))
     handler = BROWSE_HANDLERS.get(provider)
     if not handler:
         raise ValueError(f"{PROVIDERS[provider]['name']} does not support browsing.")
@@ -720,6 +723,8 @@ RANDOM_HANDLERS = {"wallhaven": random_wallhaven, "bing": random_bing}
 
 def random_wallpaper(args):
     provider = selected_provider(args)
+    if provider not in PROVIDERS:
+        raise ValueError("This wallpaper provider does not support random selection.")
     if not PROVIDERS[provider].get("random"):
         raise ValueError(f"{PROVIDERS[provider]['name']} does not support random selection.")
     handler = RANDOM_HANDLERS.get(provider)
@@ -733,7 +738,7 @@ def provider_catalog():
         "providers": [
             wallpaper_engine.descriptor() if value["id"] == "wallpaper_engine" else value
             for value in PROVIDERS.values()
-        ],
+        ] + command_providers.descriptors(),
         "currentProvider": current_wallpaper_provider(),
     }
 
@@ -742,7 +747,7 @@ def current_wallpaper_provider():
     setting = wallpaper_engine.read_setting()
     if setting.get("mode") == "wallpaper_engine":
         return "wallpaper_engine"
-    if setting.get("provider") in PROVIDERS:
+    if setting.get("provider") in PROVIDERS or setting.get("provider") in command_providers.configured():
         return setting["provider"]
     # Older still-image settings contain only the cached image URL.
     filename = Path(unquote(urlparse(str(setting.get("image") or "")).path)).name
@@ -752,13 +757,13 @@ def current_wallpaper_provider():
     )
 
 
-def load_favorites():
+def load_favorites(include_disabled=False):
     path = favorite_file()
     try:
         values = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(values, list):
             return []
-        items = [item for raw in values if (item := clean_item(raw))]
+        items = [item for raw in values if (item := clean_item(raw, include_disabled=include_disabled))]
         return items[:2000]
     except (OSError, json.JSONDecodeError):
         return []
@@ -768,7 +773,7 @@ def save_favorites(args):
     item = clean_item(args.get("wallpaper"))
     if not item:
         raise ValueError("Select a valid wallpaper first.")
-    favorites = load_favorites()
+    favorites = load_favorites(include_disabled=True)
     is_favorite = bool(args.get("favorite"))
     key = (item["provider"], item["id"])
     favorites = [value for value in favorites if (value["provider"], value["id"]) != key]
@@ -794,6 +799,10 @@ def wallpaper_file(item):
     folder = data_root() / "zephyrus-shell" / "wallpapers"
     folder.mkdir(parents=True, exist_ok=True)
     safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", item["id"])
+    if item["provider"] not in PROVIDERS:
+        safe_id = command_providers.cache_id(item)
+    if item.get("kind") == "video":
+        suffix = ".mp4"
     return folder / (item["provider"] + "-" + safe_id + suffix)
 
 
@@ -801,19 +810,25 @@ def download_wallpaper(item):
     path = wallpaper_file(item)
     if path.is_file() and path.stat().st_size:
         return path
-    request = Request(item["path"], headers={"Accept": "image/*", "User-Agent": USER_AGENT})
+    url, headers = (command_providers.resolve(item) if item["provider"] not in PROVIDERS
+                    else (item["path"], {}))
+    video = item.get("kind") == "video"
+    maximum = 1024 * 1024 * 1024 if video else MAX_IMAGE_BYTES
+    request = Request(url, headers={"Accept": "video/*" if video else "image/*",
+                                    "User-Agent": USER_AGENT, **headers})
     temporary = None
     deadline = time.monotonic() + WALLPAPER_DOWNLOAD_SECONDS
     try:
         with urlopen(request, timeout=10) as response:
             content_type = response.headers.get_content_type()
-            if not content_type.startswith("image/"):
-                raise ValueError(f"{item['providerName']} did not return an image file.")
+            if not content_type.startswith("video/" if video else "image/") and not (
+                    video and content_type == "application/octet-stream"):
+                raise ValueError(f"{item['providerName']} did not return a wallpaper file.")
             length = response.headers.get("Content-Length")
-            if length and int(length) > MAX_IMAGE_BYTES:
+            if length and int(length) > maximum:
                 raise ValueError("This wallpaper is too large to download.")
             with tempfile.NamedTemporaryFile(
-                dir=path.parent, prefix=f".{item['provider']}-", suffix=".download", delete=False
+                dir=path.parent, prefix=f".pictures-{os.getpid()}-", suffix=".download", delete=False
             ) as output:
                 temporary = Path(output.name)
                 total = 0
@@ -828,17 +843,22 @@ def download_wallpaper(item):
                     if not chunk:
                         break
                     total += len(chunk)
-                    if total > MAX_IMAGE_BYTES:
+                    if total > maximum:
                         raise ValueError("This wallpaper is too large to download.")
                     output.write(chunk)
         if total == 0:
             raise ValueError(f"{item['providerName']} returned an empty image file.")
+        if video:
+            with temporary.open("rb") as saved:
+                header = saved.read(12)
+            if len(header) < 12 or header[4:8] != b"ftyp":
+                raise ValueError("Wallpaper provider did not return an MP4 video.")
         os.replace(temporary, path)
         return path
     except HTTPError as error:
         raise ValueError(api_error_message(error, item["providerName"])) from error
     except (URLError, TimeoutError, OSError) as error:
-        raise ValueError(f"Could not download this image: {error}") from error
+        raise ValueError("Could not download this wallpaper. Retry later.") from error
     finally:
         if temporary and temporary.exists():
             temporary.unlink(missing_ok=True)
@@ -856,7 +876,7 @@ def apply_shell_wallpaper(path, provider=None):
         ) as output:
             temporary = Path(output.name)
             value = {"image": path.resolve().as_uri()}
-            if provider in PROVIDERS:
+            if provider in PROVIDERS or provider in command_providers.configured():
                 value["provider"] = provider
             json.dump(value, output)
             output.write("\n")
@@ -1012,10 +1032,16 @@ def set_wallpaper(args):
         if target != "shell":
             raise ValueError("Use Wallpaper Engine from the Zephyrus Shell desktop.")
         return wallpaper_engine.apply(item)
+    if item.get("kind") == "video":
+        if target != "shell":
+            raise ValueError("Use video wallpapers from the Zephyrus Shell desktop.")
+        video_wallpaper.requirements()
+        path = download_wallpaper(item)
+        return video_wallpaper.apply(path, item["provider"])
     path = download_wallpaper(item)
     if target == "shell":
         with wallpaper_engine.control_lock():
-            animated = wallpaper_engine.read_setting().get("mode") == "wallpaper_engine"
+            animated = wallpaper_engine.read_setting().get("mode") in {"wallpaper_engine", "video"}
             service = apply_shell_wallpaper(path, item["provider"])
         if animated:
             wallpaper_engine.wait_idle()
@@ -1110,12 +1136,22 @@ def worker():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from services.worker import serve
 
-    serve(
-        run,
-        latest=("browse", "tagSearch", "installationStatus"),
-        controls=("favorite", "set", "openWorkshop"),
-        scope=lambda r: (r["op"], bool(r.get("favorites"))),
-    )
+    def cleanup():
+        folder = data_root() / "zephyrus-shell/wallpapers"
+        for path in folder.glob(f".pictures-{os.getpid()}-*.download"):
+            path.unlink(missing_ok=True)
+
+    command_providers.install_shutdown_handler(cleanup)
+    try:
+        serve(
+            run,
+            latest=("browse", "tagSearch", "installationStatus"),
+            controls=("favorite", "set", "openWorkshop"),
+            scope=lambda r: (r["op"], bool(r.get("favorites"))),
+        )
+    finally:
+        command_providers.runner.close()
+        cleanup()
 
 
 if __name__ == "__main__":

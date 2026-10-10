@@ -8,7 +8,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("books_backend", ROOT / "books/backend.py")
+spec = importlib.util.spec_from_file_location("books_backend", ROOT / "modules/books/backend.py")
 books = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(books)
 

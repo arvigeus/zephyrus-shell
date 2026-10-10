@@ -9,9 +9,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-if sys.argv[0].endswith("plugins/files/backend.py"):
+if sys.argv[0].endswith("modules/files/backend.py"):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-    from plugins.files.cloud import EditConflict, Nextcloud
+    from modules.files.cloud import EditConflict, Nextcloud
 
     fixture = Path(os.environ["ZEPHYRUS_OPEN_FIXTURE"])
     content = b"original"

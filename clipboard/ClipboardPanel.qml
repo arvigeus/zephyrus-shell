@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "../core"
+import "../services"
 import "../widgets" as W
 
 Rectangle {
@@ -64,7 +65,7 @@ Rectangle {
         delete next[String(id)];
         thumbnailSources = next;
     }
-    ClipboardService { id: service; onReady: root.refresh() }
+    Worker { id: service; backend: "clipboard/backend.py"; serviceName: "Clipboard"; onReady: root.refresh() }
     Timer { id: resetClear; interval: 5000; onTriggered: root.confirmClear = false }
     ColumnLayout {
         anchors.fill: parent; anchors.margins: 16; spacing: 12

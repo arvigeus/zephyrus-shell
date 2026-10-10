@@ -10,9 +10,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
-from media.local import destination
-from media.scanner import guess
-from media.torrent_backend import (
+from modules.media.local import destination
+from modules.media.scanner import guess
+from modules.media.torrent_backend import (
     QBitClient,
     QBitConnectionError,
     TorrentBackend,
@@ -121,7 +121,9 @@ class TorrentTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
         # Import naming tests never depend on a user's configured catalogue providers.
-        episodes = patch("media.backend.Backend.episodes", return_value={"items": [], "next": ""})
+        episodes = patch(
+            "modules.media.backend.Backend.episodes", return_value={"items": [], "next": ""}
+        )
         episodes.start()
         self.addCleanup(episodes.stop)
         self.movie = {
@@ -162,7 +164,7 @@ class TorrentTests(unittest.TestCase):
         with (
             patch.object(self.backend, "qbit_running", return_value=False),
             patch.object(self.backend, "qbit_launcher", return_value=["/usr/bin/qbittorrent"]),
-            patch("media.torrent_backend.subprocess.Popen") as launch,
+            patch("modules.media.torrent_backend.subprocess.Popen") as launch,
         ):
             self.assertTrue(self.backend.handle({"op": "start_qbittorrent"})["started"])
             launch.assert_called_once_with(
@@ -185,10 +187,10 @@ class TorrentTests(unittest.TestCase):
     def test_flatpak_launcher_is_supported(self):
         with (
             patch(
-                "media.torrent_backend.shutil.which",
+                "modules.media.torrent_backend.shutil.which",
                 side_effect=lambda name: "/usr/bin/flatpak" if name == "flatpak" else None,
             ),
-            patch("media.torrent_backend.subprocess.run") as installed,
+            patch("modules.media.torrent_backend.subprocess.run") as installed,
         ):
             installed.return_value.returncode = 0
             self.assertEqual(
@@ -414,11 +416,11 @@ class TorrentTests(unittest.TestCase):
             )
 
     def test_unaccepted_download_uses_persisted_queue_time(self):
-        with patch("media.torrent_backend.time.time", return_value=1000):
+        with patch("modules.media.torrent_backend.time.time", return_value=1000):
             self.backend.queue({"title": self.movie, "url": "magnet:?xt=urn:btih:abc"})
         with (
             patch.object(self.fake, "call", return_value=[]),
-            patch("media.torrent_backend.time.time", return_value=1121),
+            patch("modules.media.torrent_backend.time.time", return_value=1121),
         ):
             job = self.backend.jobs({})[0]
         self.assertFalse(job["active"])
@@ -462,7 +464,7 @@ class TorrentTests(unittest.TestCase):
             source.write_bytes(b"video" * 250000)
             self.fake.files.append({"name": source.name, "priority": 1})
         with patch(
-            "media.backend.Backend.episodes",
+            "modules.media.backend.Backend.episodes",
             side_effect=[
                 {"items": [{"number": 1, "title": "Pilot"}], "next": "page-two"},
                 {"items": [{"number": 2, "title": "Second: chapter"}], "next": ""},
@@ -483,9 +485,9 @@ class TorrentTests(unittest.TestCase):
         source = incoming / "Fargo.S01E01.mkv"
         source.write_bytes(b"video")
         with (
-            patch("media.torrent_backend.catalogue_match", return_value=show),
+            patch("modules.media.torrent_backend.catalogue_match", return_value=show),
             patch(
-                "media.backend.Backend.episodes",
+                "modules.media.backend.Backend.episodes",
                 return_value={"items": [{"number": 1, "title": "The Crocodile's Dilemma"}]},
             ),
         ):
@@ -501,7 +503,7 @@ class TorrentTests(unittest.TestCase):
         self.fake.save_path = str(folder)
         self.fake.files = [{"name": source.name, "priority": 1}]
         torrents = [{"save_path": str(folder), "hash": "a" * 40, "progress": 0.2}]
-        from media.scanner import candidates
+        from modules.media.scanner import candidates
 
         self.assertEqual(
             list(candidates("movie", self.root / "Videos/Movies", self.fake, torrents=torrents)), []
@@ -523,7 +525,7 @@ class TorrentTests(unittest.TestCase):
             )
             db.execute("INSERT INTO subtitle_managed VALUES (?,?)", (str(subtitle), str(old)))
         with patch(
-            "media.backend.Backend.episodes",
+            "modules.media.backend.Backend.episodes",
             return_value={"items": [{"number": 1, "title": "Pilot"}]},
         ):
             result = self.backend.scan({"kind": "tv"})
@@ -557,7 +559,7 @@ class TorrentTests(unittest.TestCase):
         old = Path(self.backend.library.files(show)[0]["path"])
         self.fake.calls = []
         with patch(
-            "media.backend.Backend.episodes",
+            "modules.media.backend.Backend.episodes",
             return_value={"items": [{"number": 1, "title": "Pilot"}]},
         ):
             self.backend.scan({"kind": "tv"})
@@ -576,7 +578,7 @@ class TorrentTests(unittest.TestCase):
         occupied = destination(show | {"episodeTitle": "Pilot"}, old)
         occupied.write_bytes(b"other release")
         with patch(
-            "media.backend.Backend.episodes",
+            "modules.media.backend.Backend.episodes",
             return_value={"items": [{"number": 1, "title": "Pilot"}]},
         ):
             result = self.backend.scan({"kind": "tv"})
@@ -651,7 +653,7 @@ class TorrentTests(unittest.TestCase):
         self.assertFalse(destination(self.movie, source).exists())
 
     def test_flat_music_name_and_discover_playback_use_local_file(self):
-        from plugins.music.backend import resolve_track
+        from modules.music.backend import resolve_track
 
         song = {
             "id": "apple-42",
@@ -788,7 +790,7 @@ class TorrentTests(unittest.TestCase):
             | {"id": "tt-second", "imdbId": "tt-second", "title": "Second", "year": 2025},
         }
         with patch(
-            "media.torrent_backend.catalogue_match",
+            "modules.media.torrent_backend.catalogue_match",
             side_effect=lambda _catalogue, _kind, parsed: titles[str(parsed["year"])],
         ):
             result = self.backend.handle({"op": "scan", "kind": "movie", "path": str(incoming)})
@@ -805,7 +807,7 @@ class TorrentTests(unittest.TestCase):
         series.mkdir(parents=True)
         (movies / "movie.mkv").write_bytes(b"movie")
         (series / "show.S01E01.mkv").write_bytes(b"show")
-        with patch("media.torrent_backend.catalogue_match", return_value=None):
+        with patch("modules.media.torrent_backend.catalogue_match", return_value=None):
             movie_result = self.backend.handle({"op": "scan", "kind": "movie"})
             series_result = self.backend.handle({"op": "scan", "kind": "tv"})
         self.assertEqual(
@@ -844,7 +846,7 @@ class TorrentTests(unittest.TestCase):
         for name in subtitles:
             (incoming / name).write_text("subtitle")
         self.fake.files = [{"name": name, "priority": 1} for name in names + subtitles]
-        with patch("media.torrent_backend.catalogue_match", return_value=show):
+        with patch("modules.media.torrent_backend.catalogue_match", return_value=show):
             result = self.backend.handle({"op": "scan", "kind": "tv"})
         self.assertEqual(len(result["imported"]), 2)
         self.assertFalse(any((incoming / name).exists() for name in names))
@@ -862,7 +864,7 @@ class TorrentTests(unittest.TestCase):
         for name in names:
             (incoming / name).write_bytes(b"video")
         self.fake.files = [{"name": name, "priority": 1} for name in names]
-        with patch("media.torrent_backend.catalogue_match", return_value=None):
+        with patch("modules.media.torrent_backend.catalogue_match", return_value=None):
             result = self.backend.handle({"op": "scan", "kind": "tv"})
         self.assertEqual(len(result["review"]), 2)
         imported = self.backend.handle(
@@ -892,7 +894,7 @@ class TorrentTests(unittest.TestCase):
             def episodes(self, request):
                 return {"items": [{"number": 1, "title": "The Crocodile's Dilemma"}], "next": ""}
 
-        with patch("media.backend.Backend", return_value=Catalogue()):
+        with patch("modules.media.backend.Backend", return_value=Catalogue()):
             result = self.backend.handle({"op": "scan_lookup", "token": token, "query": "Fargo"})
         self.assertEqual(result[0]["episodeLabel"], "S01E01 · The Crocodile's Dilemma")
 
@@ -915,7 +917,7 @@ class TorrentTests(unittest.TestCase):
         incoming.mkdir()
         source = incoming / "The.General.1926.mkv"
         source.write_bytes(b"video")
-        with patch("media.torrent_backend.catalogue_match", return_value=None):
+        with patch("modules.media.torrent_backend.catalogue_match", return_value=None):
             result = self.backend.handle({"op": "scan", "kind": "movie", "path": str(incoming)})
         self.assertEqual(len(result["review"]), 1)
         self.assertTrue(source.exists())
@@ -955,7 +957,7 @@ class TorrentTests(unittest.TestCase):
         source.write_bytes(b"video")
         self.fake.files = [{"name": source.name, "priority": 1}]
         target = Path(self.backend.library.add(self.movie, source))
-        with patch("media.torrent_backend.catalogue_match", return_value=self.movie):
+        with patch("modules.media.torrent_backend.catalogue_match", return_value=self.movie):
             result = self.backend.handle({"op": "scan", "kind": "movie"})
         self.assertEqual(len(result["imported"]), 0)
         self.assertEqual(len(result["review"]), 1)
@@ -975,7 +977,7 @@ class TorrentTests(unittest.TestCase):
         target = destination(self.movie, source)
         target.parent.mkdir(parents=True)
         target.with_suffix(".srt").write_bytes(b"existing subtitle")
-        with patch("media.torrent_backend.catalogue_match", return_value=self.movie):
+        with patch("modules.media.torrent_backend.catalogue_match", return_value=self.movie):
             result = self.backend.handle({"op": "scan", "kind": "movie", "path": str(incoming)})
         self.assertEqual(result["imported"], [])
         self.assertIn("subtitle already exists", result["review"][0]["reason"])
@@ -1036,6 +1038,15 @@ class TorrentTests(unittest.TestCase):
             destination(game, Path("source.zip")),
             self.root / "data/zephyrus-shell/games/A Game (1980)/A Game (1980).zip",
         )
+
+    def test_long_non_ascii_episode_names_fit_filesystem_limit(self):
+        show = {"kind": "tv", "id": "tt1", "title": "進撃の巨人" * 12, "year": 2013}
+        show["episodeTitle"] = "二千年後の君へ" * 20
+        target = destination(show, Path("source.S01E01.mkv"))
+        self.assertTrue(all(len(part.encode()) <= 255 for part in target.parts))
+        self.assertTrue(target.name.endswith(".mkv"))
+        self.assertIn(" - S01E01 - 二千年後の君へ", target.name)
+        self.assertTrue(target.parent.parent.name.endswith(" (2013)"))
 
     def test_multifile_game_keeps_bundle_names(self):
         game = {"kind": "game", "id": "42", "title": "A Game", "year": 1980}

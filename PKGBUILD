@@ -24,14 +24,13 @@ _package_payload() {
 	while IFS= read -r -d '' file; do
 		[[ -e $file || -L $file ]] || continue
 		case $file in
-			assets/* | attention/* | books/* | clipboard/* | config/* | core/* | drawers/* | games/* | \
-			hyprland/* | media/* | pictures/* | plugins/* | scripts/* | services/* | settings/* | \
-			shell/* | systemd/* | widgets/* | desktop/defaults/* | shell.qml) ;;
+			assets/* | attention/* | clipboard/* | config/* | core/* | drawers/* | hyprland/* | \
+			modules/* | scripts/* | services/* | settings/* | shell/* | systemd/* | widgets/* | \
+			desktop/defaults/* | shell.qml) ;;
 			*) continue ;;
 		esac
 		case $file in
-			*/__pycache__/* | */QMLTermWidget/* | scripts/check-* | scripts/build-package.sh | \
-			scripts/cpu-boost.py | scripts/setup-system.sh | tests/*) continue ;;
+			scripts/build-package.sh | scripts/cpu-boost.py | scripts/setup-system.sh) continue ;;
 		esac
 		source_files+=("$file")
 	done < <(git ls-files -z --cached --others --exclude-standard)
@@ -39,7 +38,7 @@ _package_payload() {
 		printf 'No Zephyrus runtime payload found in %s\n' "$srcdir/zephyrus-shell" >&2
 		return 1
 	}
-	tar --exclude='__pycache__' --exclude='*.pyc' -cf - -- "${source_files[@]}" \
+	tar -cf - -- "${source_files[@]}" \
 		| tar --no-same-owner -x -C "$runtime"
 	git rev-parse HEAD >"$runtime/REVISION"
 
@@ -51,16 +50,13 @@ _package_payload() {
 		"$pkgdir/usr/share/polkit-1/actions/org.zephyrus-shell.cpu-boost.policy"
 	install -Dm644 "$srcdir/zephyrus-shell/systemd/user/zephyrus-clipboard@.service" \
 		"$pkgdir/usr/lib/systemd/user/zephyrus-clipboard@.service"
-    install -Dm755 "$srcdir/zephyrus-shell/packaging/zephyrus-shell-warp" "$pkgdir/usr/bin/zephyrus-shell-warp"
-    install -Dm644 "$srcdir/zephyrus-shell/systemd/system/zephyrus-warp.service" "$pkgdir/usr/lib/systemd/system/zephyrus-warp.service"
-	install -Dm644 "$srcdir/zephyrus-shell/desktop/Zephyrus.colors" \
-		"$pkgdir/usr/share/color-schemes/Zephyrus.colors"
+	install -Dm755 "$srcdir/zephyrus-shell/packaging/zephyrus-shell-warp" "$pkgdir/usr/bin/zephyrus-shell-warp"
+	install -Dm644 "$srcdir/zephyrus-shell/systemd/system/zephyrus-warp.service" "$pkgdir/usr/lib/systemd/system/zephyrus-warp.service"
 	install -Dm644 "$srcdir/zephyrus-shell/desktop/zephyrus.desktop" \
 		"$pkgdir/usr/share/wayland-sessions/zephyrus.desktop"
 	for file in assets/lucide/LICENSE assets/devicon/LICENSE assets/qt-theme/LICENSE; do
 		install -Dm644 "$file" "$pkgdir/usr/share/licenses/zephyrus-shell-git/${file//\//-}"
 	done
-
 }
 
 package_zephyrus-shell-git() {
@@ -94,7 +90,6 @@ package_zephyrus-shell-git() {
 		'umu-launcher: running supported Epic games with Proton'
 		'steam: launching installed Steam games'
 		'qbittorrent: torrent handoff (Flatpak installation also supported)'
-		'hyprqt6engine: Qt platform theme integration'
 		'cloudflare-warp-nox-bin: on-demand Cloudflare WARP (explicit setup required)'
 		'networkmanager: network controls (enable NetworkManager.service explicitly)'
 		'bluez: Bluetooth controls (enable bluetooth.service explicitly)'
@@ -125,5 +120,6 @@ package_zephyrus-shell-session-git() {
 		'brightnessctl' 'ddcutil' 'i2c-tools' 'pciutils'
 		'kitty' 'dolphin' 'mpv' 'noto-fonts' 'noto-fonts-emoji'
 		'qt5-wayland' 'breeze-icons' 'breeze-gtk' 'plasma-integration' 'plasma5-integration'
+		'kvantum' 'kvantum-qt5'
 	)
 }

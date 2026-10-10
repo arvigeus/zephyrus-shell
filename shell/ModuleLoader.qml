@@ -1,12 +1,12 @@
 import QtQuick
 import "../core"
 
+// Exists while any module is running; the live shell keeps one instance and
+// reparents it to the screen that shows the current module.
 Loader {
     id: root
     property bool readyToLoad: true
-    property string screenName: ""
-    visible: !!ShellState.pluginId
-    active: screenName === "*" ? ShellState.runningPluginIds.length > 0
-        : ShellState.runningPluginIds.some(id => ShellState.runningPluginMonitors[id] === screenName)
-    sourceComponent: ModuleOverlay { readyToLoad: root.readyToLoad; screenName: root.screenName }
+    visible: !!ShellState.moduleId
+    active: ShellState.runningModuleIds.length > 0
+    sourceComponent: ModuleOverlay { readyToLoad: root.readyToLoad }
 }

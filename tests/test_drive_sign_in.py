@@ -11,8 +11,8 @@ from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import urlopen
 
-from plugins.files import cloud
-from plugins.files.drive_sign_in import DriveSignIn
+from modules.files import cloud
+from modules.files.drive_sign_in import DriveSignIn
 from services.jobs import Jobs
 from services.worker import serve
 

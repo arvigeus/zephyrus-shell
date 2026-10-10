@@ -8,10 +8,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from media import anime_sources
+from modules.media import anime_sources
 
 spec = importlib.util.spec_from_file_location(
-    "media_backend", Path(__file__).resolve().parents[1] / "media/backend.py"
+    "media_backend", Path(__file__).resolve().parents[1] / "modules/media/backend.py"
 )
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
@@ -842,6 +842,16 @@ class MediaTests(unittest.TestCase):
         self.assertTrue(self.backend.personal("tt123")["favorite"])
         self.assertEqual(len(self.backend.browse({"kind": "movie", "favorites": True})["items"]), 1)
         self.assertEqual(self.backend.browse({"kind": "tv", "favorites": True})["items"], [])
+
+    def test_identity_merge_keeps_personal_data_from_both_ids(self):
+        alias = dict(id="tmdb:movie:12", tmdbId=12, kind="movie", title="Film")
+        self.backend.handle(dict(op="save", title=alias, values={"favorite": True, "note": "Old"}))
+        self.backend.handle(dict(op="save", title=self.movie, values={"url": "https://e.org/x"}))
+        self.backend.save_title(alias | {"imdbId": "tt123"})
+        self.assertEqual(
+            self.backend.personal("tt123"),
+            {"favorite": True, "note": "Old", "url": "https://e.org/x"},
+        )
 
     def test_local_poster_enrichment_keeps_local_file(self):
         with patch.dict(os.environ, {"XDG_VIDEOS_DIR": str(self.backend.data / "Videos")}):

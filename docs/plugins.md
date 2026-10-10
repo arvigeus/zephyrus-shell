@@ -19,7 +19,7 @@ To add a space:
    Lucide name without `.svg`.
 3. Import the entry point by an alias in `shell/ModuleOverlay.qml`, declare its
    `Component`, and add it to the component map.
-4. Exercise the real entry point through `ShellState.openPlugin(id)` in a smoke
+4. Exercise the real entry point through `ShellState.openModule(id)` in a smoke
    harness. Restart the shell to pick up the source change.
 
 The components are known at compile time. Their instances, native resources and
@@ -33,7 +33,7 @@ Every root exposes `property var host`. Its host belongs to that instance:
 - `host.close()` stops that instance, including when hidden.
 - `host.hide()` selects Desktop when that instance is visible; its state and work continue.
 - `host.back()` hides it and opens Spaces when it is the foreground module.
-- `host.openPlugin(id, payload)` validates the destination and opens it. The
+- `host.openModule(id, payload)` validates the destination and opens it. The
   destination's optional `handleOpen(payload)` interprets the opaque payload.
 - An optional `activate()` method restores focus when the module becomes visible.
 

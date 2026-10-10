@@ -14,14 +14,12 @@ Item {
     property string errorProfile: ""
     property string error: ""
     property string statusError: ""
-    property string directory: ""
     readonly property bool busy: pendingProfile !== ""
 
     function apply(result) {
         profiles = result.profiles || [];
         available = !!result.available;
         statusError = result.error || "";
-        directory = result.directory || "";
         loaded = true;
     }
     function refresh() {

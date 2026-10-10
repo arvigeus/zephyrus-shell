@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtTest
 import "../../widgets" as W
-import "../../media" as Media
-import "../../pictures" as Pictures
+import "../../modules/media" as Media
+import "../../modules/pictures" as Pictures
 
 TestCase {
     id: test

@@ -1,8 +1,8 @@
 import QtQuick
-import Quickshell
 import Quickshell.Io
 import "../core"
 
+// Runs one allowlisted scripts/machine.py action at a time, then refreshes.
 QtObject {
     id: root
     readonly property var snapshot: HardwareSnapshot.data
@@ -11,7 +11,6 @@ QtObject {
     property string actionName: ""
     property var actionValue
     property bool actionSucceeded: false
-    property bool closeAfterAction: false
     readonly property bool busy: action.running
     function refresh() { if (!action.running) HardwareSnapshot.refresh(true); }
     Component.onCompleted: HardwareSnapshot.ensureFresh()
@@ -20,7 +19,6 @@ QtObject {
         HardwareSnapshot.invalidate();
         actionError = "";
         actionName = name; actionValue = value; actionSucceeded = false;
-        closeAfterAction = name === "networks" || name === "bluetooth";
         action.command = ["python3", Paths.file("scripts/machine.py"), name, String(value === undefined ? "" : value)];
         action.running = true;
     }
@@ -28,11 +26,10 @@ QtObject {
         stdout: StdioCollector {
             onStreamFinished: { try { const result = JSON.parse(text); root.actionError = result.error || ""; root.actionSucceeded = !!result.ok; } catch (error) { root.actionError = "Action did not return a result."; } }
         }
-        onExited: (exitCode, exitStatus) => {
-            if (root.actionSucceeded && ["profile", "brightness", "gpu", "chargeLimit"].includes(root.actionName)) Profiles.edit(root.actionName, root.actionValue);
+        onExited: {
+            if (root.actionSucceeded && ["profile", "brightness", "chargeLimit"].includes(root.actionName)) Profiles.edit(root.actionName, root.actionValue);
             if (root.actionSucceeded && root.actionName === "clean-thumbnails") HardwareSnapshot.homeUsage = null;
-            if (exitCode === 0 && root.closeAfterAction) ShellState.close();
-            else root.refresh();
+            root.refresh();
         }
     }
 }

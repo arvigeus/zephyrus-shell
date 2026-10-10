@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from plugins.terminal import backend
+from modules.terminal import backend
 
 
 class TerminalConfigTests(unittest.TestCase):

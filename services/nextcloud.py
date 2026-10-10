@@ -1,7 +1,4 @@
-"""Shared account, replaceable file credentials, and scoped Nextcloud DAV transport.
-
-Calendar parsing and CalDAV operations belong to attention/nextcloud.py.
-"""
+"""Nextcloud account (nextcloud.json), private credential files, and scoped DAV transport."""
 
 import base64
 import json
@@ -96,57 +93,42 @@ def load_account(root=None):
     return validate_account(read_json(path))
 
 
-class FileCredentials:
-    """Only read(reference) is required of a future Secret Service provider."""
-
-    def __init__(self, root=None):
-        self.directory = (root or config_root()) / "credentials/nextcloud"
-
-    def read(self, reference):
-        # Validate even when called directly instead of through load_account.
-        validate_account(
-            {
-                "url": "https://credential.invalid/",
-                "username": "check",
-                "credentials": {"check": reference},
-            }
-        )
-        path = self.directory / reference["file"]
-        if not path.resolve().is_relative_to(self.directory.resolve()):
-            raise NextcloudError("The Nextcloud credential path escapes its directory.")
+def read_credential(reference, root=None):
+    """Read a credential file under credentials/nextcloud: owned by you, mode 0600, no symlink."""
+    directory = (root or config_root()) / "credentials/nextcloud"
+    path = directory / reference["file"]
+    if not path.resolve().is_relative_to(directory.resolve()):
+        raise NextcloudError("The Nextcloud credential path escapes its directory.")
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError as error:
+        raise CredentialMissing(
+            "Save the referenced Nextcloud credential with mode 0600."
+        ) from error
+    except OSError as error:
+        raise NextcloudError("Cannot open the Nextcloud credential file.") from error
+    with os.fdopen(descriptor) as source:
+        info = os.fstat(source.fileno())
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or stat.S_IMODE(info.st_mode) != 0o600
+            or info.st_uid != os.getuid()
+        ):
+            raise NextcloudError("Nextcloud credential files must be owned by you with mode 0600.")
         try:
-            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        except FileNotFoundError as error:
-            raise CredentialMissing(
-                "Save the referenced Nextcloud credential with mode 0600."
-            ) from error
-        except OSError as error:
-            raise NextcloudError("Cannot open the Nextcloud credential file.") from error
-        with os.fdopen(descriptor) as source:
-            info = os.fstat(source.fileno())
-            if (
-                not stat.S_ISREG(info.st_mode)
-                or stat.S_IMODE(info.st_mode) != 0o600
-                or info.st_uid != os.getuid()
-            ):
-                raise NextcloudError(
-                    "Nextcloud credential files must be owned by you with mode 0600."
-                )
-            try:
-                secret = source.read(65537).strip()
-            except (OSError, UnicodeError) as error:
-                raise NextcloudError("Cannot read the Nextcloud credential.") from error
-        if not secret or len(secret) > 65536 or "\n" in secret or "\r" in secret:
-            raise NextcloudError("The Nextcloud credential is empty or invalid.")
-        return secret
+            secret = source.read(65537).strip()
+        except (OSError, UnicodeError) as error:
+            raise NextcloudError("Cannot read the Nextcloud credential.") from error
+    if not secret or len(secret) > 65536 or "\n" in secret or "\r" in secret:
+        raise NextcloudError("The Nextcloud credential is empty or invalid.")
+    return secret
 
 
-def credential(account, capability="dav", provider=None):
+def credential(account, capability="dav", root=None):
     config = account.get("capabilities", {}).get(capability)
     if not config:
         raise NextcloudError(f"Enable the {capability} capability in nextcloud.json.")
-    reference = account["credentials"][config["credential"]]
-    return (provider or FileCredentials()).read(reference)
+    return read_credential(account["credentials"][config["credential"]], root)
 
 
 class SameOriginRedirect(HTTPRedirectHandler):
@@ -160,13 +142,13 @@ class SameOriginRedirect(HTTPRedirectHandler):
 
 
 class DAVClient:
-    def __init__(self, account, *, scope, provider=None, opener=None):
+    def __init__(self, account, *, scope, opener=None):
         self.account = validate_account(account)
         self.base = self.account["url"]
         self.username = self.account["username"]
         self.origin = urlsplit(self.base).netloc
         self.home = self.base + scope.lstrip("/")
-        password = credential(self.account, provider=provider)
+        password = credential(self.account)
         self.auth = "Basic " + base64.b64encode((self.username + ":" + password).encode()).decode()
         self.opener = opener or build_opener(SameOriginRedirect(self.allowed))
 

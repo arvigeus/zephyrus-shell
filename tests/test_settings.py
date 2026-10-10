@@ -13,11 +13,6 @@ import profiles
 
 
 class SettingsTests(unittest.TestCase):
-    def test_gpu_controls_do_not_require_or_activate_a_policy_daemon(self):
-        with patch.object(machine, "command") as command:
-            self.assertEqual(machine.gpu_status()["modes"], [])
-            command.assert_not_called()
-
     def test_asus_profile_uses_the_existing_owner(self):
         def output(args, *unused):
             return (
@@ -43,16 +38,6 @@ class SettingsTests(unittest.TestCase):
             self.assertFalse(
                 any(c.args[0][0] == "powerprofilesctl" for c in command.call_args_list)
             )
-
-    def test_gpu_rejects_unsupported_modes(self):
-        with (
-            patch.object(machine, "gpu_status", return_value={"modes": ["hybrid"]}),
-            patch.object(machine, "command") as command,
-        ):
-            for mode in ["dedicated", "integrated", "hybrid; reboot"]:
-                with self.assertRaises(ValueError):
-                    machine.action("gpu", mode)
-            command.assert_not_called()
 
     def test_never_disables_last_display(self):
         with patch.object(
@@ -119,20 +104,33 @@ class SettingsTests(unittest.TestCase):
                 machine.action("clean-thumbnails", "confirm")
             self.assertTrue((outside / "keep").exists())
 
-    def test_profile_edits_and_battery_assignments_persist(self):
+    def test_profile_edits_persist(self):
         with (
             tempfile.TemporaryDirectory() as directory,
             patch.object(profiles, "FILE", Path(directory) / "profiles.json"),
         ):
             profiles.run("edit", json.dumps({"wifi": False, "brightness": 65}))
-            profiles.run("battery", json.dumps({"low": "Quiet"}))
             data = profiles.load()
             active = next(p for p in data["profiles"] if p["name"] == data["active"])
             self.assertFalse(active["settings"]["wifi"])
             self.assertEqual(active["settings"]["brightness"], 65)
-            self.assertEqual(data["battery"]["low"], "Quiet")
-            with self.assertRaises(ValueError):
-                profiles.run("battery", '{"low":"missing"}')
+            for change in ({"gpu": "hybrid"}, {"shell": "true"}):
+                with self.assertRaises(ValueError):
+                    profiles.run("edit", json.dumps(change))
+
+    def test_old_gpu_setting_does_not_block_profile_selection(self):
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(profiles, "FILE", Path(directory) / "profiles.json"),
+            patch.object(machine, "action") as action,
+        ):
+            data = profiles.load()
+            data["profiles"][0]["settings"]["gpu"] = "hybrid"
+            profiles.save(data)
+            result = profiles.run("select", data["profiles"][0]["name"])
+        self.assertEqual(result["error"], "")
+        self.assertEqual(result["data"]["active"], data["profiles"][0]["name"])
+        action.assert_called_once_with("profile", "power-saver")
 
     def test_profile_partial_failure_is_reported(self):
         with (

@@ -44,7 +44,7 @@ Item {
     function activateResult(index) {
         if (index < 0 || index >= matches.length) return;
         const result = matches[index];
-        if (result.kind === "space") ShellState.openPlugin(result.entry.id);
+        if (result.kind === "space") ShellState.openModule(result.entry.id);
         else { result.entry.execute(); ShellState.showDesktop(); }
     }
     function moveSelection(delta) {

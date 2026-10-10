@@ -71,9 +71,10 @@ ScrollArea {
         spacing: 14
         Heading { text: root.page === "system" ? "SYSTEM" : root.page.toUpperCase() }
         Label {
-            visible: root.page === "cpu" || (root.page === "gpu" && !!(root.machine.snapshot.gpu || {}).error)
+            visible: root.page !== "system"
             Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.muted
-            text: root.page === "cpu" ? "Load average · " + (root.hw.load || "—") + "\nCPU boost · " + (root.hw.boost === "1" ? "Enabled" : root.hw.boost === "0" ? "Disabled" : "Unavailable") : ((root.machine.snapshot.gpu || {}).error || "")
+            text: root.page === "cpu" ? "Load average · " + (root.hw.load || "—") + "\nCPU boost · " + (root.hw.boost === "1" ? "Enabled" : root.hw.boost === "0" ? "Disabled" : "Unavailable")
+                : "Applications choose a GPU through switcheroo-control. Use ROG Control Center for supported firmware GPU modes; changes may require a reboot."
         }
         Action {
             objectName: "cpu-boost-toggle"

@@ -6,16 +6,14 @@ import "theme" as Design
 
 QtObject {
     id: root
-    readonly property string repository: decodeURIComponent(Qt.resolvedUrl("../").toString().replace(/^file:\/\//, "")).replace(/\/?$/, "/")
-    readonly property string configDirectory: Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")
+    readonly property string script: Paths.file("scripts/theme.py")
     property bool desktopSync: false
     property bool pending: false
     property bool syncPending: false
-    property bool loaded: false
     readonly property bool busy: process.running || settingsProcess.running || modeProcess.running
     function setMode(mode) {
         if (busy) return;
-        modeProcess.command = ["python3", repository + "scripts/theme.py", "set-mode", mode];
+        modeProcess.command = ["python3", script, "set-mode", mode];
         modeProcess.running = true;
     }
     property Process modeProcess: Process {
@@ -32,7 +30,7 @@ QtObject {
         if (settingsProcess.running) pending = true;
         else {
             pending = false;
-            settingsProcess.command = ["python3", repository + "scripts/theme.py", "get"];
+            settingsProcess.command = ["python3", script, "get"];
             settingsProcess.running = true;
         }
         applyDesktopSync();
@@ -41,7 +39,7 @@ QtObject {
         if (!desktopSync) return;
         if (process.running) { syncPending = true; return; }
         syncPending = false;
-        process.command = ["python3", repository + "scripts/theme.py", "apply"];
+        process.command = ["python3", script, "apply"];
         if (Quickshell.env("ZEPHYRUS_THEME_NO_NOTIFY") === "1") process.command = process.command.concat(["--no-notify"]);
         process.running = true;
     }
@@ -50,18 +48,18 @@ QtObject {
             const result = JSON.parse(text);
             Design.Theme.error = result.error || "";
             if (result.theme) { Design.Theme.settings = result.theme; Design.Theme.loaded = true; }
+            // Re-arm the watch: a file created after startup is otherwise missed.
             root.userFile.reload();
             if (Design.Theme.error) console.warn("Theme:", Design.Theme.error);
         } catch (exception) { Design.Theme.error = "Could not read theme settings: " + exception; }
     }
     property FileView defaultFile: FileView {
-        path: root.repository + "config/theme.json"
-        blockLoading: true
+        path: Paths.file("config/theme.json")
         watchChanges: true
         onFileChanged: { reload(); debounce.restart(); }
     }
     property FileView userFile: FileView {
-        path: root.configDirectory + "/zephyrus-shell/theme.json"
+        path: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/zephyrus-shell/theme.json"
         printErrors: false
         watchChanges: true
         onFileChanged: { reload(); debounce.restart(); }

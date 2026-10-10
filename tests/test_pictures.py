@@ -7,7 +7,7 @@ from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
 
-from pictures import backend as pictures
+from modules.pictures import backend as pictures
 
 
 class WallpaperTests(unittest.TestCase):

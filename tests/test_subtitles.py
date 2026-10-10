@@ -10,8 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from media.local import LocalLibrary, subtitle_associations
-from media.subtitle_backend import OpenSubtitles, SubtitleBackend, SubtitleError, moviehash
+from modules.media.local import LocalLibrary, subtitle_associations
+from modules.media.subtitle_backend import OpenSubtitles, SubtitleBackend, SubtitleError, moviehash
 
 SRT = b"1\n00:00:25,000 --> 00:00:27,000\nHello\n"
 
@@ -299,7 +299,7 @@ class SubtitleTests(unittest.TestCase):
         original.write_bytes(SRT)
         with (
             patch.object(self.backend, "probe", return_value=(25, [])),
-            patch("media.subtitle_backend.os.replace", side_effect=OSError("disk failure")),
+            patch("modules.media.subtitle_backend.os.replace", side_effect=OSError("disk failure")),
         ):
             with self.assertRaises(SubtitleError):
                 self.backend.retime(
@@ -323,7 +323,7 @@ class SubtitleTests(unittest.TestCase):
     def test_selected_sidecar_launches_mpv_with_that_language(self):
         sidecar = self.video.with_name(self.video.stem + ".vi.srt")
         sidecar.write_bytes(SRT)
-        with patch("media.subtitle_backend.shutil.which", return_value="/usr/bin/mpv"):
+        with patch("modules.media.subtitle_backend.shutil.which", return_value="/usr/bin/mpv"):
             result = self.backend.play_with({"path": str(self.video), "subtitle": str(sidecar)})
         self.assertEqual(
             result["command"], ["mpv", "--sub-file=" + str(sidecar), "--", str(self.video)]
@@ -358,7 +358,7 @@ class SubtitleTests(unittest.TestCase):
 
         with (
             patch.object(self.backend, "probe", return_value=(23.976, [track])),
-            patch("media.subtitle_backend.subprocess.run", side_effect=ffmpeg),
+            patch("modules.media.subtitle_backend.subprocess.run", side_effect=ffmpeg),
         ):
             result = self.backend.extract({"path": str(self.video), "index": 2})
         self.assertTrue(Path(result["path"]).is_file())
@@ -437,7 +437,7 @@ class SubtitleTests(unittest.TestCase):
                 )
             return Response(SRT, request.full_url)
 
-        with patch("media.subtitle_backend.urllib.request.urlopen", side_effect=urlopen):
+        with patch("modules.media.subtitle_backend.urllib.request.urlopen", side_effect=urlopen):
             payload, remaining = OpenSubtitles(
                 {"api_key": "key", "username": "user", "password": "password"}
             ).download(10)

@@ -16,7 +16,8 @@ class ActionTests(unittest.TestCase):
         with patch.object(machine, "command") as command:
             for name, value in [
                 ("shell", "echo hi"),
-                ("wifi", "on; reboot"),
+                ("wifi", "off"),
+                ("gpu", "hybrid"),
                 ("profile", "unknown"),
                 ("brightness", "0"),
                 ("brightness", "101"),
@@ -24,11 +25,6 @@ class ActionTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     machine.action(name, value)
             command.assert_not_called()
-
-    def test_wifi_uses_argument_array(self):
-        with patch.object(machine, "command") as command:
-            machine.action("wifi", "off")
-            command.assert_called_once_with(["nmcli", "radio", "wifi", "off"], True)
 
     def test_logout_refuses_other_desktops(self):
         with (
@@ -247,6 +243,38 @@ class BatteryDetailsTests(unittest.TestCase):
             )
 
 
+class SnapshotTests(unittest.TestCase):
+    pack = {
+        "status": "Discharging",
+        "statusText": "On battery",
+        "percent": 40.0,
+        "seconds": 5400,
+        "watts": 7.25,
+        "chargeLimit": 80.0,
+        "chargeLimitSupported": True,
+    }
+
+    def test_battery_line_uses_pack_estimate_and_power(self):
+        summary = machine.battery_summary(self.pack, True)
+        self.assertEqual(summary["batteryInfo"], "1h 30m remaining · 7.2 W")
+        self.assertEqual(summary["chargeLimit"], 80)
+        self.assertFalse(machine.battery_summary(None, True)["batteryPresent"])
+
+    def test_charge_limit_is_offered_only_where_the_action_works(self):
+        self.assertEqual(machine.battery_summary(self.pack, False)["chargeLimit"], "")
+        unsupported = dict(self.pack, chargeLimitSupported=False)
+        self.assertEqual(machine.battery_summary(unsupported, True)["chargeLimit"], "")
+
+    def test_dsi_panel_uses_backlight_not_ddc(self):
+        with (
+            patch.object(machine, "read", return_value=""),
+            patch.object(machine, "ddc_bus") as bus,
+        ):
+            monitors = [{"name": "DSI-1", "disabled": False}]
+            self.assertEqual(machine.brightness_target(monitors), ("DSI-1", False, None))
+            bus.assert_not_called()
+
+
 class DisplayTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -285,6 +313,11 @@ class DisplayTests(unittest.TestCase):
 
         return json.dumps(self.monitors) if "monitors" in args else "ok"
 
+    def saved(self):
+        """Saved rules for the currently connected monitors."""
+        real = [m for m in self.monitors if m["name"] != "FALLBACK"]
+        return machine.display_setup(real, machine.display_profiles())[2]
+
     def test_aux_ddc_bus_precedes_legacy_adapter_and_explicit_override(self):
         port = self.root / "card2-DP-3"
         (port / "ddc/i2c-dev/i2c-10").mkdir(parents=True)
@@ -301,13 +334,12 @@ class DisplayTests(unittest.TestCase):
         script = command.call_args.args[0]
         self.assertEqual(script[:2], ["hyprctl", "eval"])
         self.assertIn('position = "2560x0"', script[2])
-        saved = self.root / "zephyrus-shell/display-settings.lua"
-        self.assertIn('"DP-3"', saved.read_text())
+        self.assertEqual(self.saved()["DP-3"]["position"], "0x0")
+        self.assertEqual(self.saved()["eDP-2"]["position"], "2560x0")
         self.assertEqual(
-            {p.name for p in saved.parent.iterdir()},
-            {"display-settings.lua", "display-profiles.json", ".display.lock"},
+            {p.name for p in (self.root / "zephyrus-shell").iterdir()},
+            {"display-profiles.json", ".display.lock"},
         )
-        self.assertNotIn("hl.monitor", saved.read_text())
 
     def test_scale_reflows_neighbors_without_overlap(self):
         import json
@@ -322,7 +354,7 @@ class DisplayTests(unittest.TestCase):
         with patch.object(machine, "command", side_effect=self.command) as command:
             machine.action("display", json.dumps({"name": "DP-3", "enabled": False}))
         self.assertIn("disabled = true", command.call_args.args[0][2])
-        saved = machine.saved_monitor_rules()["DP-3"]
+        saved = self.saved()["DP-3"]
         self.assertTrue(saved["disabled"])
         self.assertEqual(saved["scale"], 1)
         self.assertEqual(saved["mode"], "2560x1440@60")
@@ -334,8 +366,8 @@ class DisplayTests(unittest.TestCase):
             machine.action("display", json.dumps({"name": "eDP-2", "enabled": False}))
             self.monitors[0].update(disabled=True, width=0, height=0, scale=1)
             machine.action("display", json.dumps({"name": "eDP-2", "enabled": True}))
-        self.assertFalse(machine.saved_monitor_rules()["eDP-2"]["disabled"])
-        self.assertEqual(machine.saved_monitor_rules()["eDP-2"]["scale"], 1.25)
+        self.assertFalse(self.saved()["eDP-2"]["disabled"])
+        self.assertEqual(self.saved()["eDP-2"]["scale"], 1.25)
 
     def test_resume_reasserts_disabled_preference_before_waking_remaining_output(self):
         import json
@@ -392,8 +424,8 @@ class DisplayTests(unittest.TestCase):
         self.assertIn('output = "eDP-2"', command.call_args_list[1].args[0][2])
         self.assertIn("disabled = false", command.call_args_list[1].args[0][2])
         self.assertIn('monitor = "eDP-2"', command.call_args_list[2].args[0][2])
-        self.assertEqual(machine.saved_monitor_rules()["eDP-2"]["scale"], 1.25)
-        self.assertFalse(machine.saved_monitor_rules()["eDP-2"]["disabled"])
+        self.assertEqual(self.saved()["eDP-2"]["scale"], 1.25)
+        self.assertFalse(self.saved()["eDP-2"]["disabled"])
 
     def test_display_recovery_preserves_working_external_only_setup(self):
         self.monitors[0]["disabled"] = True
@@ -557,8 +589,8 @@ class DisplayTests(unittest.TestCase):
             self.monitors[0].update(disabled=True, width=0, height=0, scale=1)
             self.monitors[1].update(x=-50, y=70)
             machine.action("display-save", "")
-        self.assertEqual(machine.saved_monitor_rules()["eDP-2"]["scale"], 1.25)
-        self.assertEqual(machine.saved_monitor_rules()["DP-3"]["position"], "-50x70")
+        self.assertEqual(self.saved()["eDP-2"]["scale"], 1.25)
+        self.assertEqual(self.saved()["DP-3"]["position"], "-50x70")
 
     def test_rejects_duplicate_order_and_unlisted_mode(self):
         import json
@@ -583,7 +615,7 @@ class DisplayTests(unittest.TestCase):
         with patch.object(machine, "command", side_effect=fail):
             with self.assertRaises(RuntimeError):
                 machine.action("display-scale", json.dumps({"name": "DP-3", "scale": 1.25}))
-        self.assertFalse((self.root / "zephyrus-shell/display-settings.lua").exists())
+        self.assertFalse((self.root / "zephyrus-shell/display-profiles.json").exists())
 
 
 class DdcCacheTests(unittest.TestCase):

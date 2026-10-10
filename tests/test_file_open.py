@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
-from plugins.files import backend, cloud, working_copies
+from modules.files import backend, cloud, working_copies
 from services.jobs import Jobs
 
 
@@ -104,6 +104,30 @@ class EditingTests(unittest.TestCase):
         self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
         self.assertEqual(self.remote.writes, [])
+
+    def test_download_does_not_block_polling_or_duplicate_opening(self):
+        started, release = threading.Event(), threading.Event()
+
+        def wait():
+            started.set()
+            release.wait(5)
+
+        self.remote.after_download = wait
+        opening = threading.Thread(target=self.open)
+        opening.start()
+        self.addCleanup(opening.join)
+        self.addCleanup(release.set)
+        self.assertTrue(started.wait(5))
+        polled = threading.Thread(target=self.edits.poll)
+        polled.start()
+        polled.join(1)
+        self.assertFalse(polled.is_alive(), "Polling waited for a download")
+        with self.assertRaisesRegex(ValueError, "already opening"):
+            self.open()
+        release.set()
+        opening.join(5)
+        self.assertEqual(self.remote.downloads, 1)
+        self.assertEqual(len(self.edits.poll()["sessions"]), 1)
 
     def test_atomic_editor_save_updates_original_and_advances_revision(self):
         path = self.open()

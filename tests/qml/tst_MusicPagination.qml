@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import "../../plugins/music" as Music
+import "../../modules/music" as Music
 
 TestCase {
     name: "MusicPagination"

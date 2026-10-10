@@ -12,9 +12,8 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 
-from plugins.files import backend as files
-from plugins.files import cloud, transfers
-from plugins.music import backend as music
+from modules.files import local
+from modules.files import cloud, transfers
 from services import jobs
 
 
@@ -44,7 +43,7 @@ class TransferTests(unittest.TestCase):
         self.source.mkdir()
         self.target = self.home / "destination"
         self.target.mkdir()
-        self.patch_home = patch.object(files, "HOME", self.home)
+        self.patch_home = patch.object(local, "HOME", self.home)
         self.patch_home.start()
         self.addCleanup(self.patch_home.stop)
         self.manager = jobs.Jobs()
@@ -97,7 +96,7 @@ class TransferTests(unittest.TestCase):
             self.assertEqual((self.target / "test.txt").read_text(), "new")
             calls.append(source)
 
-        with patch.object(files, "delete_entry", side_effect=trash):
+        with patch.object(local, "delete_entry", side_effect=trash):
             result = self.execute(self.request(path, move=True))
         self.assertEqual(result["state"], "finished")
         self.assertEqual(calls, [str(path)])
@@ -113,7 +112,7 @@ class TransferTests(unittest.TestCase):
 
         with (
             patch.object(transfers.os, "link", side_effect=commit),
-            patch.object(files, "delete_entry") as trash,
+            patch.object(local, "delete_entry") as trash,
         ):
             result = self.execute(self.request(source, move=True))
         self.assertEqual(result["state"], "failed")
@@ -373,7 +372,7 @@ class CloudTests(unittest.TestCase):
         item = cloud.entry(
             "Document", "document", False, mime="application/vnd.google-apps.document"
         )
-        self.assertEqual(remote.download_name(item), "Document.docx")
+        self.assertEqual(transfers.download_name(item), "Document.docx")
         with patch.object(remote, "open", return_value=Response(b"content")) as request:
             sink = io.BytesIO()
             remote.download(item, sink, lambda size: None)
@@ -497,11 +496,14 @@ class CloudTests(unittest.TestCase):
 
 
 class JobTests(unittest.TestCase):
-    def test_queued_cancel_and_failed_music_jobs_settle_without_leaking_details(self):
-        manager = jobs.Jobs(errors=(music.MusicError, ValueError))
+    def test_failed_jobs_settle_without_leaking_details(self):
+        class ExpectedError(Exception):
+            pass
+
+        manager = jobs.Jobs(errors=(ExpectedError, ValueError))
         self.addCleanup(manager.stop)
         identifier = manager.start(
-            "Music", lambda: (_ for _ in ()).throw(music.MusicError("Install ffmpeg"))
+            "Music", lambda: (_ for _ in ()).throw(ExpectedError("Install ffmpeg"))
         )["job_id"]
         result = settled(manager, identifier)
         self.assertEqual(result["error"], "Install ffmpeg")
@@ -512,6 +514,8 @@ class JobTests(unittest.TestCase):
         self.assertNotIn("sensitive", result["error"])
 
     def test_music_cancel_terminates_process_and_removes_partial_output(self):
+        from modules.music import backend as music
+
         with tempfile.TemporaryDirectory() as directory:
             manager = jobs.Jobs(errors=(music.MusicError, ValueError))
             self.addCleanup(manager.stop)

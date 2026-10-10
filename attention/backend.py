@@ -1,4 +1,8 @@
-"""Weather and Nextcloud worker for the center panel."""
+"""Weather and Nextcloud for the center panel.
+
+Without arguments this is the panel's JSON-lines worker. `backend.py weather` and
+`backend.py calendar` print one cached snapshot for the bar and exit.
+"""
 
 import fcntl
 import json
@@ -6,6 +10,7 @@ import os
 import sys
 import time
 from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -32,10 +37,8 @@ CLOUD_RETRY_AGE = 5 * 60
 def configuration():
     try:
         data = json.loads(CONFIG.read_text())
-    except FileNotFoundError as error:
-        raise ValueError(
-            "Create attention.json to configure weather and calendar selection."
-        ) from error
+    except FileNotFoundError:
+        return {}
     except (OSError, json.JSONDecodeError) as error:
         raise ValueError("attention.json could not be read. Check its JSON syntax.") from error
     if not isinstance(data, dict):
@@ -148,7 +151,7 @@ def handle(request):
     if op == "weather":
         return weather.fetch(config.get("weather", {}), CACHE)
     account = accounts.load_account()
-    options = config.get("calendar", config.get("nextcloud", {}))
+    options = config.get("calendar", {})
     if not isinstance(options, dict):
         raise ValueError("Calendar selection must be an object in attention.json.")
     cloud = {
@@ -156,24 +159,13 @@ def handle(request):
         **{key: options[key] for key in ("calendars", "task_lists") if key in options},
     }
     if op == "nextcloud":
+        empty = {"events": [], "tasks": [], "calendars": [], "task_count": 0}
         if not account:
-            return {
-                "state": "unconfigured",
-                "events": [],
-                "tasks": [],
-                "calendars": [],
-                "task_count": 0,
-            }
+            return {"state": "unconfigured", **empty}
         try:
             accounts.credential(cloud)
         except accounts.CredentialMissing:
-            return {
-                "state": "needs_password",
-                "events": [],
-                "tasks": [],
-                "calendars": [],
-                "task_count": 0,
-            }
+            return {"state": "needs_password", **empty}
         return cloud_snapshot(
             cloud, request.get("start"), request.get("end"), request.get("refresh", False)
         )
@@ -190,10 +182,29 @@ def handle(request):
     raise ValueError("Unknown attention request.")
 
 
+def summary(kind):
+    """One-shot snapshot for the bar; the calendar covers the current month."""
+    try:
+        if kind == "weather":
+            return {"forecast": handle({"op": "weather"})}
+        start = date.today().replace(day=1)
+        end = date(start.year + (start.month == 12), start.month % 12 + 1, 1)
+        request = {"op": "nextcloud", "start": start.isoformat(), "end": end.isoformat()}
+        result = handle(request)
+        if result.get("refresh_due"):
+            result = handle({**request, "refresh": True})
+        return {"cloud": result}
+    except (ValueError, OSError) as error:
+        return {"error": str(error)}
+
+
 if __name__ == "__main__":
-    serve(
-        handle,
-        errors=(ValueError, OSError),
-        latest=("weather", "nextcloud"),
-        controls=("complete_task", "save_item"),
-    )
+    if len(sys.argv) > 1:
+        print(json.dumps(summary(sys.argv[1])))
+    else:
+        serve(
+            handle,
+            errors=(ValueError, OSError),
+            latest=("nextcloud",),
+            controls=("complete_task", "save_item"),
+        )

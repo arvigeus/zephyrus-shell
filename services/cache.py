@@ -9,6 +9,10 @@ import time
 from contextlib import closing
 from pathlib import Path
 
+# Concurrent journal-mode switches fail with "database is locked" instead of
+# waiting for the busy timeout, so creation is serialized within the process.
+_INIT_LOCK = threading.Lock()
+
 
 class JsonCache:
     def __init__(self, name, root=None, limit=512):
@@ -22,8 +26,11 @@ class JsonCache:
         self.limit = limit
         self.condition = threading.Condition()
         self.pending = set()
-        with closing(sqlite3.connect(self.path, timeout=5)) as db:
-            db.execute("PRAGMA journal_mode=WAL")
+        with _INIT_LOCK, closing(sqlite3.connect(self.path, timeout=5)) as db:
+            try:
+                db.execute("PRAGMA journal_mode=WAL")
+            except sqlite3.OperationalError:
+                pass  # Another process holds the file; WAL mode persists once set.
             db.execute(
                 "CREATE TABLE IF NOT EXISTS responses (key TEXT PRIMARY KEY, payload TEXT, updated REAL)"
             )

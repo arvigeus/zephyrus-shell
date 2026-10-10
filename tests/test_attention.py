@@ -1,6 +1,8 @@
 import io
 import json
+import os
 import tempfile
+import time
 import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -517,6 +519,131 @@ class NextcloudTests(unittest.TestCase):
         self.assertIn("STATUS:COMPLETED", writes[0][2])
         self.assertIn("PERCENT-COMPLETE:100", writes[0][2])
         self.assertEqual(writes[0][3]["If-Match"], '"abc"')
+
+    def test_all_day_series_with_date_until_and_moved_instances(self):
+        zone = ZoneInfo("Europe/Sofia")
+        event = (
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:a\nSUMMARY:Daily\nDTSTART;VALUE=DATE:20261001\n"
+            "DTEND;VALUE=DATE:20261002\nRRULE:FREQ=DAILY;UNTIL=20261004\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:b\nSUMMARY:Standup\nDTSTART;TZID=Europe/Sofia:20261001T090000\n"
+            "DTEND;TZID=Europe/Sofia:20261001T091500\nRRULE:FREQ=WEEKLY\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:b\nRECURRENCE-ID:20261008T060000Z\nSUMMARY:Moved standup\n"
+            "DTSTART;TZID=Europe/Sofia:20261009T100000\nDTEND;TZID=Europe/Sofia:20261009T101500\n"
+            "END:VEVENT\nEND:VCALENDAR"
+        )
+        results = nextcloud.events_from(
+            [("https://cloud.example/a.ics", '"1"', event)],
+            {"name": "Personal"},
+            datetime(2026, 10, 1, tzinfo=zone),
+            datetime(2026, 11, 1, tzinfo=zone),
+            zone,
+        )
+        daily = [item["date"] for item in results if item["summary"] == "Daily"]
+        self.assertEqual(daily, ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"])
+        standups = {item["start"] for item in results if "tandup" in item["summary"]}
+        self.assertIn("2026-10-09T10:00:00+03:00", standups)
+        self.assertNotIn("2026-10-08T09:00:00+03:00", standups)
+        # Weekly wall-clock time survives the end of daylight saving time.
+        self.assertIn("2026-10-29T09:00:00+02:00", standups)
+
+    def test_moved_instance_outside_the_series_window_is_shown(self):
+        zone = ZoneInfo("UTC")
+        event = (
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:c\nSUMMARY:Review\nDTSTART:20260901T090000Z\n"
+            "RRULE:FREQ=DAILY;COUNT=1\nEND:VEVENT\nBEGIN:VEVENT\nUID:c\nSUMMARY:Review\n"
+            "RECURRENCE-ID:20260901T090000Z\nDTSTART:20261005T090000Z\nEND:VEVENT\nEND:VCALENDAR"
+        )
+        results = nextcloud.events_from(
+            [("https://cloud.example/c.ics", '"1"', event)],
+            {"name": "Personal"},
+            datetime(2026, 10, 1, tzinfo=zone),
+            datetime(2026, 11, 1, tzinfo=zone),
+            zone,
+        )
+        self.assertEqual([item["date"] for item in results], ["2026-10-05"])
+        self.assertFalse(results[0]["editable"])
+
+    def test_malformed_event_does_not_hide_the_calendar(self):
+        zone = ZoneInfo("UTC")
+        bad = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:2026-10-05\nEND:VEVENT\nEND:VCALENDAR"
+        good = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:20261005T090000Z\nEND:VEVENT\nEND:VCALENDAR"
+        results = nextcloud.events_from(
+            [
+                ("https://cloud.example/bad.ics", "", bad),
+                ("https://cloud.example/ok.ics", "", good),
+            ],
+            {"name": "Personal"},
+            datetime(2026, 10, 1, tzinfo=zone),
+            datetime(2026, 11, 1, tzinfo=zone),
+            zone,
+        )
+        self.assertEqual(len(results), 1)
+
+    def test_escaped_text_round_trips(self):
+        text = "C:\\new, folder; done\nsecond line"
+        self.assertEqual(nextcloud.text_value(nextcloud.escape_text(text)), text)
+
+    def test_new_timed_event_uses_the_offset_of_its_own_date(self):
+        previous = os.environ.get("TZ")
+        os.environ["TZ"] = "Europe/Sofia"
+        time.tzset()
+        try:
+            fields = nextcloud.entry_fields(
+                "VEVENT",
+                {
+                    "summary": "Winter",
+                    "start_date": "2026-12-01",
+                    "end_date": "2026-12-01",
+                    "start_time": "12:00",
+                    "end_time": "13:00",
+                },
+            )
+        finally:
+            if previous is None:
+                os.environ.pop("TZ")
+            else:
+                os.environ["TZ"] = previous
+            time.tzset()
+        self.assertIn("DTSTART:20261201T100000Z", fields)
+
+    def test_editing_a_task_keeps_its_start_and_due_time(self):
+        client = nextcloud.Client.__new__(nextcloud.Client)
+        client.propfind = lambda: [
+            {
+                "url": "https://cloud.example/calendars/tasks/",
+                "slug": "tasks",
+                "name": "Tasks",
+                "components": {"VTODO"},
+                "writable": True,
+            }
+        ]
+        original = (
+            b"BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:t\r\nSUMMARY:Old\r\n"
+            b"DTSTART:20261001T080000Z\r\nDUE:20261003T150000Z\r\nEND:VTODO\r\nEND:VCALENDAR\r\n"
+        )
+        writes = []
+
+        def request(method, href, body=None, headers=None):
+            if method == "GET":
+                return original, {"ETag": '"abc"'}
+            writes.append(body)
+            return b"", {}
+
+        client.request = request
+        entry = {
+            "collection": "tasks",
+            "href": "https://cloud.example/calendars/tasks/t.ics",
+            "etag": '"abc"',
+            "summary": "Renamed",
+        }
+        with patch.object(nextcloud.tz, "gettz", return_value=ZoneInfo("UTC")):
+            client.save_item({}, "VTODO", {**entry, "due": "2026-10-03"})
+            client.save_item({}, "VTODO", {**entry, "due": "2026-10-04"})
+        self.assertIn(b"DTSTART:20261001T080000Z", writes[0])
+        self.assertIn(b"DUE:20261003T150000Z", writes[0])
+        self.assertIn(b"SUMMARY:Renamed", writes[0])
+        self.assertIn(b"DUE;VALUE=DATE:20261004", writes[1])
+        self.assertNotIn(b"DUE:20261003", writes[1])
 
 
 class CacheTests(unittest.TestCase):

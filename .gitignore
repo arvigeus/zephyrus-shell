@@ -3,8 +3,8 @@ tests/artifacts/*.png
 tests/artifacts/*.log
 tests/artifacts/performance*.json
 tests/artifacts/performance*.qtd
-plugins/terminal/QMLTermWidget/
-plugins/terminal/.QMLTermWidget.new/
+modules/terminal/QMLTermWidget/
+modules/terminal/.QMLTermWidget.new/
 credentials/
 secrets/
 nextcloud-app-password

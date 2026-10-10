@@ -1,33 +1,33 @@
 import QtQuick
-import QtQuick.Controls
 import Quickshell
 import "../core"
 import "../widgets"
 
-import "../plugins/apps" as Apps
-import "../plugins/files" as Files
-import "../plugins/terminal" as Terminal
-import "../plugins/projects" as Projects
-import "../plugins/movies" as Movies
-import "../plugins/series" as Series
-import "../plugins/music" as Music
-import "../plugins/radio" as Radio
-import "../plugins/pictures" as Pictures
-import "../plugins/games" as Games
-import "../plugins/books" as Books
+// Quickshell only serves QML from directories its scanner reaches through
+// imports, so every module directory is imported here even though entry points
+// are loaded by URL from the Modules registry.
+import "../modules/apps" as Apps
+import "../modules/books" as Books
+import "../modules/files" as Files
+import "../modules/games" as Games
+import "../modules/movies" as Movies
+import "../modules/music" as Music
+import "../modules/pictures" as Pictures
+import "../modules/projects" as Projects
+import "../modules/radio" as Radio
+import "../modules/series" as Series
+import "../modules/terminal" as Terminal
 
 Item {
     id: root
     property bool readyToLoad: true
-    property string screenName: ""
     property var currentModule: null
     property string currentModuleId: ""
     property bool currentLoadFailed: false
     Keys.onEscapePressed: event => {
-        if (ShellState.panel === "module") { ShellState.close(); event.accepted = true; }
+        if (ShellState.panel === "module") { ShellState.showDesktop(); event.accepted = true; }
     }
-    readonly property var entry: Modules.find(ShellState.pluginId)
-    // Modules may tune backdrop opacity and decode width; defaults preserve prior behavior.
+    readonly property var entry: Modules.find(ShellState.moduleId)
     readonly property url backgroundImage: currentModule && currentModule.backgroundImage !== undefined ? currentModule.backgroundImage : ""
     readonly property real backgroundImageOpacity: currentModule && currentModule.backgroundImageOpacity !== undefined
         ? Math.max(0, Math.min(1, Number(currentModule.backgroundImageOpacity))) : 1
@@ -35,28 +35,26 @@ Item {
         ? Math.max(1, Number(currentModule.backgroundImageWidth)) : 2560
     function syncCurrentModule() {
         let item = null;
-        let failed = !root.entry && !!ShellState.pluginId;
-        if (ShellState.pluginId && ShellState.runningPluginIds.includes(ShellState.pluginId)) {
-            for (let index = 0; index < retainedModules.count; ++index) {
-                const holder = retainedModules.itemAt(index);
-                if (holder && holder.pluginId === ShellState.pluginId) {
-                    item = holder.contentItem;
-                    failed = holder.loadStatus === Loader.Error;
-                    break;
-                }
+        let failed = !root.entry && !!ShellState.moduleId;
+        for (let index = 0; index < retainedModules.count; ++index) {
+            const holder = retainedModules.itemAt(index);
+            if (holder && holder.moduleId === ShellState.moduleId) {
+                item = holder.contentItem;
+                failed = failed || holder.loadStatus === Loader.Error;
+                break;
             }
         }
         currentModule = item;
-        currentModuleId = item ? ShellState.pluginId : "";
+        currentModuleId = item ? ShellState.moduleId : "";
         currentLoadFailed = failed;
-        if (item && ShellState.pendingPluginOpen) Qt.callLater(root.deliverPluginOpen);
+        if (item && ShellState.pendingModuleOpen) Qt.callLater(root.deliverModuleOpen);
         if (ShellState.panel === "module" && item) Qt.callLater(root.restoreModuleFocus);
     }
-    function deliverPluginOpen() {
-        const request = ShellState.pendingPluginOpen;
+    function deliverModuleOpen() {
+        const request = ShellState.pendingModuleOpen;
         if (!request || !currentModule || ShellState.panel !== "module" ||
-                request.id !== ShellState.pluginId || request.id !== currentModuleId) return;
-        ShellState.pendingPluginOpen = null;
+                request.id !== ShellState.moduleId || request.id !== currentModuleId) return;
+        ShellState.pendingModuleOpen = null;
         if (typeof currentModule.handleOpen === "function") currentModule.handleOpen(request.payload);
     }
     function restoreModuleFocus() {
@@ -69,20 +67,12 @@ Item {
         target: ShellState
         function onPanelChanged() {
             if (ShellState.panel === "module") {
-                Qt.callLater(root.deliverPluginOpen);
+                Qt.callLater(root.deliverModuleOpen);
                 Qt.callLater(root.restoreModuleFocus);
             }
         }
-        function onPendingPluginOpenChanged() { Qt.callLater(root.deliverPluginOpen); }
-        function onPluginIdChanged() {
-            Qt.callLater(root.syncCurrentModule);
-        }
-        function onMonitorChanged() {
-            Qt.callLater(root.syncCurrentModule);
-        }
-        function onPluginMonitorChanged() {
-            Qt.callLater(root.syncCurrentModule);
-        }
+        function onPendingModuleOpenChanged() { Qt.callLater(root.deliverModuleOpen); }
+        function onModuleIdChanged() { Qt.callLater(root.syncCurrentModule); }
     }
     Rectangle {
         anchors.fill: parent
@@ -101,83 +91,51 @@ Item {
     Column {
         anchors.centerIn: parent
         spacing: 12
-        visible: !!ShellState.pluginId && !root.currentModule && !root.currentLoadFailed
+        visible: !!ShellState.moduleId && !root.currentModule && !root.currentLoadFailed
         BusySpinner { anchors.horizontalCenter: parent.horizontalCenter; running: parent.visible }
         Label { text: "Loading " + (root.entry ? root.entry.name : "space") + "…"; color: Theme.muted }
     }
-    // Components are compiled with the shell; instances and workers remain lazy.
-    readonly property var components: ({
-        apps: appsComponent,
-        files: filesComponent,
-        terminal: terminalComponent,
-        projects: projectsComponent,
-        movies: moviesComponent,
-        series: seriesComponent,
-        music: musicComponent,
-        radio: radioComponent,
-        pictures: picturesComponent,
-        games: gamesComponent,
-        books: booksComponent
-    })
-    Component { id: appsComponent; Apps.Main {} }
-    Component { id: filesComponent; Files.Main {} }
-    Component { id: terminalComponent; Terminal.Main {} }
-    Component { id: projectsComponent; Projects.Main {} }
-    Component { id: moviesComponent; Movies.Main {} }
-    Component { id: seriesComponent; Series.Main {} }
-    Component { id: musicComponent; Music.Main {} }
-    Component { id: radioComponent; Radio.Main {} }
-    Component { id: picturesComponent; Pictures.Main {} }
-    Component { id: gamesComponent; Games.Main {} }
-    Component { id: booksComponent; Books.Main {} }
 
+    // One loader per running module. Hidden modules keep their instance,
+    // workers and playback until ShellState.stopModule() removes the entry.
     Repeater {
         id: retainedModules
-        model: ScriptModel {
-            values: ShellState.runningPluginIds
-        }
+        model: ScriptModel { values: ShellState.runningModuleIds }
         delegate: Item {
             id: retained
             required property string modelData
-            readonly property string pluginId: modelData
+            readonly property string moduleId: modelData
             readonly property var contentItem: retainedLoader.item
             readonly property int loadStatus: retainedLoader.status
-            objectName: "retained-" + pluginId
+            objectName: "retained-" + moduleId
             anchors.fill: parent
-            // Each live module gets a host scoped to its own lifetime, including while hidden.
             Component {
                 id: hostFactory
                 QtObject {
-                    readonly property int apiVersion: 2
-                    function close() { ShellState.stopPlugin(retained.pluginId); }
+                    function close() { ShellState.stopModule(retained.moduleId); }
                     function hide() {
-                        if (ShellState.pluginId === retained.pluginId) ShellState.showDesktop();
+                        if (ShellState.moduleId === retained.moduleId) ShellState.showDesktop();
                     }
-                    function back() {
-                        if (ShellState.pluginId === retained.pluginId) ShellState.backToSpaces();
-                    }
-                    function openPlugin(pluginId, payload) {
-                        if (!Modules.find(pluginId)) return false;
-                        ShellState.openPlugin(pluginId, payload);
+                    function openModule(moduleId, payload) {
+                        if (!Modules.find(moduleId)) return false;
+                        ShellState.openModule(moduleId, payload);
                         return true;
                     }
                 }
             }
             Loader {
                 id: retainedLoader
-                objectName: ShellState.pluginId === retained.pluginId ? "moduleContent" : "inactiveModuleContent"
+                objectName: ShellState.moduleId === retained.moduleId ? "moduleContent" : "inactiveModuleContent"
                 property bool loadedOnce: false
                 anchors.fill: parent
                 anchors.margins: Theme.moduleMargin
                 anchors.topMargin: Theme.moduleTopMargin
-                active: ShellState.runningPluginIds.includes(retained.pluginId)
-                    && (root.screenName === "*" || ShellState.runningPluginMonitors[retained.pluginId] === root.screenName)
-                    && (root.readyToLoad || loadedOnce)
+                // Creation waits for drawers to finish closing; once loaded, it stays.
+                active: root.readyToLoad || loadedOnce
                 asynchronous: true
-                visible: status === Loader.Ready && ShellState.pluginId === retained.pluginId
+                visible: status === Loader.Ready && ShellState.moduleId === retained.moduleId
                 enabled: visible && ShellState.panel === "module"
-                sourceComponent: root.components[retained.pluginId] || null
-                onActiveChanged: if (!active) loadedOnce = false
+                source: Modules.find(retained.moduleId) ? Qt.resolvedUrl("../modules/" + retained.moduleId + "/Main.qml") : ""
                 onLoaded: {
                     loadedOnce = true;
                     item.host = hostFactory.createObject(item);
@@ -191,7 +149,7 @@ Item {
     }
     Label {
         anchors.centerIn: parent
-        visible: !!ShellState.pluginId && root.currentLoadFailed
+        visible: !!ShellState.moduleId && root.currentLoadFailed
         text: "This space could not load. Close it using the X in Spaces and try again."
         color: Theme.danger
         width: Math.min(500, parent.width - 56); wrapMode: Text.Wrap

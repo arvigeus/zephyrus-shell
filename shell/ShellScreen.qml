@@ -15,26 +15,27 @@ Scope {
     readonly property string screenName: screen ? screen.name : ""
     readonly property real screenWidth: screen ? screen.width : 0
     readonly property real screenHeight: screen ? screen.height : 0
-    property var sharedModules: null
+    // The shell's single ModuleLoader, attached to whichever screen shows the module.
+    required property ModuleLoader modules
     function syncModuleSurface() {
-        if (!sharedModules || !screen || screenName !== ShellState.pluginMonitor) return;
-        sharedModules.parent = moduleSurface;
-        sharedModules.readyToLoad = !leftDrawer.visible && !rightDrawer.visible;
+        if (!screen || screenName !== ShellState.moduleMonitor) return;
+        modules.parent = moduleSurface;
+        modules.readyToLoad = !leftDrawer.visible && !rightDrawer.visible;
     }
     Component.onCompleted: {
         if (!ShellState.monitor && screen && screen === Quickshell.screens[0]) ShellState.monitor = screenName;
         syncModuleSurface();
     }
     Component.onDestruction: {
-        if (sharedModules && sharedModules.parent === moduleSurface) sharedModules.parent = null;
+        if (modules.parent === moduleSurface) modules.parent = null;
     }
     Connections {
         target: ShellState
-        function onPluginMonitorChanged() { root.syncModuleSurface(); }
+        function onModuleMonitorChanged() { root.syncModuleSurface(); }
         function onPanelChanged() { Qt.callLater(root.syncModuleSurface); }
     }
     readonly property bool selected: !!screen && (ShellState.monitor === screenName || (!Quickshell.screens.some(s => s.name === ShellState.monitor) && screen === Quickshell.screens[0]))
-    readonly property bool moduleShown: root.screenName === ShellState.pluginMonitor && !!ShellState.pluginId
+    readonly property bool moduleShown: root.screenName === ShellState.moduleMonitor && !!ShellState.moduleId
     readonly property var pillWindow: interactionWindow.visible ? interactionWindow : bar
     readonly property bool popupOpen: languageButton.menuVisible || (root.selected && ["center", "clipboard"].includes(ShellState.panel))
     PanelWindow {
@@ -80,14 +81,14 @@ Scope {
         z: 10
         Shortcut {
             sequence: "Escape"
-            enabled: (root.screenName === ShellState.pluginMonitor && ShellState.panel === "module") || root.popupOpen
+            enabled: (root.screenName === ShellState.moduleMonitor && ShellState.panel === "module") || root.popupOpen
             onActivated: {
                 if (languageButton.menuVisible) languageButton.menuVisible = false;
                 else if (ShellState.panel === "center") {
                     if (attentionContent.item) attentionContent.item.dismiss();
                     else ShellState.dismissPanel();
                 } else if (ShellState.panel === "clipboard") ShellState.dismissPanel();
-                else ShellState.close();
+                else ShellState.showDesktop();
             }
         }
         Row {
@@ -152,13 +153,6 @@ Scope {
             // retain full-screen geometry so opening one cannot reset layouts.
             width: root.screenWidth; height: root.screenHeight
             visible: root.moduleShown
-            ModuleLoader {
-                anchors.fill: parent
-                enabled: !root.sharedModules
-                visible: !root.sharedModules
-                screenName: root.sharedModules ? "__shared__" : root.screenName
-                readyToLoad: !leftDrawer.visible && !rightDrawer.visible
-            }
         }
     }
     DrawerWindow {

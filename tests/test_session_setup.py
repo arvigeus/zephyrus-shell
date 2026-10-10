@@ -30,34 +30,30 @@ class SetupTests(unittest.TestCase):
             self.assertIn(
                 ".config/systemd/user/hypridle.service.d/idle-policy.conf\treplace\tnever", first
             )
-            self.assertIn(".config/gtk-3.0/settings.ini\treplace\tunchanged", first)
-            self.assertEqual(len(first), len(module.session_files(config)[0]))
+            self.assertIn(".config/kdeglobals\treplace\tunchanged", first)
+            files, seeds = module.session_files(config)
+            self.assertEqual(len(first), len(files) + len(seeds))
             self.assertFalse(list(home.rglob("*.before-zephyrus")))
             self.assertFalse((home / ".local/state").exists())
             (config / "hypr/hyprland.lua").write_text("wrong")
             with self.assertRaisesRegex(ValueError, "Incorrect session"):
                 module.check(config, Path("/usr/share/zephyrus-shell"))
 
-    def test_session_defaults_are_copied_and_restored(self):
+    def test_seed_defaults_fill_gaps_and_survive_theme_edits_and_teardown(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             config, state = root / "config", root / "state"
+            config.mkdir()
+            (config / "dolphinrc").write_text("personal")
             module = setup_module()
             module.install(config, state, root / "checkout")
-            settings = config / "gtk-3.0/settings.ini"
-            self.assertFalse(settings.is_symlink())
-            self.assertEqual(
-                settings.read_text(),
-                (Path(__file__).resolve().parents[1] / "desktop/defaults/settings.ini").read_text(),
-            )
-            settings.write_text("edited")
-            with self.assertRaisesRegex(ValueError, "edited"):
-                module.teardown(state)
-            settings.write_text(
-                (Path(__file__).resolve().parents[1] / "desktop/defaults/settings.ini").read_text()
-            )
+            kdeglobals = config / "kdeglobals"
+            self.assertIn("TerminalApplication=kitty", kdeglobals.read_text())
+            self.assertEqual((config / "dolphinrc").read_text(), "personal")
+            self.assertFalse((config / "dolphinrc.before-zephyrus").exists())
+            kdeglobals.write_text("theme sync edit")
             module.teardown(state)
-            self.assertFalse(settings.exists())
+            self.assertEqual(kdeglobals.read_text(), "theme sync edit")
 
     def test_installed_session_path_is_used_by_generated_config(self):
         with tempfile.TemporaryDirectory() as directory:

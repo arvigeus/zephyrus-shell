@@ -152,12 +152,7 @@ def snapshot():
                 else "Config removed. Disconnect to remove this tunnel.",
             }
         )
-    return {
-        "profiles": profiles,
-        "available": available,
-        "error": error,
-        "directory": str(directory),
-    }
+    return {"profiles": profiles, "available": available, "error": error}
 
 
 def read_config(path):

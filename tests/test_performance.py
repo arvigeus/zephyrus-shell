@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location(
-    "benchmark_shell", Path(__file__).resolve().parents[1] / "scripts/benchmark-shell.py"
+    "benchmark_shell", Path(__file__).resolve().parent / "perf/benchmark.py"
 )
 assert SPEC and SPEC.loader
 benchmark = importlib.util.module_from_spec(SPEC)

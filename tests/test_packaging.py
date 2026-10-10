@@ -33,7 +33,6 @@ class PackageTests(unittest.TestCase):
             self.assertIn(f"depends = {dependency}", self.srcinfo)
         for dependency in (
             "zephyrus-shell-session-git",
-            "hyprqt6engine",
             "networkmanager",
             "bluez",
             "switcheroo-control",
@@ -53,6 +52,9 @@ class PackageTests(unittest.TestCase):
             "ddcutil",
             "cliphist",
             "python-dbus",
+            "kvantum",
+            "kvantum-qt5",
+            "plasma-integration",
         ):
             self.assertIn(f"depends = {dependency}", self.srcinfo)
         self.assertIn("makedepends = git", self.srcinfo)
@@ -145,7 +147,6 @@ class PackageTests(unittest.TestCase):
                 "usr/bin/zephyrus-shell",
                 "usr/bin/zephyrus-shell-session",
                 "usr/bin/zephyrus-shell-hardware",
-                "usr/share/color-schemes/Zephyrus.colors",
                 "usr/share/wayland-sessions/zephyrus.desktop",
                 "usr/lib/systemd/user/zephyrus-clipboard@.service",
                 "usr/lib/zephyrus-shell/cpu-boost",
@@ -162,7 +163,7 @@ class PackageTests(unittest.TestCase):
             self.assertFalse(
                 (
                     stage
-                    / "usr/share/zephyrus-shell/plugins/terminal/QMLTermWidget/libqmltermwidget.so"
+                    / "usr/share/zephyrus-shell/modules/terminal/QMLTermWidget/libqmltermwidget.so"
                 ).exists()
             )
 

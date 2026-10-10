@@ -19,12 +19,6 @@ Item {
     signal failed(string message)
     signal ready()
 
-    function restart() {
-        if (!stopped) return;
-        stopped = false;
-        worker.running = true;
-    }
-
     function settle(id, result, error, errorCode) {
         const pending = callbacks[id];
         delete callbacks[id];
@@ -78,6 +72,7 @@ Item {
             root.ready();
         }
         stdinEnabled: true
+        stderr: SplitParser { onRead: data => console.warn(root.serviceName + " stderr: " + data) }
         stdout: SplitParser {
             onRead: data => {
                 if (!String(data).trim()) return;

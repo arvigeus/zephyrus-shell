@@ -30,7 +30,7 @@ does not launch applications, run theme synchronization or operate session power
 `performance.qml` uses the real `SpaceSearch`, `WindowOrderModel`, `ModuleLoader`
 and Applications entry point. It checks search result counts, window identity and
 ordering, and releases Applications via the real explicit Close lifecycle action
-(`ShellState.stopPlugin`, also used by the Spaces sidebar X). Five
+(`ShellState.stopModule`, also used by the Spaces sidebar X). Five
 process launches are the default; each includes:
 
 - 40 geometry response batches at 8, 32 and 64 windows, timed through deferred

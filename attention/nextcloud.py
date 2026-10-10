@@ -1,4 +1,4 @@
-"""Small CalDAV reader for Nextcloud calendars and task lists."""
+"""Nextcloud CalDAV: discover collections, read events and tasks, write simple items."""
 
 import re
 import xml.etree.ElementTree as ET
@@ -7,6 +7,7 @@ from urllib.parse import quote, unquote, urljoin
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from dateutil import tz
 from dateutil.rrule import rrulestr
 
 from services.nextcloud import DAVClient, NextcloudError
@@ -17,9 +18,9 @@ NS = {"d": DAV, "c": CAL}
 
 
 class Client(DAVClient):
-    def __init__(self, config, *, opener=None, provider=None):
+    def __init__(self, config, *, opener=None):
         scope = "remote.php/dav/calendars/" + quote(config.get("username", ""), safe="") + "/"
-        super().__init__(config, scope=scope, opener=opener, provider=provider)
+        super().__init__(config, scope=scope, opener=opener)
 
     def propfind(self):
         body = b"""<?xml version="1.0" encoding="utf-8"?>
@@ -114,48 +115,45 @@ class Client(DAVClient):
                     )
         return entries
 
-    def complete_task(self, task):
-        href, etag = task.get("href", ""), task.get("etag", "")
+    def rewrite(self, href, etag, kind, fields, replace):
+        """Replace properties of a single-component item, guarded by its ETag."""
         if not href or not etag:
-            raise NextcloudError("This task cannot be updated. Refresh and try again.")
+            raise NextcloudError("This item cannot be updated. Refresh and try again.")
         raw, headers = self.request("GET", href)
         if headers.get("ETag") != etag:
-            raise NextcloudError("The task changed on Nextcloud. Refresh and try again.")
+            raise NextcloudError("This item changed on Nextcloud. Refresh and try again.")
         data = raw.decode("utf-8")
-        match = re.search(r"(?ims)^BEGIN:VTODO\r?\n(.*?)^END:VTODO\r?$", data)
-        if not match:
-            raise NextcloudError("The task could not be found in its calendar item.")
-        block = match.group(1)
-        if "RRULE:" in block.upper():
-            raise NextcloudError("Recurring tasks must be completed in Nextcloud.")
-        if re.search(r"(?mi)^STATUS:COMPLETED\r?$", block):
-            return
-        newline = "\r\n" if "\r\n" in data else "\n"
-        for field, value in (
-            ("STATUS", "COMPLETED"),
-            ("PERCENT-COMPLETE", "100"),
-            ("COMPLETED", datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")),
-        ):
-            pattern = rf"(?mi)^{field}(?:;[^:]*)?:[^\r\n]*"
-            if re.search(pattern, block):
-                block = re.sub(pattern, field + ":" + value, block, count=1)
-            else:
-                block += field + ":" + value + newline
-        updated = data[: match.start(1)] + block + data[match.end(1) :]
+        due_line = next((field for field in fields if field.startswith("DUE")), None)
+        if due_line:
+            local_zone = tz.gettz()
+            existing = next((props for name, props in components(data) if name == kind), {})
+            due, _ = date_value(first(existing, "DUE"), local_zone)
+            if due and due_line.endswith(":" + due.astimezone(local_zone).strftime("%Y%m%d")):
+                # The form edits dates only; keep an unchanged due date's time of day.
+                fields = [field for field in fields if field != due_line]
+                replace = replace - {"DUE"}
         self.request(
             "PUT",
             href,
-            updated.encode(),
+            update_ical(data, kind, fields, replace | {"LAST-MODIFIED"}),
             {"Content-Type": "text/calendar; charset=utf-8", "If-Match": etag},
+        )
+
+    def complete_task(self, task):
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        self.rewrite(
+            str(task.get("href", "")),
+            str(task.get("etag", "")),
+            "VTODO",
+            ["STATUS:COMPLETED", "PERCENT-COMPLETE:100", "COMPLETED:" + stamp],
+            {"STATUS", "PERCENT-COMPLETE", "COMPLETED"},
         )
 
     def save_item(self, config, kind, entry):
         if kind not in ("VTODO", "VEVENT") or not isinstance(entry, dict):
             raise NextcloudError("The calendar item is invalid.")
         slug = str(entry.get("collection", ""))
-        selection = config.get("task_lists" if kind == "VTODO" else "calendars")
-        if selection is not None and not isinstance(selection, list):
-            raise NextcloudError("The calendar selection in attention.json is invalid.")
+        selected = selection(config, "task_lists" if kind == "VTODO" else "calendars")
         collection = next(
             (
                 item
@@ -163,7 +161,7 @@ class Client(DAVClient):
                 if item["slug"] == slug
                 and kind in item["components"]
                 and item["writable"]
-                and (selection is None or slug in selection or item["name"] in selection)
+                and chosen(item, selected)
             ),
             None,
         )
@@ -172,41 +170,48 @@ class Client(DAVClient):
         fields = entry_fields(kind, entry)
         href = str(entry.get("href", ""))
         if href:
-            etag = str(entry.get("etag", ""))
-            if not href.startswith(collection["url"]) or not etag:
+            if not href.startswith(collection["url"]):
                 raise NextcloudError("This item cannot be updated. Refresh and try again.")
-            raw, headers = self.request("GET", href)
-            if headers.get("ETag") != etag:
-                raise NextcloudError("This item changed on Nextcloud. Refresh and try again.")
-            updated = update_ical(raw.decode("utf-8"), kind, fields)
-            self.request(
-                "PUT",
-                href,
-                updated.encode("utf-8"),
-                {"Content-Type": "text/calendar; charset=utf-8", "If-Match": etag},
+            replace = (
+                {"SUMMARY", "DESCRIPTION", "DUE"}
+                | ({"DURATION"} if any(field.startswith("DUE") for field in fields) else set())
+                if kind == "VTODO"
+                else {"SUMMARY", "DESCRIPTION", "DTSTART", "DTEND", "DURATION"}
             )
-        else:
-            identity = uuid4().hex
-            href = collection["url"] + identity + ".ics"
-            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-            lines = [
-                "BEGIN:VCALENDAR",
-                "VERSION:2.0",
-                "PRODID:-//Zephyrus Shell//Attention//EN",
-                "BEGIN:" + kind,
-                "UID:" + identity + "@zephyrus-shell",
-                "DTSTAMP:" + stamp,
-                *fields,
-                "END:" + kind,
-                "END:VCALENDAR",
-            ]
-            self.request(
-                "PUT",
-                href,
-                serialize_ical(lines),
-                {"Content-Type": "text/calendar; charset=utf-8", "If-None-Match": "*"},
-            )
+            self.rewrite(href, str(entry.get("etag", "")), kind, fields, replace)
+            return {"saved": True}
+        identity = uuid4().hex
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        lines = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//Zephyrus Shell//Attention//EN",
+            "BEGIN:" + kind,
+            "UID:" + identity + "@zephyrus-shell",
+            "DTSTAMP:" + stamp,
+            *fields,
+            "END:" + kind,
+            "END:VCALENDAR",
+        ]
+        self.request(
+            "PUT",
+            collection["url"] + identity + ".ics",
+            serialize_ical(lines),
+            {"Content-Type": "text/calendar; charset=utf-8", "If-None-Match": "*"},
+        )
         return {"saved": True}
+
+
+def selection(config, key):
+    value = config.get(key)
+    if value is not None and not isinstance(value, list):
+        raise NextcloudError(f"calendar.{key} in attention.json must be a list or omitted.")
+    return value
+
+
+def chosen(collection, selected):
+    """An omitted selection includes everything; entries match a name or CalDAV slug."""
+    return selected is None or collection["slug"] in selected or collection["name"] in selected
 
 
 def escape_text(value):
@@ -234,37 +239,35 @@ def entry_fields(kind, entry):
             due = str(entry.get("due", "")).strip()
             if due:
                 fields.append("DUE;VALUE=DATE:" + date.fromisoformat(due).strftime("%Y%m%d"))
-        else:
-            starts = date.fromisoformat(str(entry.get("start_date", "")))
-            ends = date.fromisoformat(str(entry.get("end_date", "")))
-            if entry.get("all_day"):
-                if ends < starts:
-                    raise ValueError()
-                fields.extend(
-                    (
-                        "DTSTART;VALUE=DATE:" + starts.strftime("%Y%m%d"),
-                        "DTEND;VALUE=DATE:" + (ends + timedelta(days=1)).strftime("%Y%m%d"),
-                    )
-                )
-            else:
-                zone = datetime.now().astimezone().tzinfo
-                start_time = datetime.strptime(str(entry.get("start_time", "")), "%H:%M").time()
-                end_time = datetime.strptime(str(entry.get("end_time", "")), "%H:%M").time()
-                start_at = datetime.combine(starts, start_time, tzinfo=zone)
-                end_at = datetime.combine(ends, end_time, tzinfo=zone)
-                if end_at <= start_at:
-                    raise ValueError()
-                fields.extend(
-                    (
-                        "DTSTART:" + start_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ"),
-                        "DTEND:" + end_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ"),
-                    )
-                )
+            return fields
+        starts = date.fromisoformat(str(entry.get("start_date", "")))
+        ends = date.fromisoformat(str(entry.get("end_date", "")))
+        if entry.get("all_day"):
+            if ends < starts:
+                raise ValueError()
+            return [
+                *fields,
+                "DTSTART;VALUE=DATE:" + starts.strftime("%Y%m%d"),
+                "DTEND;VALUE=DATE:" + (ends + timedelta(days=1)).strftime("%Y%m%d"),
+            ]
+        # Naive astimezone() applies the local zone's offset for that date, DST included.
+        start_at = datetime.combine(
+            starts, datetime.strptime(str(entry.get("start_time", "")), "%H:%M").time()
+        ).astimezone()
+        end_at = datetime.combine(
+            ends, datetime.strptime(str(entry.get("end_time", "")), "%H:%M").time()
+        ).astimezone()
+        if end_at <= start_at:
+            raise ValueError()
+        return [
+            *fields,
+            "DTSTART:" + start_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ"),
+            "DTEND:" + end_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ"),
+        ]
     except (ValueError, OverflowError) as error:
         raise NextcloudError(
             "Check the date and time. Use YYYY-MM-DD and HH:MM, with the end after the start."
         ) from error
-    return fields
 
 
 def unfold_ical(data):
@@ -291,7 +294,8 @@ def serialize_ical(lines):
     return ("\r\n".join(folded) + "\r\n").encode("utf-8")
 
 
-def update_ical(data, kind, fields):
+def update_ical(data, kind, fields, replace):
+    """Drop the component's top-level `replace` properties and append `fields`."""
     lines = unfold_ical(data)
     opening, closing = "BEGIN:" + kind, "END:" + kind
     starts = [index for index, line in enumerate(lines) if line.upper() == opening]
@@ -302,39 +306,31 @@ def update_ical(data, kind, fields):
         end = lines.index(closing, start + 1)
     except ValueError as error:
         raise NextcloudError("Nextcloud returned an invalid calendar item.") from error
-    block = lines[start + 1 : end]
     depth = 0
     kept = []
-    replace = {"SUMMARY", "DESCRIPTION", "DUE", "DTSTART", "DTEND", "LAST-MODIFIED"}
-    for line in block:
+    for line in lines[start + 1 : end]:
         key = line.split(":", 1)[0].split(";", 1)[0].upper()
         if depth == 0 and key in ("RRULE", "RECURRENCE-ID"):
             raise NextcloudError("Recurring items must be edited in Nextcloud.")
         if depth == 0 and key in replace:
             continue
         kept.append(line)
-        if line.upper().startswith("BEGIN:"):
+        if key == "BEGIN":
             depth += 1
-        elif line.upper().startswith("END:"):
+        elif key == "END":
             depth -= 1
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    lines[start + 1 : end] = kept + fields + ["LAST-MODIFIED:" + stamp]
-    return serialize_ical(lines).decode("utf-8")
+    lines[start + 1 : end] = [*kept, *fields, "LAST-MODIFIED:" + stamp]
+    return serialize_ical(lines)
 
 
 def components(ics):
-    lines = []
-    for line in ics.splitlines():
-        if line.startswith((" ", "\t")) and lines:
-            lines[-1] += line[1:]
-        else:
-            lines.append(line)
+    """Return (name, {PROPERTY: [(params, value)]}) for each VEVENT and VTODO."""
     stack = []
     found = []
-    for line in lines:
+    for line in unfold_ical(ics):
         if line.startswith("BEGIN:"):
-            name = line[6:].upper()
-            stack.append((name, {}))
+            stack.append((line[6:].upper(), {}))
         elif line.startswith("END:"):
             if not stack:
                 continue
@@ -354,16 +350,16 @@ def first(props, key):
 
 
 def text_value(value):
-    return (
-        value.replace("\\n", "\n")
-        .replace("\\N", "\n")
-        .replace("\\,", ",")
-        .replace("\\;", ";")
-        .replace("\\\\", "\\")
-    )
+    # One pass, so an escaped backslash followed by "n" stays literal.
+    return re.sub(r"\\([\\;,nN])", lambda m: "\n" if m[1] in "nN" else m[1], value)
+
+
+def cancelled(props):
+    return first(props, "STATUS")[1].upper() == "CANCELLED"
 
 
 def date_value(field, local_zone):
+    """Parse a DATE or DATE-TIME property; returns (aware datetime | None, is_date)."""
     params, value = field
     if not value:
         return None, False
@@ -380,86 +376,97 @@ def date_value(field, local_zone):
     return datetime.strptime(value, "%Y%m%dT%H%M%S").replace(tzinfo=zone), False
 
 
+def utc_until(rule, zone):
+    """dateutil requires a UTC UNTIL with an aware DTSTART; RFC 5545 allows DATE/local values."""
+
+    def convert(match):
+        moment, is_date = date_value(({}, match.group(1)), zone)
+        if is_date:
+            moment += timedelta(days=1, seconds=-1)
+        return "UNTIL=" + moment.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+    return re.sub(r"(?i)UNTIL=([0-9]{8}(?:T[0-9]{6}Z?)?)", convert, rule)
+
+
+def span(props, local_zone):
+    begins, all_day = date_value(first(props, "DTSTART"), local_zone)
+    if not begins:
+        return None
+    finishes, _ = date_value(first(props, "DTEND"), local_zone)
+    default = timedelta(days=1) if all_day else timedelta(hours=1)
+    duration = finishes - begins if finishes and finishes > begins else default
+    return begins, duration, all_day
+
+
 def events_from(entries, collection, start, end, local_zone):
+    """Expand events overlapping [start, end); recurrence overrides replace their instance."""
     results = []
+
+    def add(props, href, etag, begins, finishes, all_day, editable):
+        if not (begins < end and finishes > start):
+            return
+        results.append(
+            {
+                "summary": text_value(first(props, "SUMMARY")[1]) or "Untitled event",
+                "start": begins.isoformat(),
+                "end": finishes.isoformat(),
+                "date": begins.astimezone(local_zone).date().isoformat(),
+                "last_date": (finishes - timedelta(microseconds=1))
+                .astimezone(local_zone)
+                .date()
+                .isoformat(),
+                "all_day": all_day,
+                "calendar": collection["name"],
+                "calendar_slug": collection.get("slug", ""),
+                "href": href,
+                "etag": etag,
+                "description": text_value(first(props, "DESCRIPTION")[1]),
+                "editable": editable,
+            }
+        )
+
     for href, etag, ics in entries:
         records = [props for kind, props in components(ics) if kind == "VEVENT"]
-        overrides = {}
+        overridden = set()
         for props in records:
-            if "RECURRENCE-ID" in props:
-                recurrence_id, _ = date_value(first(props, "RECURRENCE-ID"), local_zone)
-                if recurrence_id:
-                    overrides[recurrence_id.isoformat()] = props
+            if "RECURRENCE-ID" not in props:
+                continue
+            try:
+                moment, _ = date_value(first(props, "RECURRENCE-ID"), local_zone)
+                parsed = span(props, local_zone)
+            except ValueError:
+                continue
+            if moment:
+                overridden.add(moment.timestamp())
+            if parsed and not cancelled(props):
+                begins, duration, all_day = parsed
+                add(props, href, etag, begins, begins + duration, all_day, False)
         for props in records:
-            if "RECURRENCE-ID" in props or first(props, "STATUS")[1].upper() == "CANCELLED":
+            if "RECURRENCE-ID" in props or cancelled(props):
                 continue
-            begins, all_day = date_value(first(props, "DTSTART"), local_zone)
-            if not begins:
-                continue
-            finishes, _ = date_value(first(props, "DTEND"), local_zone)
-            duration = (
-                finishes - begins
-                if finishes
-                else timedelta(days=1)
-                if all_day
-                else timedelta(hours=1)
-            )
-            if duration <= timedelta(0):
-                duration = timedelta(days=1) if all_day else timedelta(hours=1)
-            occurrences = [begins]
             rule = first(props, "RRULE")[1]
-            if rule:
-                try:
-                    occurrences = rrulestr(rule, dtstart=begins).between(
-                        start - duration, end, inc=True
-                    )
-                except ValueError:
-                    occurrences = [begins]
-            excluded = set()
-            for field in props.get("EXDATE", []):
-                for value in field[1].split(","):
-                    excluded_date, _ = date_value((field[0], value), local_zone)
-                    if excluded_date:
-                        excluded.add(excluded_date.isoformat())
+            try:
+                parsed = span(props, local_zone)
+                if not parsed:
+                    continue
+                begins, duration, all_day = parsed
+                occurrences = [begins]
+                if rule:
+                    expanded = rrulestr(utc_until(rule, begins.tzinfo), dtstart=begins)
+                    occurrences = expanded.between(start - duration, end, inc=True)
+                excluded = {
+                    moment.timestamp()
+                    for params, values in props.get("EXDATE", [])
+                    for value in values.split(",")
+                    if (moment := date_value((params, value), local_zone)[0])
+                }
+            except ValueError:
+                continue
+            editable = bool(collection.get("writable")) and not rule
+            skipped = overridden | excluded
             for occurrence in occurrences:
-                override = overrides.pop(occurrence.isoformat(), None)
-                if occurrence.isoformat() in excluded and override is None:
-                    continue
-                if override and first(override, "STATUS")[1].upper() == "CANCELLED":
-                    continue
-                source = override or props
-                actual_start, actual_all_day = (
-                    date_value(first(source, "DTSTART"), local_zone)
-                    if override
-                    else (occurrence, all_day)
-                )
-                actual_end, _ = (
-                    date_value(first(source, "DTEND"), local_zone)
-                    if override
-                    else (occurrence + duration, all_day)
-                )
-                if actual_end is None:
-                    actual_end = actual_start + duration
-                if actual_start < end and actual_end > start:
-                    results.append(
-                        {
-                            "summary": text_value(first(source, "SUMMARY")[1]) or "Untitled event",
-                            "start": actual_start.isoformat(),
-                            "end": actual_end.isoformat(),
-                            "date": actual_start.astimezone(local_zone).date().isoformat(),
-                            "last_date": (actual_end - timedelta(microseconds=1))
-                            .astimezone(local_zone)
-                            .date()
-                            .isoformat(),
-                            "all_day": actual_all_day,
-                            "calendar": collection["name"],
-                            "calendar_slug": collection.get("slug", ""),
-                            "href": href,
-                            "etag": etag,
-                            "description": text_value(first(source, "DESCRIPTION")[1]),
-                            "editable": bool(collection.get("writable")) and not bool(rule),
-                        }
-                    )
+                if occurrence.timestamp() not in skipped:
+                    add(props, href, etag, occurrence, occurrence + duration, all_day, editable)
     return results
 
 
@@ -472,10 +479,14 @@ def tasks_from(entries, collection, local_zone):
                 continue
             if first(props, "PERCENT-COMPLETE")[1] == "100":
                 continue
-            due, all_day = date_value(first(props, "DUE"), local_zone)
+            try:
+                due, all_day = date_value(first(props, "DUE"), local_zone)
+            except ValueError:
+                continue
             recurring = bool(first(props, "RRULE")[1])
             if recurring and (not due or due.astimezone(local_zone).date() > today):
                 continue
+            editable = not recurring and bool(collection.get("writable", True))
             results.append(
                 {
                     "summary": text_value(first(props, "SUMMARY")[1]) or "Untitled task",
@@ -487,16 +498,17 @@ def tasks_from(entries, collection, local_zone):
                     "href": href,
                     "etag": etag,
                     "recurring": recurring,
-                    "actionable": not recurring and bool(collection.get("writable", True)),
-                    "editable": not recurring and bool(collection.get("writable", True)),
+                    "actionable": editable,
+                    "editable": editable,
                 }
             )
     return results
 
 
 def snapshot(config, *, start=None, end=None, opener=None):
+    """Collections, events for the requested range plus the upcoming window, and open tasks."""
     client = Client(config, opener=opener)
-    local_zone = datetime.now().astimezone().tzinfo
+    local_zone = tz.gettz()
     today = date.today()
     current_window = (today - timedelta(days=7), today + timedelta(days=60))
     target_window = (
@@ -508,17 +520,8 @@ def snapshot(config, *, start=None, end=None, opener=None):
     windows = (
         [combined] if (combined[1] - combined[0]).days <= 180 else [current_window, target_window]
     )
-    calendar_selection = config.get("calendars")
-    task_selection = config.get("task_lists")
-    if calendar_selection is not None and not isinstance(calendar_selection, list):
-        raise NextcloudError("nextcloud.calendars must be a list or omitted.")
-    if task_selection is not None and not isinstance(task_selection, list):
-        raise NextcloudError("nextcloud.task_lists must be a list or omitted.")
-
-    def chosen(collection, selection):
-        return (
-            selection is None or collection["slug"] in selection or collection["name"] in selection
-        )
+    calendar_selection = selection(config, "calendars")
+    task_selection = selection(config, "task_lists")
 
     events, tasks = [], []
     collections = client.propfind()

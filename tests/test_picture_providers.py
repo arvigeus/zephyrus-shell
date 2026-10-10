@@ -8,8 +8,8 @@ from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
 
-from pictures import backend, providers, video_wallpaper
-from pictures import wallpaper_engine as engine
+from modules.pictures import backend, providers, video_wallpaper
+from modules.pictures import wallpaper_engine as engine
 from services.command_provider import CommandRunner
 
 ROOT = Path(__file__).resolve().parents[1]

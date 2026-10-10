@@ -34,7 +34,6 @@ QtObject {
     }
     function select(name) { if (!busy) { applying = true; send("select", name); } }
     function edit(key, value) { if (!loaded || applying) return; const change = {}; change[key] = value; send("edit", JSON.stringify(change)); }
-    function assign(state, name) { const change = {}; change[state] = name; send("battery", JSON.stringify(change)); }
     property Connections wifiChanges: Connections { target: Networking; function onWifiEnabledChanged() { root.edit("wifi", Networking.wifiEnabled); } }
     property Connections bluetoothChanges: Connections { target: Bluetooth.defaultAdapter; function onEnabledChanged() { if (Bluetooth.defaultAdapter) root.edit("bluetooth", Bluetooth.defaultAdapter.enabled); } }
     property Process process: Process {

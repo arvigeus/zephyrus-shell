@@ -3,7 +3,7 @@ hl.config({
         gaps_in = 6, gaps_out = 12, border_size = 2,
         resize_on_border = true,
         extend_border_grab_area = 8,
-        col = { active_border = "rgba(ff465ccc)", inactive_border = "rgba(32353fff)" },
+        col = { active_border = "rgba(ff465ccc)", inactive_border = "rgba(454c4eff)" },
     },
     decoration = {
         rounding = 8,

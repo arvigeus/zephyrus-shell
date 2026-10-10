@@ -29,10 +29,6 @@ class BrowserTests(unittest.TestCase):
                 open_browser.browser_argv("games", url, path),
                 ["/tmp/game-browser", "--private", url],
             )
-            self.assertEqual(
-                open_browser.browser_argv("games", url, path, override="chromium --app"),
-                ["chromium", "--app", url],
-            )
 
 
 class ChromiumLauncherTests(unittest.TestCase):

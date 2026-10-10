@@ -14,9 +14,8 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from books import providers
-from books.backend import BooksBackend, BooksError, normalize_work, normalized_isbns
-from media.local import destination
+from modules.books.backend import BooksBackend, BooksError, normalize_work, normalized_isbns
+from modules.media.local import destination
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests/fixtures/books/command-provider.py"
@@ -261,7 +260,7 @@ class BookProviderTests(unittest.TestCase):
         package, row = self.plugin()
         row["env"] = {"FIXTURE_MODE": "timeout", "FIXTURE_ROOT": str(self.root)}
         self.configure([row])
-        with patch.object(providers, "COMMAND_TIMEOUT", 0.3):
+        with patch.object(self.backend.commands, "timeout", 0.3):
             self.assertIn("timed out", self.search()["warning"])
         self.assert_process_stopped(int((self.root / "child-pid").read_text()))
 
@@ -403,7 +402,7 @@ class BookProviderTests(unittest.TestCase):
         self.provider["env"] = {"FIXTURE_MODE": "timeout", "FIXTURE_ROOT": str(self.root)}
         self.configure()
         start = time.monotonic()
-        with patch.object(providers, "COMMAND_TIMEOUT", 0.3):
+        with patch.object(self.backend.commands, "timeout", 0.3):
             result = self.search()
         self.assertLess(time.monotonic() - start, 2)
         self.assertIn("timed out", result["warning"])
@@ -577,7 +576,7 @@ class BookProviderTests(unittest.TestCase):
             XDG_CACHE_HOME=str(self.root / "worker-cache"),
         )
         worker = subprocess.Popen(
-            [sys.executable, str(ROOT / "books/backend.py")],
+            [sys.executable, str(ROOT / "modules/books/backend.py")],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -602,7 +601,7 @@ class BookProviderTests(unittest.TestCase):
 
 
 def books_urllib_request():
-    from books import backend
+    from modules.books import backend
 
     return backend.urllib.request
 

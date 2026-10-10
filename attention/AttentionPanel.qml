@@ -7,11 +7,8 @@ import "../widgets"
 
 Rectangle {
     id: root
-    readonly property var forecast: AttentionData.forecast
     readonly property var cloud: AttentionData.cloud || ({state: "loading", events: [], tasks: [], calendars: []})
-    readonly property string weatherError: AttentionData.weatherError
     readonly property string cloudError: AttentionData.cloudError
-    readonly property bool weatherLoading: AttentionData.weatherLoading
     property bool cloudLoading: false
     property int cloudGeneration: 0
     property string compactPage: "calendar"
@@ -20,7 +17,6 @@ Rectangle {
     border.color: Theme.border
     focus: true
 
-    Component.onCompleted: forceActiveFocus()
     function dismiss() {
         if (editor.opened) editor.close();
         else ShellState.dismissPanel();
@@ -33,26 +29,19 @@ Rectangle {
         backend: "attention/backend.py"
         serviceName: "Attention"
         timeout: 45000
-        onReady: Qt.callLater(() => {
-            const now = Date.now();
-            const today = Qt.formatDate(clock.date, "yyyy-MM-dd");
-            if (!AttentionData.weatherCheckedAt || now - AttentionData.weatherCheckedAt >= 15 * 60 * 1000
-                    || (root.forecast && (!Array.isArray(root.forecast.hours)
-                        || root.forecast.days.some(day => !day.summary_source)))
-                    || (root.forecast && root.forecast.days && root.forecast.days[0].date !== today))
-                root.refreshWeather();
-            if (!AttentionData.cloudCheckedAt || AttentionData.cloudMonth !== root.monthKey()
-                    || now - AttentionData.cloudCheckedAt >= 15 * 60 * 1000)
-                root.refreshCloud();
-        })
+    }
+    Component.onCompleted: {
+        forceActiveFocus();
+        if (AttentionData.cloudMonth !== monthKey() || Date.now() - AttentionData.cloudCheckedAt >= 15 * 60 * 1000)
+            refreshCloud();
     }
 
     function monthKey() { return Qt.formatDate(calendarPane.month, "yyyy-MM"); }
-    function refreshWeather() { AttentionData.refreshWeather(true); }
     function refreshCloud(force) {
         const generation = ++cloudGeneration;
         const month = calendarPane.month;
-        const start = Qt.formatDate(new Date(month.getFullYear(), month.getMonth(), 1), "yyyy-MM-dd");
+        const key = monthKey();
+        const start = Qt.formatDate(month, "yyyy-MM-dd");
         const end = Qt.formatDate(new Date(month.getFullYear(), month.getMonth() + 1, 1), "yyyy-MM-dd");
         cloudLoading = true;
         service.request("nextcloud", {start: start, end: end, refresh: !!force}, (result, error) => {
@@ -60,28 +49,21 @@ Rectangle {
             cloudLoading = false;
             AttentionData.cloudError = error;
             AttentionData.cloudCheckedAt = Date.now();
-            if (result) {
-                AttentionData.cloudMonth = Qt.formatDate(month, "yyyy-MM");
-                AttentionData.cloud = result;
-                if (Qt.formatDate(month, "yyyy-MM") === Qt.formatDate(clock.date, "yyyy-MM")) {
-                    AttentionData.todayCloud = result;
-                    AttentionData.todayCloudMonth = Qt.formatDate(month, "yyyy-MM");
-                }
-                if (Qt.formatDate(calendarPane.month, "yyyy-MM") !== Qt.formatDate(month, "yyyy-MM")) {
-                    Qt.callLater(() => root.refreshCloud());
-                    return;
-                }
-                if (result.refresh_due && !force) Qt.callLater(() => root.refreshCloud(true));
-            }
+            if (!result) return;
+            AttentionData.cloudMonth = key;
+            AttentionData.cloud = result;
+            if (key === Qt.formatDate(clock.date, "yyyy-MM")) AttentionData.todayCloud = result;
+            if (result.refresh_due && !force) Qt.callLater(() => root.refreshCloud(true));
         });
+    }
+    function changed() {
+        refreshCloud(true);
+        if (monthKey() !== Qt.formatDate(clock.date, "yyyy-MM")) AttentionData.refreshToday();
     }
     function completeTask(task) {
         service.request("complete_task", {task: {href: task.href, etag: task.etag}}, (result, error) => {
             if (error) AttentionData.cloudError = error;
-            else {
-                refreshCloud(true);
-                if (monthKey() !== Qt.formatDate(clock.date, "yyyy-MM")) AttentionData.refreshToday();
-            }
+            else changed();
         });
     }
     function saveEntry(kind, entry) {
@@ -93,11 +75,9 @@ Rectangle {
                 return;
             }
             editor.opened = false;
-            refreshCloud(true);
-            if (monthKey() !== Qt.formatDate(clock.date, "yyyy-MM")) AttentionData.refreshToday();
+            changed();
         });
     }
-    Timer { interval: 15 * 60 * 1000; repeat: true; running: true; onTriggered: root.refreshWeather() }
     Timer { interval: 15 * 60 * 1000; repeat: true; running: true; onTriggered: root.refreshCloud() }
 
     Rectangle { x: 20; y: 0; width: 44; height: 2; color: Theme.accent }
@@ -124,11 +104,10 @@ Rectangle {
             WeatherPanel {
                 id: weatherPane
                 visible: !root.compactLayout || root.compactPage === "weather"
-                narrow: root.compactLayout
-                forecast: root.forecast
-                loading: root.weatherLoading
-                error: root.weatherError
-                onRefreshRequested: root.refreshWeather()
+                forecast: AttentionData.forecast
+                loading: AttentionData.weatherLoading
+                error: AttentionData.weatherError
+                onRefreshRequested: AttentionData.refreshWeather()
                 Layout.alignment: Qt.AlignTop
                 Layout.preferredWidth: columns.columnWidth
                 Layout.fillWidth: true
@@ -143,7 +122,7 @@ Rectangle {
                 canAddEvent: (root.cloud.calendars || []).some(item => item.writable && item.events_enabled && item.components.includes("VEVENT"))
                 onAddEventRequested: day => editor.begin("VEVENT", null, Qt.formatDate(day, "yyyy-MM-dd"), root.cloud.calendars || [])
                 onEditEventRequested: event => editor.begin("VEVENT", event, event.date, root.cloud.calendars || [])
-                onMonthChanged: if (root.cloud.state === "ready") root.refreshCloud()
+                onMonthChanged: root.refreshCloud()
                 Layout.alignment: Qt.AlignTop
                 Layout.preferredWidth: columns.columnWidth
                 Layout.fillWidth: true

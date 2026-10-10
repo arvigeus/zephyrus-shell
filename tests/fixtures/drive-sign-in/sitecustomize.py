@@ -10,9 +10,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import urlopen
 
-if sys.argv[0].endswith("plugins/files/backend.py"):
+if sys.argv[0].endswith("modules/files/backend.py"):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-    from plugins.files.cloud import GoogleDrive
+    from modules.files.cloud import GoogleDrive
     from services.jobs import current_job
     from services.storage import atomic_write
 

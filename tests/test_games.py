@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
-from games import backend as games
+from modules.games import backend as games
 
 FIXTURES = Path(__file__).parent / "fixtures/games"
 
@@ -522,6 +522,16 @@ class GamesBackendTests(unittest.TestCase):
         game["storeReferences"] = refs or []
         game = self.backend._save_game(111, game)
         return game
+
+    def test_malformed_libraryfolders_still_scans_the_default_library(self):
+        steamapps = self.root / ".steam/steam/steamapps"
+        (steamapps / "common/Sample Game").mkdir(parents=True)
+        (steamapps / "libraryfolders.vdf").write_text('"libraryfolders" { "0" {')
+        (steamapps / "appmanifest_12345.acf").write_text(
+            (FIXTURES / "appmanifest_12345.acf").read_text()
+        )
+        state = self.backend.libraries(force=True)["steam"]
+        self.assertEqual([item["externalId"] for item in state["items"]], ["12345"])
 
     def test_missing_default_catalog_key_provides_setup_state_without_network(self):
         self.config.unlink()
@@ -1148,6 +1158,9 @@ class GamesBackendTests(unittest.TestCase):
         self.assertEqual(again["summary"], hydrated["summary"])
         self.assertEqual(again["screenshots"], hydrated["screenshots"])
         self.assertFalse(again["metadataPending"])
+        # Listing the library rewrites launcher rows; Favorites must keep their metadata.
+        favorite = self.backend.browse({"favorites": True})["items"][0]
+        self.assertEqual(favorite["summary"], hydrated["summary"])
         self.backend.details({"gameId": game["id"]})
         self.assertEqual(self.backend._request.call_count, 1)
         self.backend._request.return_value["123"]["data"]["short_description"] = (

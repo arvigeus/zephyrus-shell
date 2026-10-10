@@ -4,7 +4,7 @@
 - Built-in module registry `icon` values are bundled Lucide icon names (without `.svg`).
 - The Spaces drawer lists Desktop first, then modules. Selecting a module closes the drawer and opens its content in the shared desktop overlay below the 42 px pill bar. Keep module loading and host navigation in `shell/ModuleOverlay.qml` so all modules share this behavior.
 - Plugins own their runtime resources. Open modules remain alive when selecting Desktop, another module, or Escape. Only an explicit Close (the Spaces sidebar X or `host.close()`) destroys them; background completion never changes module lifetime.
-- Keep lifecycle bookkeeping in `core/ShellState.qml`. Module hosts act on their owning instance; cross-module navigation uses `host.openPlugin(id, payload)` and destination `handleOpen(payload)`. The shell does not interpret feature records.
+- Keep lifecycle bookkeeping in `core/ShellState.qml`. Module hosts act on their owning instance; cross-module navigation uses `host.openModule(id, payload)` and destination `handleOpen(payload)`. The shell does not interpret feature records.
 - Reuse owned worker infrastructure in `services/`; optional plugin services must not become core singletons. Smoke tests use real entry points and lifecycle actions, not a parallel implementation.
 
 - Module backgrounds extend behind the pills; content starts below them. Do not add a shared heading or navigation buttons. Escape and selecting Desktop hide the module; its state and resources remain until explicit Close. Default backgrounds are translucent; optional root `property url backgroundImage` uses an opaque image background.

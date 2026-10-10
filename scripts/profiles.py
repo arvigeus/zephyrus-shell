@@ -1,13 +1,12 @@
 """User profile persistence. Defaults are versioned; edits live in XDG state."""
 
 import json
-import os
 import sys
-import tempfile
 
 import machine
 
 FILE = machine.STATE / "profiles.json"
+HARDWARE_KEYS = ("profile", "brightness", "chargeLimit")
 
 
 def load():
@@ -23,11 +22,7 @@ def load():
 
 
 def save(data):
-    FILE.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(mode="w", dir=FILE.parent, delete=False) as tmp:
-        json.dump(data, tmp, indent=2)
-        tmp.write("\n")
-    os.replace(tmp.name, FILE)
+    machine.atomic_write(FILE, json.dumps(data, indent=2) + "\n")
 
 
 def run(name, value):
@@ -37,8 +32,9 @@ def run(name, value):
         if target is None:
             raise ValueError("Unknown profile")
         errors = []
+        # wifi and bluetooth are applied by Profiles.qml through Quickshell.
         for key, setting in target["settings"].items():
-            if key in ("profile", "brightness", "gpu", "chargeLimit"):
+            if key in HARDWARE_KEYS:
                 try:
                     machine.action(key, str(setting))
                 except Exception as error:
@@ -49,19 +45,12 @@ def run(name, value):
         return dict(data=data, error="; ".join(errors))
     if name == "edit":
         changes = json.loads(value)
-        allowed = {"profile", "brightness", "gpu", "chargeLimit", "wifi", "bluetooth"}
-        if not isinstance(changes, dict) or not set(changes) <= allowed:
+        if not isinstance(changes, dict) or not set(changes) <= {*HARDWARE_KEYS, "wifi", "bluetooth"}:
             raise ValueError("Unsupported profile setting")
         next(p for p in data["profiles"] if p["name"] == data["active"])["settings"].update(changes)
         save(data)
-    if name == "battery":
-        changes = json.loads(value)
-        if not set(changes) <= {"discharging", "low", "default"} or any(
-            v and v not in [p["name"] for p in data["profiles"]] for v in changes.values()
-        ):
-            raise ValueError("Invalid battery assignment")
-        data["battery"].update(changes)
-        save(data)
+    elif name != "get":
+        raise ValueError("Unsupported profile operation")
     return dict(data=data)
 
 

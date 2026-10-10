@@ -195,6 +195,19 @@ class CacheTests(unittest.TestCase):
                 results[0],
             )
 
+    def test_concurrent_creation_does_not_fail_on_locked_database(self):
+        for _ in range(10):
+            with tempfile.TemporaryDirectory() as root:
+                barrier = threading.Barrier(8)
+
+                def create(_):
+                    barrier.wait()
+                    return JsonCache("shared", root)
+
+                with ThreadPoolExecutor(max_workers=8) as pool:
+                    caches = list(pool.map(create, range(8)))
+                self.assertEqual(len(caches), 8)
+
     def test_failure_is_not_cached_and_old_entries_are_evicted(self):
         with tempfile.TemporaryDirectory() as root:
             cache = JsonCache("test", root, limit=2)
@@ -266,8 +279,8 @@ class PlayerIpcTests(unittest.TestCase):
                 client.close.assert_called_once()
 
     def test_modules_use_shared_transport_with_separate_players(self):
-        from plugins.music import backend as music
-        from plugins.radio import backend as radio
+        from modules.music import backend as music
+        from modules.radio import backend as radio
 
         for ipc in (music.player_ipc, radio.player_ipc):
             self.assertIsInstance(ipc, MpvIpc)

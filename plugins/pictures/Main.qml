@@ -1,3 +1,0 @@
-import "../../pictures"
-
-PicturesBrowser {}

@@ -14,6 +14,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+CPU_BOOST_HELPER = Path("/usr/lib/zephyrus-shell/cpu-boost")
+STATE = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "zephyrus-shell"
+SUPPLIES = Path("/sys/class/power_supply")
+MODE = re.compile(r"(\d+)x(\d+)@([\d.]+)(?:Hz)?")
+
 
 def command(args, strict=False, timeout=8):
     result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
@@ -34,9 +40,19 @@ def backlight():
     return devices[0] if devices else None
 
 
-ROOT = Path(__file__).resolve().parents[1]
-CPU_BOOST_HELPER = Path("/usr/lib/zephyrus-shell/cpu-boost")
-STATE = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "zephyrus-shell"
+def is_internal(connector):
+    """Built-in panels use the backlight; other outputs use DDC/CI."""
+    return connector.startswith(("eDP", "LVDS", "DSI"))
+
+
+def in_hyprland():
+    return bool(os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"))
+
+
+def connected_monitors():
+    """Hyprland outputs, without its temporary headless FALLBACK output."""
+    outputs = json.loads(command(["hyprctl", "monitors", "all", "-j"], True))
+    return [m for m in outputs if m["name"] != "FALLBACK"]
 
 
 def config_directory():
@@ -82,18 +98,22 @@ def ddc_bus(connector, config, drm_root=Path("/sys/class/drm")):
     return None
 
 
+def ddc_cache(bus):
+    return STATE / f"ddc-brightness-{bus}.json"
+
+
 def ddc_brightness(bus, refresh=False, device_root=Path("/dev")):
-    cache = STATE / ("ddc-brightness-" + str(bus) + ".json")
+    """Read DDC brightness, cached for a minute: a DDC probe takes about a second."""
     if not refresh:
         try:
-            saved = json.loads(cache.read_text())
+            saved = json.loads(ddc_cache(bus).read_text())
             if time.time() - saved["checked"] < 60:
                 return saved["value"], saved["error"]
         except (OSError, ValueError, KeyError):
             pass
     value, error = None, ""
     if not shutil.which("ddcutil"):
-        error = "Install ddcutil with scripts/setup-system.sh."
+        error = "Install ddcutil for external display brightness."
     elif bus is None:
         error = "No DDC bus found. Choose a bus in Display settings."
     elif not (device_root / f"i2c-{bus}").exists():
@@ -109,7 +129,7 @@ def ddc_brightness(bus, refresh=False, device_root=Path("/dev")):
             value = round(int(match[1]) / max(1, int(match[2])) * 100)
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as problem:
             error = "Enable DDC/CI in the monitor menu. " + str(problem)
-    atomic_write(cache, json.dumps({"checked": time.time(), "value": value, "error": error}))
+    atomic_write(ddc_cache(bus), json.dumps({"checked": time.time(), "value": value, "error": error}))
     return value, error
 
 
@@ -134,7 +154,8 @@ def lua_rule(rule):
     )
 
 
-def saved_monitor_rules():
+def legacy_monitor_rules():
+    """Connector rules from the old display-settings.lua, read only for migration."""
     path = config_directory() / "display-settings.lua"
     if not path.exists():
         return {}
@@ -175,6 +196,7 @@ def display_profiles() -> dict[str, Any] | None:
 
 
 def display_setup(monitors, profiles):
+    """Rules for the connected set: its saved setup, else per-monitor memory."""
     identities = display_identities(monitors)
     key = json.dumps(sorted(identities.values()))
     if profiles is not None and key in profiles["setups"]:
@@ -186,7 +208,7 @@ def display_setup(monitors, profiles):
                 for m in monitors
             },
         )
-    legacy = saved_monitor_rules() if profiles is None else {}
+    legacy = legacy_monitor_rules() if profiles is None else {}
     rules = {}
     for monitor in monitors:
         name = monitor["name"]
@@ -196,27 +218,18 @@ def display_setup(monitors, profiles):
             rule = dict(remembered, output=name)
         elif name in legacy:
             rule = dict(legacy[name])
-        elif profiles is not None:
-            # Old connector rules may still be active in the compositor. A new
-            # physical monitor must not inherit their mode/scale/disabled state.
-            rule = {
-                "output": name,
-                "mode": "preferred",
-                "position": "auto",
-                "scale": "auto",
-                "transform": 0,
-                "disabled": False,
-            }
-        elif monitor.get("width") and monitor.get("height"):
+        elif profiles is None and monitor.get("width") and monitor.get("height"):
             rule = monitor_rule(monitor, disabled=bool(monitor.get("disabled")))
         else:
+            # A new physical monitor must not inherit the mode/scale/disabled
+            # state of connector rules that may still be active in the compositor.
             rule = {
                 "output": name,
                 "mode": "preferred",
                 "position": "auto",
                 "scale": "auto",
                 "transform": 0,
-                "disabled": bool(monitor.get("disabled")),
+                "disabled": profiles is None and bool(monitor.get("disabled")),
             }
         rules[name] = rule
     # A new topology inherits each physical monitor's settings, with a fresh
@@ -242,14 +255,6 @@ def save_display_setup(monitors, rules, profiles: dict[str, Any] | None = None):
     atomic_write(
         config_directory() / "display-profiles.json", json.dumps(profiles, indent=2) + "\n"
     )
-    # Retain the old file's JSON header for migration/debugging. Its connector
-    # rules must not run at login/reload: the connected set determines which
-    # layout is safe, and a USB-C connector can now hold a different monitor.
-    atomic_write(
-        config_directory() / "display-settings.lua",
-        "-- Zephyrus display settings: " + json.dumps(rules) + "\n"
-        "-- Layout restored by the shell from display-profiles.json.\n",
-    )
 
 
 def apply_monitor_rules(rules, persist=True, monitors=None):
@@ -263,16 +268,26 @@ def apply_monitor_rules(rules, persist=True, monitors=None):
     save_display_setup(monitors, saved, profiles)
 
 
+def reflow(ordered):
+    """Place monitors left to right in the given order, without gaps or overlap."""
+    rules, x = [], 0
+    for monitor in ordered:
+        rules.append(monitor_rule(monitor, position=f"{x}x0"))
+        width = monitor["height"] if monitor.get("transform", 0) % 2 else monitor["width"]
+        x += round(width / monitor.get("scale", 1))
+    return rules
+
+
 def display_action(name, value):
     with display_lock():
         return _display_action(name, value)
 
 
 def _display_action(name, value):
-    monitors = json.loads(command(["hyprctl", "monitors", "all", "-j"], True))
-    monitors = [m for m in monitors if m["name"] != "FALLBACK"]
+    monitors = connected_monitors()
+    enabled = [m for m in monitors if not m.get("disabled")]
     if name == "display-save":
-        if not any(not m.get("disabled") for m in monitors):
+        if not enabled:
             raise ValueError("Keep at least one display enabled")
         profiles = display_profiles()
         _, _, saved = display_setup(monitors, profiles)
@@ -287,17 +302,11 @@ def _display_action(name, value):
         return
     data = json.loads(value) if name != "primary" else {"name": value}
     if name == "display-order":
-        enabled = [m for m in monitors if not m.get("disabled")]
         order = data.get("order", [])
         if len(order) != len(enabled) or set(order) != {m["name"] for m in enabled}:
             raise ValueError("Order must include every enabled display exactly once")
-        rules, x = [], 0
-        for connector in order:
-            monitor = next(m for m in enabled if m["name"] == connector)
-            rules.append(monitor_rule(monitor, position=f"{x}x0"))
-            width = monitor["height"] if monitor.get("transform", 0) % 2 else monitor["width"]
-            x += round(width / monitor.get("scale", 1))
-        apply_monitor_rules(rules, monitors=monitors)
+        by_name = {m["name"]: m for m in enabled}
+        apply_monitor_rules(reflow(by_name[connector] for connector in order), monitors=monitors)
         return
     monitor = next((m for m in monitors if m["name"] == data.get("name")), None)
     if not monitor or not re.fullmatch(r"[A-Za-z0-9_-]+", monitor["name"]):
@@ -319,27 +328,23 @@ def _display_action(name, value):
     elif name == "display":
         if not isinstance(data.get("enabled"), bool):
             raise ValueError("Expected display state")
-        if (
-            not data["enabled"]
-            and not monitor.get("disabled")
-            and len([m for m in monitors if not m.get("disabled")]) <= 1
-        ):
+        if not data["enabled"] and not monitor.get("disabled") and len(enabled) <= 1:
             raise ValueError("Keep at least one display enabled")
         # Keep geometry along with the preference, including when an output is
         # disabled and Hyprland no longer reports its original mode/scale.
-        _, _, saved = display_setup(monitors, display_profiles())
-        rule = saved[connector]
-        if not monitor.get("disabled"):
-            rule = monitor_rule(monitor)
-        rule = dict(rule, disabled=not data["enabled"])
-        apply_monitor_rules([rule], monitors=monitors)
+        rule = (
+            display_setup(monitors, display_profiles())[2][connector]
+            if monitor.get("disabled")
+            else monitor_rule(monitor)
+        )
+        apply_monitor_rules([dict(rule, disabled=not data["enabled"])], monitors=monitors)
     elif name in ("display-mode", "display-scale"):
         if monitor.get("disabled"):
             raise ValueError("Enable the display first")
         if name == "display-mode":
             if data.get("mode") not in monitor.get("availableModes", []):
                 raise ValueError("Unsupported display mode")
-            mode = re.fullmatch(r"(\d+)x(\d+)@([\d.]+)(?:Hz)?", data["mode"])
+            mode = MODE.fullmatch(data["mode"])
             if not mode:
                 raise ValueError("Unsupported display mode format")
             monitor.update(width=int(mode[1]), height=int(mode[2]), refreshRate=float(mode[3]))
@@ -348,14 +353,11 @@ def _display_action(name, value):
             if scale not in (1, 1.25, 1.5, 1.75, 2):
                 raise ValueError("Unsupported display scale")
             monitor["scale"] = scale
-        rules, x = [], 0
-        for item in sorted(
-            (m for m in monitors if not m.get("disabled")), key=lambda m: m.get("x", 0)
-        ):
-            rules.append(monitor_rule(item, position=f"{x}x0"))
-            width = item["height"] if item.get("transform", 0) % 2 else item["width"]
-            x += round(width / item.get("scale", 1))
-        apply_monitor_rules(rules, monitors=monitors)
+        apply_monitor_rules(
+            reflow(sorted(enabled, key=lambda m: m.get("x", 0))), monitors=monitors
+        )
+    else:
+        raise ValueError("Unsupported display action")
 
 
 def primary_monitor(monitors):
@@ -381,35 +383,31 @@ def monitor_rule_matches(monitor, rule):
         or rule.get("mode") in ("preferred", "highres", "highrr")
     ):
         return False
-    if rule.get("scale") != "auto" and abs(monitor.get("scale", 1) - rule.get("scale", 1)) > 0.001:
-        return False
-    if monitor.get("transform", 0) != rule.get("transform", 0):
-        return False
-    if (
-        rule.get("position") != "auto"
-        and rule.get("position") != f"{monitor.get('x', 0)}x{monitor.get('y', 0)}"
-    ):
-        return False
-    mode = re.fullmatch(r"(\d+)x(\d+)@([\d.]+)(?:Hz)?", rule.get("mode", "preferred"))
-    return not mode or (
-        monitor.get("width") == int(mode[1])
-        and monitor.get("height") == int(mode[2])
-        and abs(monitor.get("refreshRate", 0) - float(mode[3])) < 0.1
+    mode = MODE.fullmatch(rule.get("mode", ""))
+    return (
+        abs(monitor.get("scale", 1) - rule.get("scale", 1)) <= 0.001
+        and monitor.get("transform", 0) == rule.get("transform", 0)
+        and rule.get("position") == f"{monitor.get('x', 0)}x{monitor.get('y', 0)}"
+        and (
+            not mode
+            or (
+                monitor.get("width") == int(mode[1])
+                and monitor.get("height") == int(mode[2])
+                and abs(monitor.get("refreshRate", 0) - float(mode[3])) < 0.1
+            )
+        )
     )
 
 
 def restore_display_setup():
-    monitors = json.loads(command(["hyprctl", "monitors", "all", "-j"], True))
-    real = [m for m in monitors if m["name"] != "FALLBACK"]
+    real = connected_monitors()
     if not real:
         return []
     profiles = display_profiles()
     _, key, saved = display_setup(real, profiles)
     desired = [m for m in real if not saved[m["name"]].get("disabled")]
     if not desired:
-        destination = next(
-            (m for m in real if m["name"].startswith(("eDP", "LVDS", "DSI"))), real[0]
-        )
+        destination = next((m for m in real if is_internal(m["name"])), real[0])
         # Preserve mode/scale/rotation when making the last attached screen
         # usable. This belongs to the laptop-only setup, not its docked one.
         saved[destination["name"]] = dict(
@@ -426,53 +424,42 @@ def restore_display_setup():
 
 
 def recover_displays(wake=False):
-    """Recover a laptop output after a topology change, never during idle polling.
+    """Reapply the connected setup's layout after a topology change or wake.
 
     Hyprland moves windows/workspaces when it removes an output. Enabling a real
     output also recovers workspaces parked on its temporary fallback monitor.
     """
-    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+    if not in_hyprland():
         return
     with display_lock():
         enabled = restore_display_setup()
     # A disabled output and DPMS blanking are different states. Wake the sole
     # internal panel if the external screen has disappeared while it was blank.
-    if wake:
-        for monitor in enabled:
-            command(
-                [
-                    "hyprctl",
-                    "dispatch",
-                    'hl.dsp.dpms({ action = "enable", monitor = '
-                    + json.dumps(monitor["name"])
-                    + " })",
-                ],
-                True,
-            )
-    elif len(enabled) == 1 and enabled[0]["name"].startswith(("eDP", "LVDS", "DSI")):
+    if not wake and not (len(enabled) == 1 and is_internal(enabled[0]["name"])):
+        return
+    for monitor in enabled:
         command(
             [
                 "hyprctl",
                 "dispatch",
-                'hl.dsp.dpms({ action = "enable", monitor = '
-                + json.dumps(enabled[0]["name"])
-                + " })",
+                'hl.dsp.dpms({ action = "enable", monitor = ' + json.dumps(monitor["name"]) + " })",
             ],
             True,
         )
+
+
+ASUS_PROFILES = {"power-saver": "Quiet", "balanced": "Balanced", "performance": "Performance"}
 
 
 def power_status():
     # Avoid D-Bus activation of a competing power daemon on ASUS machines.
     if shutil.which("asusctl") and command(["systemctl", "is-active", "asusd.service"]) == "active":
         available = command(["asusctl", "profile", "list"]).splitlines()
-        result = command(["asusctl", "profile", "get"])
-        active = re.search(r"Active profile:\s*(\w+)", result)
-        mapping = {"Quiet": "power-saver", "Balanced": "balanced", "Performance": "performance"}
+        active = re.search(r"Active profile:\s*(\w+)", command(["asusctl", "profile", "get"]))
         return {
             "backend": "asusd",
-            "profile": mapping.get(active[1], "") if active else "",
-            "profiles": [mapping[v] for v in available if v in mapping],
+            "profile": next((k for k, v in ASUS_PROFILES.items() if active and v == active[1]), ""),
+            "profiles": [k for k, v in ASUS_PROFILES.items() if v in available],
         }
     if (
         shutil.which("powerprofilesctl")
@@ -482,19 +469,9 @@ def power_status():
         return {
             "backend": "ppd",
             "profile": command(["powerprofilesctl", "get"]),
-            "profiles": [
-                v for v in ("power-saver", "balanced", "performance") if v + ":" in available
-            ],
+            "profiles": [v for v in ASUS_PROFILES if v + ":" in available],
         }
     return {"backend": "", "profile": "", "profiles": []}
-
-
-def gpu_status():
-    return {
-        "mode": "",
-        "modes": [],
-        "error": "Applications select GPUs through switcheroo-control. Use ROG Control Center for supported firmware GPU modes; changes may require a reboot.",
-    }
 
 
 def scheduled_shutdown():
@@ -566,6 +543,7 @@ def gpu_hardware():
             name = f"AMD Radeon RX {series[1]}000 series" if series else name.split(" [", 1)[0]
         else:
             name = re.sub(r"\s*\[[^]]+\]", "", name).strip()
+        # Reading a suspended dGPU would wake it.
         busy = (
             read(device / "gpu_busy_percent")
             if read(device / "power/runtime_status") != "suspended"
@@ -603,7 +581,7 @@ def boost_control_error():
         if not os.access(CPU_BOOST_HELPER, os.X_OK):
             raise FileNotFoundError()
     except OSError:
-        return "Install CPU boost control with sudo bash scripts/install-controls.sh."
+        return "Install the zephyrus-shell package for CPU boost control."
     return ""
 
 
@@ -670,7 +648,7 @@ def hardware(*, hwmon_root=Path("/sys/class/hwmon")):
     }
 
 
-def external_power_online(supply_root=Path("/sys/class/power_supply")):
+def external_power_online(supply_root=SUPPLIES):
     """Keep adapter presence separate from a pack's charging/discharging state."""
     readings = []
     for supply in sorted(supply_root.glob("*")):
@@ -700,8 +678,8 @@ def battery_status_text(status, external_power):
     return description
 
 
-def battery_details(*, supply_root=Path("/sys/class/power_supply")):
-    """Read pack details only on expansion, without commands or privileged access."""
+def battery_details(*, supply_root=SUPPLIES):
+    """System battery packs from sysfs, without commands or privileged access."""
 
     def number(pack, field):
         try:
@@ -744,9 +722,8 @@ def battery_details(*, supply_root=Path("/sys/class/power_supply")):
             else None
         )
         status = read(pack / "status")
-        charge_limit = number(pack, "charge_control_end_threshold")
-        if charge_limit is None or not 50 <= charge_limit <= 100:
-            charge_limit = 100
+        threshold = number(pack, "charge_control_end_threshold")
+        charge_limit = threshold if threshold is not None and 50 <= threshold <= 100 else 100
         rate = power if unit == "Wh" else current
         seconds = None
         if (
@@ -785,6 +762,7 @@ def battery_details(*, supply_root=Path("/sys/class/power_supply")):
                 "watts": watts,
                 "seconds": seconds,
                 "chargeLimit": charge_limit,
+                "chargeLimitSupported": threshold is not None,
                 "cycles": number(pack, "cycle_count"),
                 "temperature": temperature / 10 if temperature is not None else None,
             }
@@ -792,129 +770,135 @@ def battery_details(*, supply_root=Path("/sys/class/power_supply")):
     return {"batteries": packs}
 
 
-def snapshot(refresh_ddc=False):
-    light = backlight()
-    batteries = [
-        p
-        for p in Path("/sys/class/power_supply").glob("*")
-        if read(p / "type") == "Battery" and read(p / "scope") != "Device"
-    ]
-    battery = batteries[0] if batteries else None
-    power_policy = power_status()
-    monitors = (
-        json.loads(command(["hyprctl", "monitors", "all", "-j"]) or "[]")
-        if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
-        else []
+def battery_summary(pack, charge_limit_control):
+    """The one-line battery state under the drawer's battery bar."""
+    if pack is None:
+        return {"batteryPresent": False, "batteryInfo": "", "chargeLimit": ""}
+    minutes = round((pack["seconds"] or 0) / 60)
+    info = (
+        f"{minutes // 60}h {minutes % 60}m "
+        + ("until charged" if pack["status"] == "Charging" else "remaining")
+        if minutes
+        else pack["statusText"]
     )
+    if pack["status"] == "Discharging" and pack["watts"]:
+        info += f" · {pack['watts']:.1f} W"
+    return {
+        "batteryPresent": True,
+        "batteryPercent": pack["percent"] or 0,
+        "batteryStatus": pack["status"],
+        "batteryInfo": info,
+        # The slider is enabled only where the charge-limit action can work.
+        "chargeLimit": round(pack["chargeLimit"])
+        if charge_limit_control and pack["chargeLimitSupported"]
+        else "",
+    }
+
+
+def brightness_target(monitors):
+    """The primary output and, for an external one, its DDC bus."""
+    primary = primary_monitor(monitors)
+    external = bool(primary) and not is_internal(primary)
+    return primary, external, ddc_bus(primary, display_config()) if external else None
+
+
+def snapshot(refresh_ddc=False):
+    power_policy = power_status()
+    monitors = []
+    if in_hyprland():
+        try:
+            monitors = connected_monitors()
+        except (RuntimeError, ValueError, OSError, subprocess.SubprocessError):
+            pass
     aliases = display_config()
     for monitor in monitors:
         monitor["label"] = aliases.get(monitor["name"], {}).get(
             "label", monitor.get("description") or monitor["name"]
         )
-    primary = primary_monitor(monitors)
-    power = float(read(battery / "power_now", "0")) / 1000000 if battery else 0
-    energy = float(read(battery / "energy_now", "0")) / 1000000 if battery else 0
-    full = float(read(battery / "energy_full", "0")) / 1000000 if battery else 0
-    status = read(battery / "status") if battery else ""
-    external_power = external_power_online()
-    hours = ((full - energy) if status == "Charging" else energy) / power if power > 0 else 0
-    minutes = round(max(0, hours) * 60)
-    estimate_available = (
-        status == "Charging" or status == "Discharging" and external_power is not True
-    )
-    battery_info = (
-        (
-            f"{minutes // 60}h {minutes % 60}m "
-            + ("until charged" if status == "Charging" else "remaining")
-        )
-        if minutes and estimate_available
-        else battery_status_text(status, external_power)
-        if battery
-        else ""
-    )
-    if power > 0 and status == "Discharging":
-        battery_info += f" · {power:.1f} W"
-    external = (
-        ddc_bus(primary, aliases) if primary and not primary.startswith(("eDP", "LVDS")) else None
-    )
-    brightness_error = ""
-    brightness = (
-        round(
-            int(read(light / "brightness", "0"))
-            / max(1, int(read(light / "max_brightness", "1")))
-            * 100
-        )
-        if light
-        else 0
-    )
-    can_brighten = bool(light) and (not primary or primary.startswith(("eDP", "LVDS")))
-    if primary and not primary.startswith(("eDP", "LVDS")):
-        value, brightness_error = ddc_brightness(external, refresh=refresh_ddc)
-        can_brighten = value is not None
-        brightness = value or 0
-    for monitor in monitors:
         monitor["ddcBus"] = (
-            ddc_bus(monitor["name"], aliases)
-            if not monitor["name"].startswith(("eDP", "LVDS"))
-            else None
+            None if is_internal(monitor["name"]) else ddc_bus(monitor["name"], aliases)
         )
     monitors.sort(key=lambda m: (bool(m.get("disabled")), m.get("x", 0), m.get("y", 0)))
+    primary, external, bus = brightness_target(monitors)
+    light = backlight()
+    brightness_error = ""
+    if external:
+        value, brightness_error = ddc_brightness(bus, refresh=refresh_ddc)
+        can_brighten, brightness = value is not None, value or 0
+    else:
+        can_brighten = light is not None
+        brightness = (
+            round(
+                int(read(light / "brightness", "0"))
+                / max(1, int(read(light / "max_brightness", "1")))
+                * 100
+            )
+            if light
+            else 0
+        )
+    packs = battery_details()["batteries"]
     return dict(
         hardware=hardware(),
-        gpu=gpu_status(),
         primary=primary,
         brightnessAvailable=can_brighten,
         brightnessError=brightness_error,
-        ddcBuses=[int(p.name.removeprefix("i2c-")) for p in sorted(Path("/dev").glob("i2c-*"))],
-        batteryPercent=int(read(battery / "capacity", "0")) if battery else 0,
-        batteryStatus=status,
-        batteryInfo=battery_info,
-        externalPower=external_power,
-        model=read("/sys/class/dmi/id/product_name", "Linux desktop"),
-        backlight=light.name if light else "",
         brightness=brightness,
-        battery=f"{read(battery / 'capacity')}% · {read(battery / 'status')}" if battery else "",
-        chargeLimit=read(battery / "charge_control_end_threshold") if battery else "",
-        nmcli=bool(shutil.which("nmcli")),
-        wifi=command(["nmcli", "radio", "wifi"]) if shutil.which("nmcli") else "",
-        network=command(["nmcli", "-t", "-f", "NAME", "connection", "show", "--active"])
-        if shutil.which("nmcli")
-        else "",
-        networkEditor=bool(shutil.which("nm-connection-editor")),
-        bluetoothEditor=bool(shutil.which("blueman-manager") or shutil.which("systemsettings")),
+        ddcBuses=[int(p.name.removeprefix("i2c-")) for p in sorted(Path("/dev").glob("i2c-*"))],
+        **battery_summary(packs[0] if packs else None, power_policy["backend"] == "asusd"),
+        model=read("/sys/class/dmi/id/product_name", "Linux desktop"),
         profile=power_policy["profile"],
         profiles=power_policy["profiles"],
-        powerBackend=power_policy["backend"],
         scheduledShutdown=scheduled_shutdown(),
         asus=bool(shutil.which("asusctl")),
-        hyprland=bool(os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")),
+        hyprland=in_hyprland(),
         monitors=monitors,
     )
 
 
+def set_brightness(percent):
+    if not 5 <= percent <= 100:
+        raise ValueError("Brightness must be between 5 and 100")
+    _, external, bus = brightness_target(connected_monitors() if in_hyprland() else [])
+    if external:
+        if bus is None:
+            raise ValueError("No DDC bus found. Choose one in Display settings.")
+        command(["ddcutil", "--bus", str(int(bus)), "setvcp", "10", str(percent)], True)
+        ddc_cache(bus).unlink(missing_ok=True)
+        return
+    light = backlight()
+    if light is None:
+        raise RuntimeError("No backlight device")
+    if shutil.which("brightnessctl"):
+        command(["brightnessctl", "-d", light.name, "set", f"{percent}%"], True)
+        return
+    level = max(1, round(int(read(light / "max_brightness")) * percent / 100))
+    command(
+        [
+            "busctl",
+            "--system",
+            "call",
+            "org.freedesktop.login1",
+            "/org/freedesktop/login1/session/auto",
+            "org.freedesktop.login1.Session",
+            "SetBrightness",
+            "ssu",
+            "backlight",
+            light.name,
+            str(level),
+        ],
+        True,
+    )
+
+
 def action(name, value):
-    if name == "wifi" and value in ("on", "off"):
-        command(["nmcli", "radio", "wifi", value], True)
-    elif name == "profile" and value in ("power-saver", "balanced", "performance"):
+    if name == "profile" and value in ASUS_PROFILES:
         policy = power_status()
         if value not in policy["profiles"]:
             raise ValueError("Power profile is unavailable")
         if policy["backend"] == "asusd":
-            command(
-                [
-                    "asusctl",
-                    "profile",
-                    "set",
-                    {"power-saver": "Quiet", "balanced": "Balanced", "performance": "Performance"}[
-                        value
-                    ],
-                ],
-                True,
-            )
+            command(["asusctl", "profile", "set", ASUS_PROFILES[value]], True)
         else:
             command(["powerprofilesctl", "set", value], True)
-    elif name == "gpu":
-        raise ValueError("Use the application's GPU selection or ROG Control Center")
     elif name == "cpu-boost" and value in ("on", "off"):
         error = boost_control_error()
         if error:
@@ -924,20 +908,11 @@ def action(name, value):
         percent = int(value)
         if not 50 <= percent <= 100:
             raise ValueError("Charge limit must be between 50 and 100")
-        battery = next(
-            (
-                p
-                for p in Path("/sys/class/power_supply").glob("*")
-                if read(p / "type") == "Battery" and (p / "charge_control_end_threshold").exists()
-            ),
-            None,
-        )
-        if battery is None:
+        if not any(pack["chargeLimitSupported"] for pack in battery_details()["batteries"]):
             raise ValueError("Charge limit is unavailable")
-        if power_status()["backend"] == "asusd":
-            command(["asusctl", "battery", "limit", str(percent)], True)
-        else:
+        if power_status()["backend"] != "asusd":
             raise ValueError("Use your system's battery charge-limit settings")
+        command(["asusctl", "battery", "limit", str(percent)], True)
     elif name == "schedule-poweroff":
         if value not in ("15", "30", "60", "90", "120", "180", "240", "300"):
             raise ValueError("Unsupported shutdown delay")
@@ -961,64 +936,10 @@ def action(name, value):
     ):
         display_action(name, value)
     elif name == "brightness":
-        percent = int(value)
-        if not 5 <= percent <= 100:
-            raise ValueError("Brightness must be between 5 and 100")
-        monitors = (
-            json.loads(command(["hyprctl", "monitors", "all", "-j"]) or "[]")
-            if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
-            else []
-        )
-        primary = primary_monitor(monitors)
-        bus = (
-            ddc_bus(primary, display_config())
-            if primary and not primary.startswith(("eDP", "LVDS"))
-            else None
-        )
-        if bus is not None:
-            command(["ddcutil", "--bus", str(int(bus)), "setvcp", "10", str(percent)], True)
-            (STATE / ("ddc-brightness-" + str(bus) + ".json")).unlink(missing_ok=True)
-            return {"ok": True}
-        if primary and not primary.startswith(("eDP", "LVDS")):
-            raise ValueError("No DDC bus found. Choose one in Display settings.")
-        light = backlight()
-        if light is None:
-            raise RuntimeError("No backlight device")
-        if shutil.which("brightnessctl"):
-            command(["brightnessctl", "-d", light.name, "set", f"{percent}%"], True)
-        else:
-            level = max(1, round(int(read(light / "max_brightness")) * percent / 100))
-            command(
-                [
-                    "busctl",
-                    "--system",
-                    "call",
-                    "org.freedesktop.login1",
-                    "/org/freedesktop/login1/session/auto",
-                    "org.freedesktop.login1.Session",
-                    "SetBrightness",
-                    "ssu",
-                    "backlight",
-                    light.name,
-                    str(level),
-                ],
-                True,
-            )
-    elif name in ("networks", "bluetooth"):
-        args = (
-            ["nm-connection-editor"]
-            if name == "networks"
-            else ["blueman-manager"]
-            if shutil.which("blueman-manager")
-            else ["systemsettings", "kcm_bluetooth"]
-        )
-        # External settings applications intentionally survive the drawer.
-        subprocess.Popen(
-            args, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        set_brightness(int(value))
     elif name in ("suspend", "reboot", "poweroff"):
         command(["systemctl", name], True)
-    elif name == "logout" and os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+    elif name == "logout" and in_hyprland():
         managed = (
             subprocess.run(
                 ["uwsm", "check", "is-active"], capture_output=True, timeout=5

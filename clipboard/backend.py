@@ -87,21 +87,26 @@ def mime_type(data):
         return "application/octet-stream"
 
 
-def thumbnail(identifier):
+def checked(identifier):
+    identifier = str(identifier)
     if not re.fullmatch(r"[0-9]+", identifier):
         raise ValueError("Choose a clipboard entry.")
-    entry = next((entry for entry in entries() if entry["id"] == identifier), None)
-    if not entry or not entry["image"]:
+    return identifier
+
+
+def decode(identifier):
+    # cliphist 0.7 reads a list row ("id<TAB>preview"); the preview may be empty.
+    return command("cliphist", "decode", data=(identifier + "\t\n").encode())
+
+
+def thumbnail(identifier):
+    data = decode(identifier)
+    extension = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
+    suffix = extension.get(mime_type(data))
+    if not suffix:
         return {"image": False, "source": ""}
-    row = identifier + "\t" + entry["preview"] + "\n"
-    data = command("cliphist", "decode", data=row.encode())
-    mime = mime_type(data)
-    extensions = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
-    extension = extensions.get(mime)
-    if not extension:
-        return {"image": False, "source": ""}
-    path = Path(_thumbnail_directory.name) / (identifier + "." + extension)
-    temporary = path.with_suffix(path.suffix + ".tmp")
+    path = Path(_thumbnail_directory.name) / (identifier + "." + suffix)
+    temporary = path.with_suffix(".tmp")
     temporary.write_bytes(data)
     temporary.replace(path)
     return {"image": True, "source": path.as_uri()}
@@ -111,22 +116,14 @@ def run(request):
     op = request["op"]
     if op == "list":
         return {"entries": entries()}
-    if op == "thumbnail":
-        return thumbnail(str(request.get("entry_id", "")))
     if op == "clear":
         command("cliphist", "wipe")
         return {"entries": []}
-    identifier = str(request.get("entry_id", ""))
-    if not re.fullmatch(r"[0-9]+", identifier):
-        raise ValueError("Choose a clipboard entry.")
+    identifier = checked(request.get("entry_id", ""))
+    if op == "thumbnail":
+        return thumbnail(identifier)
     if op == "copy":
-        entry = next((entry for entry in entries() if entry["id"] == identifier), None)
-        if not entry:
-            raise ValueError("That clipboard entry no longer exists. Refresh and choose another.")
-        # cliphist 0.7 expects the original tab-separated list row; newer
-        # versions also accept an ID alone. Preserve the compatible format.
-        row = identifier + "\t" + entry["preview"] + "\n"
-        data = command("cliphist", "decode", data=row.encode())
+        data = decode(identifier)
         command("wl-copy", "--type", mime_type(data), data=data)
         return {"copied": True}
     if op == "delete":

@@ -16,7 +16,6 @@ RowLayout {
         Rectangle {
                 id: card
                 required property string modelData
-                readonly property var gpu: root.machine.snapshot.gpu || ({modes: []})
                 readonly property var temperature: modelData === "cpu" ? root.hw.cpuTemperature : root.hw.gpuTemperature
                 readonly property bool usageAvailable: modelData === "cpu" ? root.hw.cpuPercent !== undefined : root.hw.gpuPercent !== null && root.hw.gpuPercent !== undefined
                 readonly property real usage: modelData === "cpu" ? root.hw.cpuPercent || 0 : root.hw.gpuPercent || 0
@@ -80,9 +79,9 @@ RowLayout {
                                 iconName: modelData.icon
                                 iconSize: 18
                                 text: modelData.label
-                                highlighted: card.modelData === "cpu" ? root.machine.snapshot.profile === modelData.value : card.gpu.mode === modelData.value
-                                enabled: !root.machine.busy && !Profiles.busy && (card.modelData === "cpu" ? (root.machine.snapshot.profiles || []).includes(modelData.value) : (card.gpu.modes || []).includes(modelData.value))
-                                onClicked: root.machine.run(card.modelData === "cpu" ? "profile" : "gpu", modelData.value)
+                                highlighted: root.machine.snapshot.profile === modelData.value
+                                enabled: !root.machine.busy && !Profiles.busy && (root.machine.snapshot.profiles || []).includes(modelData.value)
+                                onClicked: root.machine.run("profile", modelData.value)
                             }
                         }
                     }
@@ -147,12 +146,6 @@ RowLayout {
                     text: Theme.mode === "dark" ? "Switch to light theme" : "Switch to dark theme"
                     enabled: Theme.loaded && !ThemeRuntime.busy
                     onClicked: Theme.setMode(Theme.mode === "dark" ? "light" : "dark")
-                }
-                IconButton {
-                    iconName: "upload"
-                    iconSize: 18
-                    text: "Update the system"
-                    onClicked: {}
                 }
                 Item { Layout.fillWidth: true }
             }

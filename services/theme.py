@@ -12,9 +12,10 @@ import json
 import os
 import re
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 
-from services.storage import atomic_write as atomic_write
+from services.storage import atomic_write
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS = ROOT / "config/theme.json"
@@ -565,32 +566,32 @@ def editor_colors(c):
     }
 
 
+def hyprland_borders(c):
+    return (
+        "hl.config({ general = { col = { "
+        f'active_border = "rgba({c["accent"][1:]}cc)", inactive_border = "rgba({c["border"][1:]}ff)"'
+        " } } })"
+    )
+
+
 def render(theme, config, data, flatpak_ids=()):
     c, dark = theme["palettes"][theme["mode"]], theme["mode"] == "dark"
     icons, gtk_theme = ("breeze-dark", "Breeze-Dark") if dark else ("breeze", "Breeze")
     ui, mono = theme["font_size"], theme["monospace_font_size"]
+    ui_font = f"{theme['font']},{ui},-1,5,50,0,0,0,0,0"
     files = {}
     files[config / "zephyrus-shell/appearance.lua"] = (
-        "-- Generated from zephyrus-shell/theme.json\n"
-        "hl.config({ general = { col = { "
-        f'active_border = "rgba({c["accent"][1:]}cc)", inactive_border = "rgba({c["border"][1:]}ff)"'
-        " } } })\n"
+        "-- Generated from zephyrus-shell/theme.json\n" + hyprland_borders(c) + "\n"
     )
     groups = kde_groups(theme)
     files[data / "color-schemes/Zephyrus.colors"] = ini_merge("", groups)
     groups["General"].update(
-        {
-            "font": f"{theme['font']},{ui},-1,5,50,0,0,0,0,0",
-            "fixed": f"{theme['monospace_font']},{mono},-1,5,50,0,0,0,0,0",
-            **{
-                key: f"{theme['font']},{ui},-1,5,50,0,0,0,0,0"
-                for key in ("menuFont", "toolBarFont", "smallestReadableFont")
-            },
-        }
+        {key: ui_font for key in ("font", "menuFont", "toolBarFont", "smallestReadableFont")},
+        fixed=f"{theme['monospace_font']},{mono},-1,5,50,0,0,0,0,0",
     )
     groups["Icons"] = {"Theme": icons}
     groups["KDE"]["widgetStyle"] = "kvantum"
-    groups["WM"] = {"activeFont": groups["General"]["font"]}
+    groups["WM"] = {"activeFont": ui_font}
     files[config / "kdeglobals"] = ini_merge(read(config / "kdeglobals"), groups)
     kvconfig, svg = qt_style(c)
     files[config / "Kvantum/kvantum.kvconfig"] = ini_merge(
@@ -602,15 +603,6 @@ def render(theme, config, data, flatpak_ids=()):
     if vlc.exists():
         # The distro baseline forces dark; zero selects the system palette.
         files[vlc] = ini_merge(read(vlc), {"qt": {"qt-dark-palette": "0"}})
-    engine = config / "hypr/hyprqt6engine.conf"
-    files[engine] = block(
-        read(engine),
-        "theme {\n"
-        + f"    color_scheme = {data / 'color-schemes/Zephyrus.colors'}\n    icon_theme = {icons}\n    style = kvantum\n"
-        + f"    font = {theme['font']}\n    font_size = {round(ui)}\n"
-        + f"    font_fixed = {theme['monospace_font']}\n    font_fixed_size = {round(mono)}\n}}",
-        "#",
-    )
     for version in (3, 4):
         folder = config / f"gtk-{version}.0"
         files[folder / "settings.ini"] = ini_merge(
@@ -770,13 +762,18 @@ def restore_snapshot(path, saved):
 
 class Synchronizer:
     def __init__(self, config, data, state):
-        self.config, self.data, self.state = config, data, state
+        self.config, self.data = config, data
         self.manifest = state / "zephyrus-shell/theme-sync.json"
 
-    def apply(self, theme, flatpak_ids=()):
+    @contextmanager
+    def locked(self):
         self.manifest.parent.mkdir(parents=True, exist_ok=True)
         with (self.manifest.parent / "theme-sync.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
+            yield
+
+    def apply(self, theme, flatpak_ids=()):
+        with self.locked():
             files = render(theme, self.config, self.data, flatpak_ids)
             previous_manifest = snapshot(self.manifest)
             manifest = json.loads(read(self.manifest) or '{"files":{},"settings":{}}')
@@ -811,8 +808,7 @@ class Synchronizer:
     def restore(self):
         if not self.manifest.exists():
             return []
-        with (self.manifest.parent / "theme-sync.lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        with self.locked():
             manifest = json.loads(self.manifest.read_text())
             for name, entry in manifest["files"].items():
                 if fingerprint(Path(name)) not in (
@@ -849,8 +845,7 @@ def notify(theme, sync):
     warnings = []
     # GNOME's settings portal exports these values to GTK, libadwaita, browsers
     # and Flatpaks. Save original GVariants for restoration, including unset keys.
-    with (sync.manifest.parent / "theme-sync.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with sync.locked():
         manifest = json.loads(sync.manifest.read_text())
         for key, value in settings_values(theme).items():
             try:
@@ -883,16 +878,9 @@ def notify(theme, sync):
         except (OSError, ValueError, subprocess.TimeoutExpired) as error:
             warnings.append("Qt notification: " + str(error))
     if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
-        c = theme["palettes"][theme["mode"]]
         try:
-            run(
-                [
-                    "hyprctl",
-                    "--batch",
-                    f"keyword general:col.active_border rgba({c['accent'][1:]}cc); "
-                    f"keyword general:col.inactive_border rgba({c['border'][1:]}ff)",
-                ]
-            )
+            # Lua configs reject `hyprctl keyword`; eval reports failures by exit status.
+            run(["hyprctl", "eval", hyprland_borders(theme["palettes"][theme["mode"]])])
         except (OSError, ValueError, subprocess.TimeoutExpired) as error:
             warnings.append("Window borders: " + str(error))
     return warnings

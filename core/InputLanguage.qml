@@ -29,12 +29,10 @@ QtObject {
             else refreshPending = true;
             return;
         }
-        if (action === "select") {
-            error = "";
-            keyboard = ""; // Menu selections change all keyboards.
-        }
+        if (action === "select") keyboard = ""; // Menu selections change all keyboards.
         command.action = action;
         command.code = code || "";
+        command.failure = "";
         command.command = ["python3", Paths.file("scripts/input-language.py"), action, action === "select" ? code : keyboard];
         requestActive = true;
         command.running = true;
@@ -67,6 +65,9 @@ QtObject {
     property Process command: Process {
         property string action: "status"
         property string code: ""
+        // Each request's outcome replaces the previous error, so a recovered
+        // provider or compositor does not leave a stale error in the tooltip.
+        property string failure: ""
         stdout: StdioCollector {
             onStreamFinished: {
                 if (!text.trim()) return;
@@ -87,13 +88,13 @@ QtObject {
                         if (state.language) root.language = state.language;
                         if (state.secondary) root.secondary = state.secondary;
                     }
-                    if (state.error) root.error = state.error;
-                } catch (error) { root.error = "Could not read input language."; }
+                    if (state.error) root.command.failure = state.error;
+                } catch (error) { root.command.failure = "Could not read input language."; }
             }
         }
-        stderr: StdioCollector { onStreamFinished: if (text.trim()) root.error = text.trim(); }
+        stderr: StdioCollector { onStreamFinished: if (text.trim()) root.command.failure = text.trim(); }
         onExited: (exitCode, exitStatus) => {
-            if (exitCode && !root.error) root.error = "Could not change or read input language.";
+            root.error = root.command.failure || (exitCode ? "Could not change or read input language." : "");
             if (action === "select") {
                 if (exitCode) root.refreshPending = true;
                 root.selectionFinished(code, exitCode === 0);

@@ -103,7 +103,7 @@ reload. Unopened modules have no instances, workers, or loader delegates. `Shell
 ownership when a screen disappears. `ModuleLoader` supports the shared live-shell
 host and individual preview hosts; `ModuleOverlay` gates creation until drawers finish closing.
 Each module receives its own host, so a hidden module can close itself without
-closing the selected space. Cross-module navigation uses `host.openPlugin(id,
+closing the selected space. Cross-module navigation uses `host.openModule(id,
 payload)` and optional destination `handleOpen(payload)`; the host validates
 availability and delivers once, while the modules interpret the payload. See
 [the host contract](plugins.md).

@@ -36,7 +36,7 @@ ColumnLayout {
                 }
             }
         }
-        Label { text: root.machine.snapshot.battery ? Math.round(root.percent) + "%" : "—"; color: Theme.muted; Layout.preferredWidth: 38; horizontalAlignment: Text.AlignRight }
+        Label { text: root.machine.snapshot.batteryPresent || (root.battery && root.battery.isPresent) ? Math.round(root.percent) + "%" : "—"; color: Theme.muted; Layout.preferredWidth: 38; horizontalAlignment: Text.AlignRight }
         IconButton { text: "Battery information"; iconName: root.expanded ? "chevron-up" : "chevron-down"; onClicked: root.expanded = !root.expanded }
     }
     Label { Layout.leftMargin: 48; Layout.fillWidth: true; text: root.machine.snapshot.batteryInfo || "No battery detected"; color: Theme.muted; font.family: Theme.font; font.pixelSize: Theme.sp(12); wrapMode: Text.Wrap }

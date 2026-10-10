@@ -22,7 +22,7 @@ def load(name, relative):
 
 boost = load("cpu_boost", "scripts/cpu-boost.py")
 machine = load("control_machine", "scripts/machine.py")
-apps = load("app_gpu", "plugins/apps/backend.py")
+apps = load("app_gpu", "modules/apps/backend.py")
 
 
 class BoostTests(unittest.TestCase):

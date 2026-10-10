@@ -5,16 +5,17 @@ import Quickshell.Io
 import Quickshell.Hyprland
 import "core"
 import "shell"
-import "pictures"
+import "modules/pictures"
 
 ShellRoot {
     id: root
     WallpaperRuntime { id: wallpapers }
-    // Module resources outlive individual output surfaces, including unplugging
-    // the display where a retained player or worker was started.
-    property ModuleLoader modules: ModuleLoader { screenName: "*"; readyToLoad: false; anchors.fill: parent }
+    // Owned by the root so running modules survive unplugging the screen that
+    // shows them; ShellScreen reparents it to the current module's screen.
+    property ModuleLoader modules: ModuleLoader { readyToLoad: false; anchors.fill: parent }
     Component.onCompleted: {
-        const ready = Profiles.loaded; const hardware = HardwareSnapshot.data;
+        // Singletons are lazy; Profiles must exist to apply battery-driven profiles.
+        void Profiles.loaded;
         ThemeRuntime.start();
     }
     Connections {
@@ -26,12 +27,11 @@ ShellRoot {
         function toggle(panel: string): void {
             ShellState.toggle(panel, Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : undefined);
         }
-        function close(): void { ShellState.close(); }
-        function desktop(): void { ShellState.showDesktop(); }
-        function openPlugin(id: string): void {
+        function close(): void { ShellState.showDesktop(); }
+        function openModule(id: string): void {
             if (!Modules.find(id)) return;
             if (Hyprland.focusedMonitor) ShellState.monitor = Hyprland.focusedMonitor.name;
-            ShellState.openPlugin(id);
+            ShellState.openModule(id);
         }
         function reloadTheme(): void { Theme.refresh(); }
         function reloadSessionLock(): void { SessionLock.refresh(); }
@@ -45,7 +45,7 @@ ShellRoot {
         ShellScreen {
             required property var modelData
             screen: modelData
-            sharedModules: root.modules
+            modules: root.modules
             externalWallpaper: wallpapers.externalScreens.includes(screenName)
         }
     }

@@ -5,36 +5,11 @@ import argparse
 import json
 import os
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from media.local import EXTENSIONS, LocalLibrary, destination, library_root
-
-
-def identity_from_sidecar(path, kind):
-    sidecar = path.with_suffix(path.suffix + ".zephyrus.json")
-    if sidecar.is_file():
-        try:
-            return json.loads(sidecar.read_text())
-        except (OSError, ValueError):
-            return {}
-    nfo = (path.parent.parent if kind == "tv" else path.parent) / (
-        "tvshow.nfo" if kind == "tv" else "movie.nfo"
-    )
-    try:
-        root = ET.parse(nfo).getroot()
-    except (OSError, ET.ParseError):
-        return {}
-    fields = {"title": root.findtext("title") or "", "year": root.findtext("year") or ""}
-    for item in root.findall("uniqueid"):
-        if item.get("type") == "imdb":
-            fields["imdbId"] = item.text
-            fields["id"] = item.text
-        elif item.get("type") == "tmdb":
-            fields["tmdbId"] = item.text
-            fields.setdefault("id", f"tmdb:{kind}:{item.text}")
-    return fields
+from modules.media.local import EXTENSIONS, LocalLibrary, destination, library_root
+from modules.media.scanner import sidecar_identity
 
 
 def inventory():
@@ -46,7 +21,7 @@ def inventory():
         for path in sorted(root.rglob("*")):
             if not path.is_file() or path.is_symlink() or path.suffix.lower() not in extensions:
                 continue
-            fields = identity_from_sidecar(path, kind)
+            fields = sidecar_identity(path, kind)
             rows.append(
                 {
                     "kind": kind,

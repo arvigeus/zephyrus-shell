@@ -46,14 +46,14 @@ DrawerFrame {
                             text: modelData.name
                             textAlignment: Text.AlignLeft
                             iconName: modelData.icon
-                            Accessible.description: ShellState.runningPluginIds.includes(modelData.id) ? "Running" : ""
-                            onClicked: ShellState.openPlugin(modelData.id)
+                            Accessible.description: ShellState.runningModuleIds.includes(modelData.id) ? "Running" : ""
+                            onClicked: ShellState.openModule(modelData.id)
                         }
                         IconButton {
-                            visible: ShellState.runningPluginIds.includes(modelData.id)
+                            visible: ShellState.runningModuleIds.includes(modelData.id)
                             Layout.preferredWidth: 36; Layout.preferredHeight: 36
                             iconName: "x"; text: "Close " + modelData.name
-                            onClicked: ShellState.stopPlugin(modelData.id)
+                            onClicked: ShellState.stopModule(modelData.id)
                         }
                     }
                 }

@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import "../../media/RatingLinks.js" as Links
+import "../../modules/media/RatingLinks.js" as Links
 
 TestCase {
     name: "RatingLinks"

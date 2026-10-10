@@ -1,6 +1,4 @@
-import importlib.util
 import io
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,15 +8,6 @@ from urllib.error import HTTPError, URLError
 from attention import backend
 from attention import nextcloud as calendar
 from services import nextcloud as shared
-
-
-def migration_module():
-    spec = importlib.util.spec_from_file_location(
-        "migrate_nextcloud", Path(__file__).resolve().parents[1] / "scripts/migrate-nextcloud.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def account():
@@ -68,46 +57,49 @@ class AccountTests(unittest.TestCase):
         with self.assertRaises(shared.NextcloudError):
             shared.validate_account(value)
 
-    def test_provider_is_replaceable_and_music_is_distinct(self):
-        class Provider:
-            def read(self, reference):
-                return reference["file"]
-
-        self.assertEqual(shared.credential(account(), provider=Provider()), "dav-app-password")
-        self.assertEqual(
-            shared.credential(account(), "music_subsonic", Provider()), "music-api-key"
-        )
+    def test_capabilities_select_distinct_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            folder = root / "credentials/nextcloud"
+            folder.mkdir(parents=True)
+            for name in ("dav-app-password", "music-api-key"):
+                (folder / name).write_text(name + "-secret")
+                (folder / name).chmod(0o600)
+            self.assertEqual(shared.credential(account(), root=root), "dav-app-password-secret")
+            self.assertEqual(
+                shared.credential(account(), "music_subsonic", root), "music-api-key-secret"
+            )
+            with self.assertRaisesRegex(shared.NextcloudError, "capability"):
+                shared.credential(account(), "missing", root)
 
     def test_private_files_missing_empty_permissions_and_symlink(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            provider = shared.FileCredentials(root)
             ref = account()["credentials"]["dav"]
             with self.assertRaises(shared.CredentialMissing):
-                provider.read(ref)
+                shared.read_credential(ref, root)
             path = root / "credentials/nextcloud/dav-app-password"
             path.parent.mkdir(parents=True)
             path.write_text("a-test-password\n")
             path.chmod(0o600)
-            self.assertEqual(provider.read(ref), "a-test-password")
+            self.assertEqual(shared.read_credential(ref, root), "a-test-password")
             path.chmod(0o644)
             with self.assertRaisesRegex(shared.NextcloudError, "0600"):
-                provider.read(ref)
+                shared.read_credential(ref, root)
             path.chmod(0o600)
             path.write_text("")
             with self.assertRaisesRegex(shared.NextcloudError, "empty"):
-                provider.read(ref)
+                shared.read_credential(ref, root)
             path.unlink()
             path.symlink_to(root / "elsewhere")
             (root / "elsewhere").write_text("secret")
             with self.assertRaises(shared.NextcloudError):
-                provider.read(ref)
+                shared.read_credential(ref, root)
 
     def test_dav_scope_and_redirects_never_send_credentials_elsewhere(self):
-        provider = unittest.mock.Mock()
-        provider.read.return_value = "test-password"
         opener = unittest.mock.Mock()
-        client = calendar.Client(account(), provider=provider, opener=opener)
+        with patch.object(shared, "credential", return_value="test-password"):
+            client = calendar.Client(account(), opener=opener)
         self.assertEqual(
             client.home, "https://cloud.example/nextcloud/remote.php/dav/calendars/alice/"
         )
@@ -128,13 +120,12 @@ class AccountTests(unittest.TestCase):
         opener.open.assert_not_called()
 
     def test_dav_request_auth_and_error_mapping(self):
-        provider = unittest.mock.Mock()
-        provider.read.return_value = "test-password"
         opener = unittest.mock.Mock()
         response = io.BytesIO(b"calendar")
         response.headers = {"ETag": '"1"'}
         opener.open.return_value = response
-        client = calendar.Client(account(), provider=provider, opener=opener)
+        with patch.object(shared, "credential", return_value="test-password"):
+            client = calendar.Client(account(), opener=opener)
         raw, headers = client.request("GET", client.home + "personal/a.ics")
         self.assertEqual((raw, headers["ETag"]), (b"calendar", '"1"'))
         self.assertTrue(
@@ -189,105 +180,3 @@ class AccountTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(shared.NextcloudError, "permissions"):
                     backend.handle({"op": "nextcloud"})
-
-
-class MigrationTests(unittest.TestCase):
-    def prepare(self, root):
-        (root / "attention.json").write_text(
-            json.dumps(
-                {
-                    "weather": {"name": "keep"},
-                    "nextcloud": {
-                        "url": account()["url"],
-                        "username": "alice",
-                        "password_file": str(root / "nextcloud-app-password"),
-                        "calendars": ["Work"],
-                        "task_lists": [],
-                    },
-                }
-            )
-        )
-        (root / "nextcloud-app-password").write_text("test-dav")
-        (root / "nextcloud-music-password").write_text("test-music-api-key")
-
-    def test_migration_permissions_selection_and_idempotency(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            self.prepare(root)
-            migrate = migration_module().migrate
-            self.assertTrue(migrate(root))
-            data = shared.load_account(root)
-            provider = shared.FileCredentials(root)
-            self.assertEqual(shared.credential(data, provider=provider), "test-dav")
-            self.assertEqual(
-                shared.credential(data, "music_subsonic", provider), "test-music-api-key"
-            )
-            attention = json.loads((root / "attention.json").read_text())
-            self.assertEqual(
-                attention,
-                {
-                    "weather": {"name": "keep"},
-                    "calendar": {"calendars": ["Work"], "task_lists": []},
-                },
-            )
-            self.assertFalse((root / "nextcloud-app-password").exists())
-            self.assertFalse((root / "nextcloud-music-password").exists())
-            self.assertEqual((root / "credentials/nextcloud").stat().st_mode & 0o777, 0o700)
-            self.assertEqual(
-                (root / "credentials/nextcloud/dav-app-password").stat().st_mode & 0o777, 0o600
-            )
-            self.assertNotIn("test-dav", (root / "nextcloud.json").read_text())
-            self.assertTrue(migrate(root))
-
-    def test_conflict_leaves_originals_untouched(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            self.prepare(root)
-            destination = root / "credentials/nextcloud/music-api-key"
-            destination.parent.mkdir(parents=True)
-            destination.write_text("different")
-            with self.assertRaisesRegex(shared.NextcloudError, "differs"):
-                migration_module().migrate(root)
-            self.assertTrue((root / "nextcloud-app-password").exists())
-            self.assertFalse((destination.parent / "dav-app-password").exists())
-            self.assertFalse((root / "nextcloud.json").exists())
-
-    def test_interrupted_migration_can_resume(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            self.prepare(root)
-            module = migration_module()
-            original = module.write_private
-
-            def interrupted(path, data):
-                if path.name == "attention.json":
-                    raise OSError("interrupted")
-                original(path, data)
-
-            with (
-                patch.object(module, "write_private", side_effect=interrupted),
-                self.assertRaises(OSError),
-            ):
-                module.migrate(root)
-            self.assertTrue((root / "nextcloud-app-password").exists())
-            self.assertTrue(module.migrate(root))
-            self.assertFalse((root / "nextcloud-app-password").exists())
-
-    def test_other_account_is_never_overwritten(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            self.prepare(root)
-            value = {**account(), "username": "someone-else"}
-            (root / "nextcloud.json").write_text(json.dumps(value))
-            with self.assertRaisesRegex(shared.NextcloudError, "different account"):
-                migration_module().migrate(root)
-            self.assertTrue((root / "nextcloud-app-password").exists())
-
-    def test_missing_legacy_account_does_not_move_secrets(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            self.assertFalse(migration_module().migrate(root))
-            (root / "nextcloud-app-password").write_text("test-dav")
-            with self.assertRaisesRegex(shared.NextcloudError, "URL and username"):
-                migration_module().migrate(root)
-            self.assertTrue((root / "nextcloud-app-password").exists())

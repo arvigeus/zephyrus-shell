@@ -6,18 +6,16 @@ import "../widgets"
 
 ColumnLayout {
     id: root
-    property bool narrow: false
     property var forecast: null
     property bool loading: false
     property string error: ""
     signal refreshRequested()
-    readonly property var shown: forecast
-    readonly property bool ready: shown !== null && shown !== undefined && shown.current !== undefined
-    readonly property var current: ready ? shown.current : ({})
-    readonly property var days: ready ? shown.days : []
-    readonly property var hours: ready ? (shown.hours || []).slice(0, 6) : []
+    readonly property bool ready: !!forecast && forecast.current !== undefined
+    readonly property var current: ready ? forecast.current : ({})
+    readonly property var days: ready ? forecast.days : []
+    readonly property var hours: ready ? (forecast.hours || []).slice(0, 6) : []
     readonly property bool hoursBeside: width >= 340
-    readonly property string localDate: ready ? shown.local_date || String(shown.observed_at || "").slice(0, 10) : ""
+    readonly property string localDate: ready ? forecast.local_date || String(forecast.observed_at || "").slice(0, 10) : ""
     spacing: 15
 
     RowLayout {
@@ -34,7 +32,7 @@ ColumnLayout {
 
     Label {
         visible: root.ready
-        text: root.ready ? root.shown.location : ""
+        text: root.ready ? root.forecast.location : ""
         Layout.fillWidth: true
         color: Theme.muted
         font.family: Theme.font; font.pixelSize: Theme.sp(12)

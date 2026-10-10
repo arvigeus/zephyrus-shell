@@ -5,19 +5,17 @@ usage() {
     cat <<'EOF'
 Install the canonical Zephyrus Shell package and prepare an Arch session.
 
-Usage: scripts/setup-system.sh [--with-optional-controls] [--enable-services]
+Usage: scripts/setup-system.sh [--enable-services]
 
 Options:
-  --with-optional-controls  Compatibility flag; full-session integrations are installed by default.
-  --enable-services         Enable and start network and Bluetooth services.
-  -h, --help                Show this help.
+  --enable-services  Enable and start network and Bluetooth services.
+  -h, --help         Show this help.
 EOF
 }
 
 enable_services=false
 for arg in "$@"; do
     case "$arg" in
-        --with-optional-controls) ;;
         --enable-services) enable_services=true ;;
         -h|--help) usage; exit 0 ;;
         *) printf 'Unknown option: %s\n' "$arg" >&2; usage >&2; exit 2 ;;
@@ -57,14 +55,10 @@ fi
 
 cat <<'EOF'
 
-System dependencies and the package are installed. Prepare the repository-linked login configuration:
+System dependencies and the package are installed. Link the login session to this checkout:
   python3 scripts/setup-session.py install
+  systemctl --user daemon-reload
 
-Select Hyprland at login. The native scrolling layout needs no plugins.
-Log out and back in once for I2C group access. Enable DDC/CI in external
-monitors' own menus; Settings detects their connector's bus automatically.
-
-See docs/session.md for locking, portals, teardown and the live test checklist.
-
-Power controls use an already active asusd or power-profiles-daemon. Do not enable competing profile owners. GPU selection uses switcheroo-control.
+Then log out and choose "Zephyrus (Hyprland)" at login (log out once anyway for
+I2C group access). See docs/session.md for teardown and troubleshooting.
 EOF

@@ -13,9 +13,9 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlparse
 
-from pictures import backend as pictures
-from pictures import wallpaper_engine as engine
-from pictures import workshop
+from modules.pictures import backend as pictures
+from modules.pictures import wallpaper_engine as engine
+from modules.pictures import workshop
 
 
 class WallpaperEngineTests(unittest.TestCase):
@@ -254,41 +254,6 @@ class WallpaperEngineTests(unittest.TestCase):
             json.loads(config.read_text())["steamuser"]["general"]["user"]["playbacksleep"], "pause"
         )
 
-    def test_playback_policy_recovers_legacy_sleep_journal_before_install(self):
-        self.setting({})
-        config = self.engine_executable.parent / "config.json"
-        config.write_text(
-            json.dumps(
-                {
-                    "steamuser": {
-                        "general": {
-                            "user": {
-                                "playbacksleep": "run",
-                                "playbackfullscreen": "pause",
-                                "playbackmaximized": "stop",
-                            }
-                        }
-                    }
-                }
-            )
-        )
-        legacy = engine.config_dir() / ".engine-native-sleep.json"
-        legacy.write_text(json.dumps({"path": str(config), "present": True, "value": "stop"}))
-        runtime = engine.Runtime()
-        self.addCleanup(runtime.close)
-        self.assertFalse(legacy.exists())
-        original = json.loads(config.read_text())["steamuser"]["general"]["user"]
-        self.assertEqual(original["playbacksleep"], "stop")
-        engine.install_native_playback_policy(self.engine_executable)
-        self.assertTrue(
-            all(
-                value == "run"
-                for value in json.loads(config.read_text())["steamuser"]["general"]["user"].values()
-            )
-        )
-        runtime.stop()
-        self.assertEqual(json.loads(config.read_text())["steamuser"]["general"]["user"], original)
-
     def test_sleep_pauses_owned_renderer_and_wake_resumes_without_reloading(self):
         self.setting({"mode": "wallpaper_engine", "workshop_id": "123456", "selection": "boot"})
         worker = self.spawn_worker(self.fixture_environment())
@@ -464,6 +429,22 @@ class WallpaperEngineTests(unittest.TestCase):
             self.assertEqual(runtime.sync({})["screens"], ["TEST"])
         self.assertEqual(runtime.restarts, 0)
 
+    def test_healthy_runtime_regains_restart_budget(self):
+        self.setting({"mode": "wallpaper_engine", "workshop_id": "123456", "selection": "first"})
+        with patch.dict(os.environ, self.fixture_environment()):
+            runtime = engine.Runtime()
+            self.addCleanup(runtime.close)
+            request = {"monitors": [{"name": "TEST", "id": 0}], "clients": []}
+            deadline = time.monotonic() + 10
+            while not runtime.sync(request)["screens"] and time.monotonic() < deadline:
+                time.sleep(0.05)
+            runtime.restarts = engine.MAX_RESTARTS - 1
+            runtime.sync(request)
+            self.assertEqual(runtime.restarts, engine.MAX_RESTARTS - 1)
+            runtime.started_at -= engine.HEALTHY_SECONDS + 1
+            self.assertEqual(runtime.sync(request)["screens"], ["TEST"])
+            self.assertEqual(runtime.restarts, 0)
+
     def test_absent_or_sleeping_outputs_do_not_start_or_fail_renderer(self):
         self.setting({"mode": "wallpaper_engine", "workshop_id": "123456", "selection": "first"})
         runtime = engine.Runtime()
@@ -504,7 +485,12 @@ class WallpaperEngineTests(unittest.TestCase):
         )
         worker.kill()
         worker.wait(timeout=3)
-        self.assertTrue(all(engine.process_identity(pid) for pid in pids))
+        # The daemon follows its worker; detached helpers wait for the next runtime.
+        deadline = time.monotonic() + 3
+        while engine.process_identity(pids[0]) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        self.assertFalse(engine.process_identity(pids[0]))
+        self.assertTrue(engine.process_identity(pids[1]))
         replacement = self.spawn_worker(environment)
         self.wait_worker_ready(replacement)
         self.assertFalse(any(engine.process_identity(pid) for pid in pids))
@@ -955,7 +941,7 @@ class WallpaperEngineTests(unittest.TestCase):
         self.assertEqual(status, "Z")
         self.assertTrue(engine.process_identity(owned.pid))
         self.assertIn(owned.pid, engine.owned_processes("fixture-picker"))
-        engine.dismiss_owned_picker("fixture-picker")
+        engine.dismiss_owned_picker(engine.owned_processes("fixture-picker"))
         self.assertEqual(owned.wait(timeout=3), -9)
         self.assertIsNone(unrelated.poll())
         self.assertTrue(engine.process_identity(unrelated.pid))
@@ -981,7 +967,7 @@ class WallpaperEngineTests(unittest.TestCase):
             if Path(f"/proc/{process.pid}/comm").read_text().strip() == "CrBrowserMain":
                 break
             time.sleep(0.01)
-        engine.dismiss_owned_picker("fixture-web")
+        engine.dismiss_owned_picker(engine.owned_processes("fixture-web"))
         self.assertIsNone(process.poll())
 
     def test_renderer_manifest_and_explicit_override(self):

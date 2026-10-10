@@ -1,3 +1,0 @@
-import "../../games"
-
-GameBrowser {}

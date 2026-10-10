@@ -55,16 +55,20 @@ Scope {
         implicitHeight: Theme.pillHeight
         exclusiveZone: Theme.pillHeight
         color: "transparent"
-        visible: !interactionWindow.visible
+        // Stays mapped so its reserved zone never changes and tiled windows
+        // do not move; it only accepts input while it holds the pills.
         WlrLayershell.layer: WlrLayer.Top
         WlrLayershell.namespace: "zephyrus-shell-bar"
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-        mask: Region {
+        mask: root.pillWindow === bar ? pillMask : noInput
+        Region {
+            id: pillMask
             Region { item: spaces }
             Region { item: runningApps }
             Region { item: center }
             Region { item: rightPills }
         }
+        Region { id: noInput }
         IdleInhibitor { window: root.pillWindow; enabled: KeepAwake.mode === "screen" && KeepAwake.active }
     }
     // A single set of pills moves with the visible interaction surface. The
@@ -104,7 +108,7 @@ Scope {
             anchors.right: parent.right; anchors.rightMargin: 14; y: Theme.pillVerticalPadding
             spacing: 8
             TrayPill { id: tray; window: root.pillWindow; maximumWidth: Math.max(0, root.pillWindow.width - 14 - right.width - clipboardButton.width - languageButton.width - center.x - center.width - 24) }
-            LanguageButton { id: languageButton; barWindow: root.pillWindow }
+            LanguageButton { id: languageButton; barWindow: interactionWindow }
             ClipboardButton { id: clipboardButton; screenName: root.screenName }
             StatusPill {
                 id: right
@@ -113,13 +117,16 @@ Scope {
             }
         }
     }
+    // Popups that open the interaction surface anchor to it directly, so
+    // dismissal never re-anchors them onto the passive bar.
     PanelWindow {
         id: interactionWindow
         screen: root.screen
         visible: root.moduleShown || root.popupOpen || languageButton.restoringInputFocus
         anchors { top: true; bottom: root.moduleShown; left: true; right: true }
         implicitHeight: Theme.pillHeight
-        exclusiveZone: Theme.pillHeight
+        // Covers the persistent bar rather than reserving a second zone.
+        exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         WlrLayershell.layer: root.moduleShown && !leftDrawer.visible && !rightDrawer.visible ? WlrLayer.Overlay : WlrLayer.Top
         WlrLayershell.namespace: "zephyrus-shell-interaction"
@@ -184,8 +191,8 @@ Scope {
     PopupWindow {
         id: attentionWindow
         visible: root.selected && ShellState.panel === "center"
-        anchor.window: root.pillWindow
-        anchor.rect.x: (root.pillWindow.width - width) / 2
+        anchor.window: interactionWindow
+        anchor.rect.x: (interactionWindow.width - width) / 2
         anchor.rect.y: Theme.pillHeight + 6
         implicitWidth: Math.min(1240, root.screenWidth - 28)
         implicitHeight: Math.min(root.screenWidth < 900 ? 700 : 600, root.screenHeight - Theme.pillHeight - 24)
@@ -195,7 +202,7 @@ Scope {
         onVisibleChanged: { if (!visible) attentionGrab.active = false; }
         HyprlandFocusGrab {
             id: attentionGrab
-            windows: [attentionWindow, root.pillWindow]
+            windows: [attentionWindow, interactionWindow]
             onCleared: {
                 if (root.selected && ShellState.panel === "center") ShellState.dismissPanel();
             }
@@ -203,7 +210,7 @@ Scope {
         Loader { id: attentionContent; anchors.fill: parent; active: parent.visible; sourceComponent: AttentionPanel {} }
     }
     ClipboardPopup {
-        barWindow: root.pillWindow
+        barWindow: interactionWindow
         screenName: root.screenName
         readyToOpen: !leftDrawer.visible && !rightDrawer.visible
     }

@@ -43,7 +43,16 @@ ShellRoot {
         function fail(message) { console.error("FOCUS FAIL:", message); stop(); Qt.quit(); }
         function advance(value) { step = value; ticks = 0; }
         function send(key) { input.command = [Quickshell.env("ZEPHYRUS_FOCUS_INPUT"), String(key)]; input.running = true; }
+        // Opening or leaving a module must not move tiled windows: the bar's
+        // reserved zone stays constant across module, drawer and popup states.
+        function checkReserved() {
+            const monitor = root.testScreen ? WindowList.monitors.find(m => m.name === root.testScreen.name) : null;
+            const reserved = monitor ? monitor.lastIpcObject.reserved : null;
+            if (reserved && reserved[1] !== Theme.pillHeight) fail("Top reserved zone changed to " + reserved[1] + " at step " + step + ", panel=" + ShellState.panel);
+            Hyprland.refreshMonitors();
+        }
         onTriggered: {
+            if (step >= 1 && step !== 10) { checkReserved(); if (!running) return; }
             if (++ticks > 45) { fail("Timeout at step " + step + ", panel=" + ShellState.panel + ", active=" + target.contentItem.Window.active); return; }
             if (step === 0) {
                 if (!root.testScreen || !target.contentItem.Window.active) return;
@@ -106,7 +115,7 @@ ShellRoot {
                 send(30); advance(16);
             } else if (step === 16 && !input.running) {
                 if (field.text !== "aaaaaa") { fail("Desktop popup stranded the keyboard"); return; }
-                console.log("FOCUS PASS: module typing, three Escape/return cycles, preserved query, drawer and popup Escape, explicit stop, desktop popup and native key delivery");
+                console.log("FOCUS PASS: stable reserved zone, module typing, three Escape/return cycles, preserved query, drawer and popup Escape, explicit stop, desktop popup and native key delivery");
                 stop(); Qt.quit();
             }
         }
